@@ -1,7 +1,6 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "./packages/_typescript/root.json",
-  "include": [],
-  "exclude": ["packages/**", "node_modules", "dist"]
+  "extends": "@teapot/_typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": "."
+  }
 }
-

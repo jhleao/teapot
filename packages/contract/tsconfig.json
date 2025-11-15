@@ -1,6 +1,5 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "../_typescript/library.json",
-  "include": ["src/**/*"],
+  "extends": "@teapot/_typescript/base.json",
+  "include": ["src", "eslint.config.mjs"],
   "exclude": ["node_modules", "dist"]
 }

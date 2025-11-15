@@ -7,3 +7,7 @@ export type Branch = {
   ref: string;
   isTrunk: boolean;
 };
+
+export type Configuration = {
+  repoPath: string;
+};

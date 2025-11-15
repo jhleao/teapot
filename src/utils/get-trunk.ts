@@ -1,15 +1,15 @@
-import git from 'isomorphic-git';
 import fs from 'fs';
+import type { Configuration } from '../models.js';
 
 export async function getTrunkBranchRef(
-  repoPath: string,
+  config: Configuration,
   branches: string[]
 ): Promise<string | null> {
   // Try to infer trunk by reading refs/remotes/origin/HEAD
   try {
     // Read the symbolic ref to find the default branch
     const symbolicRef = await fs.promises.readFile(
-      `${repoPath}/.git/refs/remotes/origin/HEAD`,
+      `${config.repoPath}/.git/refs/remotes/origin/HEAD`,
       'utf8'
     );
 

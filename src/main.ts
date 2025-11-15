@@ -1,16 +1,17 @@
 import git from 'isomorphic-git';
 import fs from 'fs';
-import type { Repo, Branch } from './models.js';
+import type { Repo, Branch, Configuration } from './models.js';
 import { getTrunkBranchRef } from './utils/get-trunk.js';
 import { printRepo } from './utils/print-repo.js';
+import { loadConfiguration } from './config.js';
 
-async function buildRepoModel(repoPath: string): Promise<Repo> {
+async function buildRepoModel(config: Configuration): Promise<Repo> {
   const branches = await git.listBranches({
     fs,
-    dir: repoPath,
+    dir: config.repoPath,
   });
 
-  const trunkBranch = await getTrunkBranchRef(repoPath, branches);
+  const trunkBranch = await getTrunkBranchRef(config, branches);
 
   const branchObjects: Branch[] = branches.map((branchRef) => {
     const isTrunk = branchRef === trunkBranch;
@@ -21,18 +22,17 @@ async function buildRepoModel(repoPath: string): Promise<Repo> {
   });
 
   return {
-    path: repoPath,
+    path: config.repoPath,
     branches: branchObjects,
   };
 }
 
 export async function main() {
   try {
-    // Use current directory as the repo path
-    const repoPath = process.cwd();
-    console.log(`Building repository model for: ${repoPath}\n`);
+    const config = loadConfiguration();
+    console.log(`Building repository model for: ${config.repoPath}\n`);
 
-    const repo = await buildRepoModel(repoPath);
+    const repo = await buildRepoModel(config);
     printRepo(repo);
   } catch (error) {
     console.error('Error building repository model:', error);

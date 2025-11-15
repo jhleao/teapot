@@ -3,6 +3,7 @@ export type Stack = {
 }
 
 type Commit = {
+  sha: string
   tipOfBranches: string[]
   name: string
   timestampMs: number

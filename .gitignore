@@ -4,3 +4,4 @@ node_modules
 dist
 .env
 object.json
+packages/contract/src/originalModels.ts

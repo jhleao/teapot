@@ -8,7 +8,8 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "build": "tsc"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "@teapot/_typescript": "workspace:*",
     "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   }

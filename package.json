@@ -11,13 +11,17 @@
     "build:contract": "pnpm --filter @teapot/contract build",
     "build:core": "pnpm --filter @teapot/core build",
     "build:cli": "pnpm --filter @teapot/cli build",
-    "build:all": "pnpm -r build"
+    "build:all": "pnpm -r build",
+    "dev:electron": "pnpm --filter @teapot/electron start",
+    "typecheck": "pnpm --filter '*' --parallel typecheck"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@teapot/_typescript": "workspace:*",
     "@types/node": "^24.10.1",
+    "prettier": "^3.6.2",
     "typescript": "^5.9.3"
   }
 }

@@ -22,7 +22,7 @@ export async function getTrunkBranchRef(
 
   console.log('Could not infer trunk from origin/HEAD, using fallback sources');
 
-  // Fallback: Common trunk branch names in order of preference
+  // Fallback: Common trunk branch names in order of preference 
   const trunkCandidates = ['main', 'master', 'develop'];
   return (
     trunkCandidates.find((name) => branches.includes(name)) ||

@@ -1,3 +1,4 @@
+import git from 'isomorphic-git';
 import fs from 'fs';
 import type { Configuration } from '@teapot/contract';
 
@@ -5,26 +6,21 @@ export async function getTrunkBranchRef(
   config: Configuration,
   branches: string[]
 ): Promise<string | null> {
-  // Try to infer trunk by reading refs/remotes/origin/HEAD
-  try {
-    // Read the symbolic ref to find the default branch
-    const symbolicRef = await fs.promises.readFile(
-      `${config.repoPath}/.git/refs/remotes/origin/HEAD`,
-      'utf8'
-    );
+  const dir = config.repoPath;
 
-    // The symbolic ref will be something like "ref: refs/remotes/origin/main\n"
-    // We need to extract just "main"
-    const match = symbolicRef.match(/ref:\s*refs\/remotes\/origin\/(.+)/);
-    if (match && match[1]) {
-      const trunkBranch = match[1].trim();
-      console.log(`Inferred trunk branch from origin/HEAD: ${trunkBranch}`);
-      return trunkBranch;
-    }
-  } catch (error) {
-    // If we can't read the symbolic ref, fall back to common names
-    console.log('Could not infer trunk from origin/HEAD, using fallback');
+  const remoteHeadBranch = await resolveBranchFromRef(dir, 'refs/remotes/origin/HEAD');
+  if (remoteHeadBranch) {
+    console.log(`Inferred trunk branch from origin/HEAD: ${remoteHeadBranch}`);
+    return remoteHeadBranch;
   }
+
+  const currentBranch = await resolveBranchFromRef(dir, 'HEAD');
+  if (currentBranch && branches.includes(currentBranch)) {
+    console.log(`Using current branch as trunk: ${currentBranch}`);
+    return currentBranch;
+  }
+
+  console.log('Could not infer trunk from origin/HEAD, using fallback sources');
 
   // Fallback: Common trunk branch names in order of preference
   const trunkCandidates = ['main', 'master', 'develop'];
@@ -35,3 +31,20 @@ export async function getTrunkBranchRef(
   );
 }
 
+async function resolveBranchFromRef(
+  dir: string,
+  ref: string
+): Promise<string | null> {
+  try {
+    const resolvedRef = await git.resolveRef({
+      fs,
+      dir,
+      ref,
+      depth: 2,
+    });
+    const match = resolvedRef.match(/refs\/(?:heads|remotes\/[^/]+)\/(.+)/);
+    return match ? match[1] : null;
+  } catch (error) {
+    return null;
+  }
+}

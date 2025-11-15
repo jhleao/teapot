@@ -4,6 +4,7 @@ export function printRepo(repo: Repo): void {
   console.log('Repository Model:');
   console.log('=================');
   console.log(`Path: ${repo.path}`);
+  printWorkingTree(repo);
   console.log(`\nBranches (${repo.branches.length}):`);
 
   const sortedBranches = [...repo.branches].sort((a, b) => {
@@ -35,4 +36,30 @@ export function printRepo(repo: Repo): void {
     console.log(`      parent  : ${parent}`);
     console.log(`      children: ${children}`);
   });
+}
+
+function printWorkingTree(repo: Repo): void {
+  const status = repo.workingTreeStatus;
+  console.log('\nWorking Tree:');
+  console.log(`  Branch   : ${status.currentBranch}`);
+  console.log(`  HEAD SHA : ${status.currentCommitSha}`);
+  console.log(
+    `  Tracking : ${status.tracking ?? '(no upstream)'}${status.detached ? ' [detached]' : ''}`
+  );
+  console.log(`  Rebasing : ${status.isRebasing ? 'yes' : 'no'}`);
+  const sections: Array<[string, string[]]> = [
+    ['Staged', status.staged],
+    ['Modified', status.modified],
+    ['Created', status.created],
+    ['Deleted', status.deleted],
+    ['Renamed', status.renamed],
+    ['Untracked', status.not_added],
+    ['Conflicted', status.conflicted],
+  ];
+  sections.forEach(([label, files]) => {
+    console.log(`  ${label.padEnd(10)}: ${files.length > 0 ? files.join(', ') : '(none)'}`);
+  });
+  console.log(
+    `  All changed: ${status.allChangedFiles.length > 0 ? status.allChangedFiles.join(', ') : '(none)'}`
+  );
 }

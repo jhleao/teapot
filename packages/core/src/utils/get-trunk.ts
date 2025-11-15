@@ -42,8 +42,12 @@ async function resolveBranchFromRef(
       ref,
       depth: 2,
     });
-    const match = resolvedRef.match(/refs\/(?:heads|remotes\/[^/]+)\/(.+)/);
-    return match ? match[1] : null;
+    const headMatch = resolvedRef.match(/refs\/heads\/(.+)/);
+    if (headMatch) {
+      return headMatch[1];
+    }
+    const remoteMatch = resolvedRef.match(/refs\/remotes\/[^/]+\/(.+)/);
+    return remoteMatch ? remoteMatch[1] : null;
   } catch (error) {
     return null;
   }

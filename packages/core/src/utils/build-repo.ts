@@ -23,9 +23,13 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
     fs,
     dir,
   });
-  const trunkBranch = await getTrunkBranchRef(config, localBranches);
 
   const branchDescriptors = await collectBranchDescriptors(dir, localBranches);
+  const branchNameSet = new Set<string>(localBranches);
+  branchDescriptors.forEach((descriptor) => {
+    branchNameSet.add(getBranchName(descriptor));
+  });
+  const trunkBranch = await getTrunkBranchRef(config, Array.from(branchNameSet));
   const branches = await buildBranchesFromDescriptors(
     dir,
     branchDescriptors,

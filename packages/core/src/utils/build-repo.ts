@@ -36,7 +36,7 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
     branchDescriptors,
     branches
   );
-  const workingTreeStatus = await collectWorkingTreeStatus(dir);
+  const workingTreeStatus = await collectWorkingTreeStatus(dir, branchDescriptors);
 
   return {
     path: dir,
@@ -205,7 +205,10 @@ function isSymbolicBranch(ref: string): boolean {
   return ref === 'HEAD' || ref.endsWith('/HEAD');
 }
 
-async function collectWorkingTreeStatus(dir: string): Promise<WorkingTreeStatus> {
+async function collectWorkingTreeStatus(
+  dir: string,
+  branchDescriptors: BranchDescriptor[]
+): Promise<WorkingTreeStatus> {
   const headSha = await resolveBranchHead(dir, 'HEAD');
   let branchName: string | null = null;
   try {
@@ -216,7 +219,16 @@ async function collectWorkingTreeStatus(dir: string): Promise<WorkingTreeStatus>
 
   const detached = !branchName;
   const currentBranch = branchName ?? 'HEAD';
-  const tracking = branchName ? await resolveTrackingBranch(dir, branchName) : null;
+  let tracking = branchName ? await resolveTrackingBranch(dir, branchName) : null;
+  if (!tracking && branchName) {
+    const matchingRemote = branchDescriptors.find(
+      (descriptor) =>
+        descriptor.isRemote && getBranchName(descriptor) === branchName
+    );
+    if (matchingRemote) {
+      tracking = matchingRemote.ref;
+    }
+  }
   const isRebasing = await detectRebase(dir);
 
   let matrix: Array<[string, number, number, number]> = [];

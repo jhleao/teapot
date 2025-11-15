@@ -1,5 +1,5 @@
 import fs from 'fs';
-import type { Configuration } from '../models.js';
+import type { Configuration } from '@teapot/contract';
 
 export async function getTrunkBranchRef(
   config: Configuration,
@@ -34,3 +34,4 @@ export async function getTrunkBranchRef(
     null
   );
 }
+

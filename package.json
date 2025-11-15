@@ -3,21 +3,21 @@
   "version": "1.0.0",
   "description": "",
   "type": "module",
-  "main": "index.js",
+  "private": true,
+  "packageManager": "pnpm@10.8.0",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "tsx watch src/main.ts"
+    "dev": "pnpm --filter @teapot/cli dev",
+    "build": "pnpm --filter @teapot/cli build",
+    "build:contract": "pnpm --filter @teapot/contract build",
+    "build:core": "pnpm --filter @teapot/core build",
+    "build:cli": "pnpm --filter @teapot/cli build",
+    "build:all": "pnpm -r build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.8.0",
   "devDependencies": {
     "@types/node": "^24.10.1",
     "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.7",
-    "isomorphic-git": "^1.35.0"
   }
 }

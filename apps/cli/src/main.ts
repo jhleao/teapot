@@ -1,6 +1,4 @@
-import { printRepo } from './utils/print-repo.js';
-import { loadConfiguration } from './config.js';
-import { buildRepoModel } from './utils/build-repo.js';
+import { printRepo, loadConfiguration, buildRepoModel } from '@teapot/core';
 
 export async function main() {
   try {

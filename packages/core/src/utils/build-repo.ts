@@ -1,7 +1,7 @@
 import git from 'isomorphic-git';
 import fs from 'fs';
-import type { Configuration, Repo, Branch } from '../models';
-import { getTrunkBranchRef } from './get-trunk';
+import type { Configuration, Repo, Branch } from '@teapot/contract';
+import { getTrunkBranchRef } from './get-trunk.js';
 
 export async function buildRepoModel(config: Configuration): Promise<Repo> {
   const branches = await git.listBranches({
@@ -24,3 +24,4 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
     branches: branchObjects,
   };
 }
+

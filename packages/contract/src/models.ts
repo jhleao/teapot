@@ -1,3 +1,5 @@
+type Contract = {};
+
 export type Repo = {
   path: string;
   branches: Branch[];
@@ -11,3 +13,4 @@ export type Branch = {
 export type Configuration = {
   repoPath: string;
 };
+

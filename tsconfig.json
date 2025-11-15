@@ -1,27 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "declaration": false,
-    "declarationMap": false,
-    "esModuleInterop": true,
-    "incremental": false,
-    "isolatedModules": true,
-    "lib": ["es2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleDetection": "force",
-    "moduleResolution": "bundler",
-    "verbatimModuleSyntax": true,
-    "noUncheckedIndexedAccess": true,
-    "resolveJsonModule": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "allowJs": true,
-    "target": "ESNext",
-    "outDir": "dist",
-    "jsx": "react"
-  }
+  "extends": "./packages/_typescript/root.json",
+  "include": [],
+  "exclude": ["packages/**", "node_modules", "dist"]
 }
+

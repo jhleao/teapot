@@ -1,4 +1,4 @@
-import type { Repo } from '../models.js';
+import type { Repo } from '@teapot/contract';
 
 export function printRepo(repo: Repo): void {
   console.log('Repository Model:');
@@ -18,3 +18,4 @@ export function printRepo(repo: Repo): void {
     console.log(`  - ${branch.ref}${trunkMarker}`);
   });
 }
+

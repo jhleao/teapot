@@ -202,13 +202,23 @@ function traceBranchAttachment(branch: Branch, state: BuildState): BranchAttachm
   const exclusiveShas: string[] = [];
   let currentSha: string | null = branch.headSha ?? null;
   const visited = new Set<string>();
+  const currentRank = state.branchRanks.get(branch.ref) ?? Number.POSITIVE_INFINITY;
 
   while (currentSha && !visited.has(currentSha)) {
     visited.add(currentSha);
     const membership = state.membership.get(currentSha);
     const otherRefs =
       membership?.has(branch.ref) && membership.size > 1
-        ? [...membership].filter((ref) => ref !== branch.ref && state.stackBranchRefs.has(ref))
+        ? [...membership].filter((ref) => {
+            if (ref === branch.ref) {
+              return false;
+            }
+            if (!state.stackBranchRefs.has(ref)) {
+              return false;
+            }
+            const refRank = state.branchRanks.get(ref);
+            return refRank !== undefined && refRank < currentRank;
+          })
         : [];
 
     if (otherRefs.length > 0) {

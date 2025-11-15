@@ -1,4 +1,5 @@
-import type { Repo } from '@teapot/contract';
+import type { Repo, Stack } from '@teapot/contract';
+import { buildUiState } from './build-ui-state.js';
 
 export function printRepo(repo: Repo): void {
   console.log('Repository Model:');
@@ -36,6 +37,8 @@ export function printRepo(repo: Repo): void {
     console.log(`      parent  : ${parent}`);
     console.log(`      children: ${children}`);
   });
+
+  printStackState(repo);
 }
 
 function printWorkingTree(repo: Repo): void {
@@ -62,4 +65,40 @@ function printWorkingTree(repo: Repo): void {
   console.log(
     `  All changed: ${status.allChangedFiles.length > 0 ? status.allChangedFiles.join(', ') : '(none)'}`
   );
+}
+
+function printStackState(repo: Repo): void {
+  const stacks = buildUiState(repo);
+  console.log(`\nStacks (${stacks.length} top-level):`);
+  if (stacks.length === 0) {
+    console.log('  (no stacks)');
+    return;
+  }
+  stacks.forEach((stack, index) => {
+    console.log(`  Stack ${index + 1}:`);
+    printStack(stack, '    ');
+  });
+}
+
+function printStack(stack: Stack, indent: string): void {
+  stack.commits.forEach((commit) => {
+    const timestamp =
+      commit.timestampMs > 0 ? new Date(commit.timestampMs).toISOString() : 'unknown';
+    const tipSummary = commit.tipOfBranches.length
+      ? commit.tipOfBranches.join(', ')
+      : '(none)';
+    const branchInfo = commit.branch
+      ? ` branch=${commit.branch.name}${commit.branch.isCurrent ? ' [current]' : ''}`
+      : '';
+    console.log(`${indent}- ${commit.sha} ${commit.name}${branchInfo}`);
+    console.log(`${indent}    time : ${timestamp}`);
+    console.log(`${indent}    tips : ${tipSummary}`);
+    if (commit.spinoffs.length > 0) {
+      console.log(`${indent}    spinoffs:`);
+      commit.spinoffs.forEach((spinoff, idx) => {
+        console.log(`${indent}      -> ${idx + 1}`);
+        printStack(spinoff, `${indent}         `);
+      });
+    }
+  });
 }

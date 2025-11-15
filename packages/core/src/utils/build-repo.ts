@@ -18,6 +18,29 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
   });
   const trunkBranch = await getTrunkBranchRef(config, localBranches);
 
+  const branchDescriptors = await collectBranchDescriptors(dir, localBranches);
+  const branches = await buildBranchesFromDescriptors(
+    dir,
+    branchDescriptors,
+    trunkBranch
+  );
+  const commits = await collectCommitsFromDescriptors(
+    dir,
+    branchDescriptors,
+    branches
+  );
+
+  return {
+    path: dir,
+    commits,
+    branches,
+  };
+}
+
+async function collectBranchDescriptors(
+  dir: string,
+  localBranches: string[]
+): Promise<BranchDescriptor[]> {
   const branchDescriptors: BranchDescriptor[] = localBranches
     .filter((ref) => !isSymbolicBranch(ref))
     .map((ref) => ({
@@ -32,6 +55,7 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
   } catch {
     remotes = [];
   }
+
   for (const remote of remotes) {
     try {
       const remoteBranches = await git.listBranches({
@@ -55,33 +79,48 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
     }
   }
 
-  const branchObjects: Branch[] = [];
-  const commitsMap = new Map<string, Commit>();
+  return branchDescriptors;
+}
+
+async function buildBranchesFromDescriptors(
+  dir: string,
+  branchDescriptors: BranchDescriptor[],
+  trunkBranch: string | null
+): Promise<Branch[]> {
+  const branches: Branch[] = [];
 
   for (const descriptor of branchDescriptors) {
     const headSha = await resolveBranchHead(dir, descriptor.fullRef);
     const normalizedRef = getBranchName(descriptor);
-    branchObjects.push({
+    branches.push({
       ref: descriptor.ref,
       isTrunk: Boolean(trunkBranch && normalizedRef === trunkBranch),
       isRemote: descriptor.isRemote,
       headSha,
     });
-
-    if (headSha) {
-      await collectCommitsForRef(dir, descriptor.fullRef, commitsMap);
-    }
   }
 
-  const commits = Array.from(commitsMap.values()).sort(
-    (a, b) => b.timeMs - a.timeMs
-  );
+  return branches;
+}
 
-  return {
-    path: dir,
-    commits,
-    branches: branchObjects,
-  };
+async function collectCommitsFromDescriptors(
+  dir: string,
+  branchDescriptors: BranchDescriptor[],
+  branches: Branch[]
+): Promise<Commit[]> {
+  const commitsMap = new Map<string, Commit>();
+
+  for (let i = 0; i < branchDescriptors.length; i += 1) {
+    const descriptor = branchDescriptors[i];
+    const branch = branches[i];
+    const headSha = branch?.headSha;
+    if (!headSha) {
+      continue;
+    }
+    await collectCommitsForRef(dir, descriptor.fullRef, commitsMap);
+  }
+
+  return Array.from(commitsMap.values()).sort((a, b) => b.timeMs - a.timeMs);
 }
 
 async function resolveBranchHead(dir: string, ref: string): Promise<string> {

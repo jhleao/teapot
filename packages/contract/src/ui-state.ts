@@ -9,7 +9,7 @@ type Commit = {
   timestampMs: number
   spinoffs: Stack[]
   /**
-   * Which branches is this commit a tip of
+   * Which branches is this commit a tip of 
    */
   branch?: Branch
 }

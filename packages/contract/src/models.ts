@@ -2,6 +2,7 @@ export type Repo = {
   path: string;
   commits: Commit[];
   branches: Branch[];
+  workingTreeStatus: WorkingTreeStatus;
 };
 
 export type Branch = {

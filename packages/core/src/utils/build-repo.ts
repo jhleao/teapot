@@ -1,6 +1,13 @@
 import git from 'isomorphic-git';
 import fs from 'fs';
-import type { Configuration, Repo, Branch, Commit } from '@teapot/contract';
+import path from 'path';
+import type {
+  Configuration,
+  Repo,
+  Branch,
+  Commit,
+  WorkingTreeStatus,
+} from '@teapot/contract';
 import { getTrunkBranchRef } from './get-trunk.js';
 
 type BranchDescriptor = {
@@ -29,11 +36,13 @@ export async function buildRepoModel(config: Configuration): Promise<Repo> {
     branchDescriptors,
     branches
   );
+  const workingTreeStatus = await collectWorkingTreeStatus(dir);
 
   return {
     path: dir,
     commits,
     branches,
+    workingTreeStatus,
   };
 }
 
@@ -194,4 +203,137 @@ function getBranchName(descriptor: BranchDescriptor): string {
 
 function isSymbolicBranch(ref: string): boolean {
   return ref === 'HEAD' || ref.endsWith('/HEAD');
+}
+
+async function collectWorkingTreeStatus(dir: string): Promise<WorkingTreeStatus> {
+  const headSha = await resolveBranchHead(dir, 'HEAD');
+  let branchName: string | null = null;
+  try {
+    branchName = await git.currentBranch({ fs, dir, fullname: false });
+  } catch {
+    branchName = null;
+  }
+
+  const detached = !branchName;
+  const currentBranch = branchName ?? 'HEAD';
+  const tracking = branchName ? await resolveTrackingBranch(dir, branchName) : null;
+  const isRebasing = await detectRebase(dir);
+
+  let matrix: Array<[string, number, number, number]> = [];
+  try {
+    matrix = await git.statusMatrix({ fs, dir });
+  } catch {
+    matrix = [];
+  }
+
+  const staged = new Set<string>();
+  const modified = new Set<string>();
+  const created = new Set<string>();
+  const deleted = new Set<string>();
+  const renamed = new Set<string>();
+  const notAdded = new Set<string>();
+  const conflicted = new Set<string>();
+
+  const FILE = 0;
+  const HEAD = 1;
+  const WORKDIR = 2;
+  const STAGE = 3;
+
+  for (const row of matrix) {
+    const filepath = row[FILE];
+    const headStatus = row[HEAD];
+    const workdirStatus = row[WORKDIR];
+    const stageStatus = row[STAGE];
+
+    if (headStatus !== stageStatus) {
+      staged.add(filepath);
+    }
+
+    const isTracked = headStatus !== 0 || stageStatus !== 0;
+    if (stageStatus !== workdirStatus && isTracked) {
+      modified.add(filepath);
+    }
+
+    if (headStatus === 0) {
+      if (stageStatus === 0 && workdirStatus === 2) {
+        notAdded.add(filepath);
+      } else if (stageStatus > 0) {
+        created.add(filepath);
+      }
+    }
+
+    if (headStatus === 1 && (stageStatus === 0 || workdirStatus === 0)) {
+      deleted.add(filepath);
+    }
+  }
+
+  const allChangedFilesSet = new Set<string>();
+  const addAll = (values: Set<string>): void => {
+    values.forEach((value) => allChangedFilesSet.add(value));
+  };
+  [staged, modified, created, deleted, renamed, notAdded, conflicted].forEach(
+    addAll
+  );
+
+  return {
+    currentBranch,
+    currentCommitSha: headSha,
+    tracking,
+    detached,
+    isRebasing,
+    staged: toSortedArray(staged),
+    modified: toSortedArray(modified),
+    created: toSortedArray(created),
+    deleted: toSortedArray(deleted),
+    renamed: toSortedArray(renamed),
+    not_added: toSortedArray(notAdded),
+    conflicted: toSortedArray(conflicted),
+    allChangedFiles: toSortedArray(allChangedFilesSet),
+  };
+}
+
+function toSortedArray(values: Set<string>): string[] {
+  return Array.from(values).sort((a, b) => a.localeCompare(b));
+}
+
+async function resolveTrackingBranch(
+  dir: string,
+  branchName: string
+): Promise<string | null> {
+  try {
+    const remoteName = await git.getConfig({
+      fs,
+      dir,
+      path: `branch.${branchName}.remote`,
+    });
+    const mergeRef = await git.getConfig({
+      fs,
+      dir,
+      path: `branch.${branchName}.merge`,
+    });
+    if (!remoteName || !mergeRef) {
+      return null;
+    }
+    const normalized = mergeRef.replace(/^refs\/heads\//, '');
+    return `${remoteName}/${normalized}`;
+  } catch {
+    return null;
+  }
+}
+
+async function detectRebase(dir: string): Promise<boolean> {
+  const gitDir = path.join(dir, '.git');
+  return (
+    (await pathExists(path.join(gitDir, 'rebase-merge'))) ||
+    (await pathExists(path.join(gitDir, 'rebase-apply')))
+  );
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }

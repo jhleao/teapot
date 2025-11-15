@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { Repo } from '@teapot/contract'
+import type { Stack } from '@teapot/contract'
 
 function App(): React.JSX.Element {
-  const [repo, setRepo] = useState<Repo | null>(null)
+  const [stack, setStack] = useState<Stack | null>(null)
 
   useEffect(() => {
-    window.api.getRepo().then(setRepo)
+    window.api.getRepo().then(setStack)
   }, [])
 
   return (
@@ -13,7 +13,7 @@ function App(): React.JSX.Element {
       <div className="mt-4 p-4 bg-white rounded shadow">
         <h2 className="text-xl font-bold mb-2">Repo Data:</h2>
         <pre className="text-sm overflow-auto">
-          {repo ? JSON.stringify(repo, null, 2) : 'Loading...'}
+          {stack ? JSON.stringify(stack, null, 2) : 'Loading...'}
         </pre>
       </div>
     </div>

@@ -3,8 +3,14 @@ import type {
   Branch,
   Commit as DomainCommit,
   WorkingTreeStatus,
-  UiStack
+  UiStack,
+  RebaseIntent,
+  RebaseState,
+  RebaseProjection,
+  RebaseJobId,
+  StackNodeState
 } from '@shared/types'
+import { createRebasePlan } from '@shared/types'
 
 const CANONICAL_TRUNK_NAMES = ['main', 'master', 'develop']
 
@@ -23,7 +29,7 @@ type TrunkBuildResult = {
   trunkSet: Set<string>
 }
 
-export function buildUiState(repo: Repo): UiStack | null {
+export function buildUiStack(repo: Repo): UiStack | null {
   if (!repo.commits.length) {
     return null
   }
@@ -86,6 +92,32 @@ export function buildUiState(repo: Repo): UiStack | null {
   annotateBranchHeads(annotationBranches, state)
 
   return trunkStack
+}
+
+export type FullUiStateOptions = {
+  rebaseIntent?: RebaseIntent | null
+  rebaseSession?: RebaseState | null
+  generateJobId?: () => RebaseJobId
+}
+
+export type FullUiState = {
+  stack: UiStack | null
+  projectedStack: UiStack | null
+  workingTree: WorkingTreeStatus
+  rebase: RebaseProjection
+}
+
+export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
+  const stack = buildUiStack(repo)
+  const rebase = deriveRebaseProjection(repo, options)
+  const projectedStack = deriveProjectedStack(repo, rebase)
+
+  return {
+    stack,
+    projectedStack,
+    workingTree: repo.workingTreeStatus,
+    rebase
+  }
 }
 
 function selectBranchesForUiStacks(branches: Branch[]): Branch[] {
@@ -297,4 +329,108 @@ function normalizeBranchRef(branch: Branch): string {
 function isCanonicalTrunkBranch(branch: Branch): boolean {
   const normalized = normalizeBranchRef(branch)
   return CANONICAL_TRUNK_NAMES.includes(normalized)
+}
+
+function deriveRebaseProjection(repo: Repo, options: FullUiStateOptions): RebaseProjection {
+  if (options.rebaseSession) {
+    return {
+      kind: 'rebasing',
+      session: options.rebaseSession
+    }
+  }
+
+  const intent = options.rebaseIntent
+  if (!intent || intent.targets.length === 0) {
+    return { kind: 'idle' }
+  }
+
+  const generateJobId = options.generateJobId ?? createDefaultPreviewJobIdGenerator()
+  const plan = createRebasePlan({
+    repo,
+    intent,
+    generateJobId
+  })
+
+  return {
+    kind: 'planning',
+    plan
+  }
+}
+
+function createDefaultPreviewJobIdGenerator(): () => RebaseJobId {
+  let counter = 0
+  return () => {
+    counter += 1
+    return `preview-job-${counter}`
+  }
+}
+
+function deriveProjectedStack(repo: Repo, projection: RebaseProjection): UiStack | null {
+  if (projection.kind !== 'planning') {
+    return null
+  }
+  const { intent } = projection.plan
+  if (intent.targets.length === 0) {
+    return null
+  }
+  const projectedCommits = projectCommitsForIntent(repo.commits, intent)
+  const projectedRepo: Repo = {
+    ...repo,
+    commits: projectedCommits
+  }
+  return buildUiStack(projectedRepo)
+}
+
+type SyntheticCommit = DomainCommit & { childrenSha: string[] }
+
+function projectCommitsForIntent(commits: DomainCommit[], intent: RebaseIntent): DomainCommit[] {
+  const synthetic = new Map<string, SyntheticCommit>()
+  commits.forEach((commit) => {
+    synthetic.set(commit.sha, {
+      ...commit,
+      childrenSha: [...commit.childrenSha]
+    })
+  })
+
+  let timeCounter = 0
+  const allocateSyntheticTime = () => intent.createdAtMs + timeCounter++
+
+  intent.targets.forEach((target) => {
+    applyIntentTarget(synthetic, target.node, target.targetBaseSha, allocateSyntheticTime)
+  })
+
+  return commits.map((commit) => synthetic.get(commit.sha) ?? commit)
+}
+
+function applyIntentTarget(
+  commits: Map<string, SyntheticCommit>,
+  node: StackNodeState,
+  targetBaseSha: string,
+  allocateSyntheticTime: () => number
+): void {
+  const commit = commits.get(node.headSha)
+  if (!commit) {
+    return
+  }
+
+  if (commit.parentSha) {
+    const previousParent = commits.get(commit.parentSha)
+    if (previousParent) {
+      previousParent.childrenSha = previousParent.childrenSha.filter((sha) => sha !== commit.sha)
+    }
+  }
+
+  commit.parentSha = targetBaseSha
+  const newParent = commits.get(targetBaseSha)
+  if (newParent && !newParent.childrenSha.includes(commit.sha)) {
+    newParent.childrenSha = [...newParent.childrenSha, commit.sha]
+  }
+
+  const parentTime = newParent?.timeMs ?? 0
+  const syntheticTime = Math.max(allocateSyntheticTime(), parentTime + 1, commit.timeMs ?? 0)
+  commit.timeMs = syntheticTime
+
+  node.children.forEach((child) =>
+    applyIntentTarget(commits, child, commit.sha, allocateSyntheticTime)
+  )
 }

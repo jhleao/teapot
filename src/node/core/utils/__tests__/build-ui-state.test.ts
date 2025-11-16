@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Branch, Commit, Repo, WorkingTreeStatus } from '@shared/types'
-import { buildUiState } from '../build-ui-state.js'
+import { buildUiStack } from '../build-ui-state.js'
 
 describe('buildUiState', () => {
   it('returns null when Repo has no commits', () => {
     const repo = createRepo()
 
-    expect(buildUiState(repo)).toBeNull()
+    expect(buildUiStack(repo)).toBeNull()
   })
 
   it('creates a trunk stack with spinoffs and branch annotations', () => {
@@ -123,7 +123,7 @@ describe('buildUiState', () => {
       ]
     })
 
-    expect(buildUiState(repo)).toBeNull()
+    expect(buildUiStack(repo)).toBeNull()
   })
 
   it('uses canonical remote branches as the trunk when no local trunk exists', () => {
@@ -894,7 +894,7 @@ describe('buildUiState', () => {
 })
 
 function expectTrunkStack(repo: Repo) {
-  const stack = buildUiState(repo)
+  const stack = buildUiStack(repo)
   if (!stack) {
     throw new Error('expected trunk stack')
   }

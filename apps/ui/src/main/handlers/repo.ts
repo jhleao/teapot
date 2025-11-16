@@ -102,7 +102,22 @@ function getRepo(): Repo {
         isRemote: false,
         headSha: 'j0d1e2f3a4b5'
       }
-    ]
+    ],
+    workingTreeStatus: {
+      currentBranch: 'main',
+      currentCommitSha: 'j0d1e2f3a4b5',
+      tracking: 'origin/main',
+      detached: false,
+      isRebasing: false,
+      staged: [],
+      modified: [],
+      created: [],
+      deleted: [],
+      renamed: [],
+      not_added: [],
+      conflicted: [],
+      allChangedFiles: []
+    }
   }
 }
 

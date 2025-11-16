@@ -125,6 +125,9 @@ async function collectCommitsFromDescriptors(
 
   for (let i = 0; i < branchDescriptors.length; i += 1) {
     const descriptor = branchDescriptors[i];
+    if (!descriptor) {
+      continue;
+    }
     const branch = branches[i];
     const headSha = branch?.headSha;
     if (!headSha) {
@@ -216,7 +219,8 @@ async function collectWorkingTreeStatus(
   const headSha = await resolveBranchHead(dir, 'HEAD');
   let branchName: string | null = null;
   try {
-    branchName = await git.currentBranch({ fs, dir, fullname: false });
+    const resolvedBranch = await git.currentBranch({ fs, dir, fullname: false });
+    branchName = resolvedBranch ?? null;
   } catch {
     branchName = null;
   }

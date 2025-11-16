@@ -2,9 +2,6 @@ import type { Repo, Stack } from '@teapot/contract';
 import { buildUiState } from './build-ui-state.js';
 
 export function printRepo(repo: Repo): void {
-  console.log('Repository Model:');
-  console.log('=================');
-  console.log(`Path: ${repo.path}`);
   printWorkingTree(repo);
   console.log(`\nBranches (${repo.branches.length}):`);
 

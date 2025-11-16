@@ -24,27 +24,14 @@ export function CommitDot({
   bottom = false,
   variant = 'default',
   accentLines = 'none',
-  onClick,
+  onMouseDown,
   className
 }: {
   top?: boolean
   bottom?: boolean
-  /**
-   * Variant controls the style of the commit circle
-   * - default: regular size, border color
-   * - accent: regular size, accent color
-   * - current: larger size, accent color
-   */
   variant?: 'default' | 'accent' | 'current'
-  /**
-   * Accent lines selection:
-   * - none: no accent lines
-   * - top: accent only the top connector
-   * - bottom: accent only the bottom connector
-   * - both: accent both connectors
-   */
   accentLines?: 'none' | 'top' | 'bottom' | 'both'
-  onClick?: () => void
+  onMouseDown?: () => void
   className?: string
 }): React.JSX.Element {
   // Determine connector visibility
@@ -68,8 +55,8 @@ export function CommitDot({
       width="24px"
       height="36"
       xmlns="http://www.w3.org/2000/svg"
-      onClick={onClick}
-      className={cn('text-border', onClick && 'cursor-grab', className)}
+      onMouseDown={onMouseDown}
+      className={cn('text-border', onMouseDown && 'cursor-grab', className)}
     >
       {showTopLine && (
         <path

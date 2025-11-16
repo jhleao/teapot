@@ -15,11 +15,11 @@ export const IPC_CHANNELS = {
 export interface IpcContract {
   [IPC_CHANNELS.getRepo]: {
     request: void
-    response: UiState
+    response: UiState | null
   }
   [IPC_CHANNELS.submitRebaseIntent]: {
     request: { headSha: string; baseSha: string }
-    response: UiState
+    response: UiState | null
   }
 }
 

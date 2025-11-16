@@ -30,7 +30,8 @@ export default defineConfig(
         'warn',
         { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
       ]
-    }
+    },
+    '@typescript-eslint/explicit-function-return-type': 'off'
   },
   eslintConfigPrettier
 )

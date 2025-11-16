@@ -1,8 +1,8 @@
 import { ipcMain } from 'electron'
-import type { Stack } from '@teapot/contract'
+import type { UiStack } from '@teapot/contract'
 import { generateMockStack } from '../utils/generate-mock-stack'
 
-function getRepo(): Stack {
+function getRepo(): UiStack {
   const now = Date.now()
   const baseTime = now - 172800000 // 2 days ago
   const timeStep = 7200000 // 2 hours between commits

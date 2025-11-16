@@ -1,5 +1,0 @@
-{
-  "extends": "@teapot/_typescript/base.json",
-  "include": ["src", "eslint.config.mjs"],
-  "exclude": ["node_modules", "dist"]
-}

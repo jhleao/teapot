@@ -1,7 +1,7 @@
-.history
 node_modules
-*.tsbuildinfo
 dist
-.env
-object.json
-packages/contract/src/originalModels.ts
+out
+.DS_Store
+.eslintcache
+*.log*
+.history

@@ -21,6 +21,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@teapot/contract": "workspace:*",
+    "clsx": "^2.1.1",
     "electron-updater": "^6.3.9",
     "tailwind-merge": "^2.6.0"
   },

@@ -1,4 +1,4 @@
-import type { Stack } from '@teapot/contract'
+import type { UiStack } from '@teapot/contract'
 
 const MOCK_BRANCH_NAMES = [
   'feature/auth',
@@ -59,12 +59,13 @@ function getRandomBranchName(): string {
 export function generateMockStack(
   baseTime: number,
   timeStep: number = 7200000, // 2 hours default
-  commitCount: number = randomInt(20, 35),
+  commitCount: number = randomInt(1, 3),
   depth: number = 0,
-  maxDepth: number = 4,
-  spinoffProbability: number = 0.4 // 40% chance = roughly 2 out of 5
-): Stack {
-  const commits: Stack['commits'] = []
+  maxDepth: number = 2,
+  spinoffProbability: number = 0.2, // 40% chance = roughly 2 out of 5
+  isBase: boolean = true
+): UiStack {
+  const commits: UiStack['commits'] = []
 
   for (let i = 0; i < commitCount; i++) {
     const commitTime = baseTime + i * timeStep
@@ -82,7 +83,7 @@ export function generateMockStack(
     }
 
     // Generate spinoffs if applicable
-    const spinoffs: Stack[] = []
+    const spinoffs: UiStack[] = []
     if (hasSpinoff && depth < maxDepth) {
       // Random number of spinoffs (1-3)
       const numSpinoffs = randomInt(1, depth === 0 ? 3 : 2)
@@ -100,7 +101,8 @@ export function generateMockStack(
             spinoffCommitCount,
             depth + 1,
             maxDepth,
-            spinoffProbability * 0.7 // Reduce probability for nested spinoffs
+            spinoffProbability * 0.7, // Reduce probability for nested spinoffs
+            false
           )
         )
       }
@@ -136,6 +138,7 @@ export function generateMockStack(
     }
 
     commits.push({
+      sha: crypto.randomUUID(),
       name: commitName,
       timestampMs: commitTime,
       spinoffs,
@@ -143,7 +146,7 @@ export function generateMockStack(
     })
   }
 
-  return { commits }
+  return { commits, isBase }
 }
 
 /**

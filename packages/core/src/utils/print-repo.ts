@@ -65,17 +65,16 @@ function printWorkingTree(repo: Repo): void {
 }
 
 function printStackState(repo: Repo): void {
-  const stacks = buildUiState(repo);
-  console.log(`\nStacks (${stacks.length} top-level):`);
-  if (stacks.length === 0) {
+  const stack = buildUiState(repo);
+  const hasStack = stack !== null;
+  console.log(`\nStacks (${hasStack ? 1 : 0} top-level):`);
+  if (!stack) {
     console.log('  (no stacks)');
     return;
   }
-  stacks.forEach((stack, index) => {
-    const stackLabel = stack.isTrunk ? ' [base]' : '';
-    console.log(`  Stack ${index + 1}${stackLabel}:`);
-    printStack(stack, '    ');
-  });
+  const stackLabel = stack.isTrunk ? ' [base]' : '';
+  console.log(`  Stack 1${stackLabel}:`);
+  printStack(stack, '    ');
 }
 
 function printStack(stack: UiStack, indent: string): void {

@@ -3,10 +3,10 @@ import type { Branch, Commit, Repo, WorkingTreeStatus } from '@teapot/contract';
 import { buildUiState } from '../build-ui-state.js';
 
 describe('buildUiState', () => {
-  it('returns an empty array when Repo has no commits', () => {
+  it('returns null when Repo has no commits', () => {
     const repo = createRepo();
 
-    expect(buildUiState(repo)).toEqual([]);
+    expect(buildUiState(repo)).toBeNull();
   });
 
   it('creates a trunk stack with spinoffs and branch annotations', () => {
@@ -61,12 +61,7 @@ describe('buildUiState', () => {
       }),
     });
 
-    const uiStacks = buildUiState(repo);
-    expect(uiStacks).toHaveLength(1);
-    const trunkStack = uiStacks[0];
-    if (!trunkStack) {
-      throw new Error('expected a trunk stack to be returned');
-    }
+    const trunkStack = expectTrunkStack(repo);
     expect(trunkStack.isTrunk).toBe(true);
     expect(trunkStack.commits.map((commit) => commit.sha)).toEqual([root.sha, trunkCommit.sha]);
 
@@ -98,7 +93,7 @@ describe('buildUiState', () => {
     });
   });
 
-  it('returns an empty array when the detected trunk branch has no head commit', () => {
+  it('returns null when the detected trunk branch has no head commit', () => {
     const orphanCommit = createCommit({
       sha: 'deadbeef',
       message: 'orphan',
@@ -125,7 +120,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    expect(buildUiState(repo)).toEqual([]);
+    expect(buildUiState(repo)).toBeNull();
   });
 
   it('uses canonical remote branches as the trunk when no local trunk exists', () => {
@@ -180,12 +175,7 @@ describe('buildUiState', () => {
       }),
     });
 
-    const uiStacks = buildUiState(repo);
-    expect(uiStacks).toHaveLength(1);
-    const trunkStack = uiStacks[0];
-    if (!trunkStack) {
-      throw new Error('expected trunk stack');
-    }
+    const trunkStack = expectTrunkStack(repo);
     expect(trunkStack.commits.map((commit) => commit.sha)).toEqual([root.sha, mainTip.sha]);
 
     const remoteTrunkTip = trunkStack.commits[trunkStack.commits.length - 1];
@@ -288,7 +278,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -363,7 +353,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -454,7 +444,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -516,7 +506,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -579,7 +569,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -646,7 +636,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -751,7 +741,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const [trunkStack] = buildUiState(repo);
+    const trunkStack = expectTrunkStack(repo);
     if (!trunkStack) {
       throw new Error('expected trunk stack');
     }
@@ -825,10 +815,9 @@ describe('buildUiState', () => {
       ],
     });
 
-    const stacks = buildUiState(repo);
-    expect(stacks).toHaveLength(1);
-    expect(stacks[0]?.isTrunk).toBe(true);
-    expect(stacks[0]?.commits.map((commit) => commit.sha)).toEqual([root.sha, trunkTip.sha]);
+    const trunkStack = expectTrunkStack(repo);
+    expect(trunkStack.isTrunk).toBe(true);
+    expect(trunkStack.commits.map((commit) => commit.sha)).toEqual([root.sha, trunkTip.sha]);
   });
 
   it('handles linear trunk-only histories with no spinoffs', () => {
@@ -868,12 +857,7 @@ describe('buildUiState', () => {
       ],
     });
 
-    const stacks = buildUiState(repo);
-    expect(stacks).toHaveLength(1);
-    const [trunkStack] = stacks;
-    if (!trunkStack) {
-      throw new Error('expected trunk stack');
-    }
+    const trunkStack = expectTrunkStack(repo);
     expect(trunkStack.isTrunk).toBe(true);
     expect(trunkStack.commits.map((commit) => commit.sha)).toEqual(['c1', 'c2', 'c3']);
     trunkStack.commits.forEach((commit) => {
@@ -881,6 +865,14 @@ describe('buildUiState', () => {
     });
   });
 });
+
+function expectTrunkStack(repo: Repo) {
+  const stack = buildUiState(repo);
+  if (!stack) {
+    throw new Error('expected trunk stack');
+  }
+  return stack;
+}
 
 function createRepo(overrides: Partial<Repo> = {}): Repo {
   return {

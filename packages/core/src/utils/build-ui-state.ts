@@ -17,9 +17,9 @@ type TrunkBuildResult = {
   trunkSet: Set<string>;
 };
 
-export function buildUiState(repo: Repo): UiStack[] {
+export function buildUiState(repo: Repo): UiStack | null {
   if (!repo.commits.length) {
-    return [];
+    return null;
   }
 
   const commitMap = new Map<string, DomainCommit>(repo.commits.map((commit) => [commit.sha, commit]));
@@ -29,7 +29,7 @@ export function buildUiState(repo: Repo): UiStack[] {
     UiStackBranches = [...UiStackBranches, trunk];
   }
   if (UiStackBranches.length === 0) {
-    return [];
+    return null;
   }
 
   const state: BuildState = {
@@ -40,21 +40,22 @@ export function buildUiState(repo: Repo): UiStack[] {
     UiStackMembership: new Map(),
   };
 
-  const UiStacks: UiStack[] = [];
-  if (trunk) {
-    const trunkResult = buildTrunkUiStack(trunk, state);
-    if (!trunkResult) {
-      return [];
-    }
-    state.trunkShas = trunkResult.trunkSet;
-    trunkResult.UiStack.commits.forEach((commit) => {
-      state.UiStackMembership.set(commit.sha, trunkResult.UiStack);
-    });
-    UiStacks.push(trunkResult.UiStack);
-    trunkResult.UiStack.commits.forEach((commit) => {
-      createSpinoffUiStacks(commit, state);
-    });
+  let trunkStack: UiStack | null = null;
+  if (!trunk) {
+    return null;
   }
+  const trunkResult = buildTrunkUiStack(trunk, state);
+  if (!trunkResult) {
+    return null;
+  }
+  state.trunkShas = trunkResult.trunkSet;
+  trunkResult.UiStack.commits.forEach((commit) => {
+    state.UiStackMembership.set(commit.sha, trunkResult.UiStack);
+  });
+  trunkStack = trunkResult.UiStack;
+  trunkStack.commits.forEach((commit) => {
+    createSpinoffUiStacks(commit, state);
+  });
 
   const annotationBranches = [...UiStackBranches].sort((a, b) => {
     if (trunk) {
@@ -76,7 +77,7 @@ export function buildUiState(repo: Repo): UiStack[] {
 
   annotateBranchHeads(annotationBranches, state);
 
-  return UiStacks;
+  return trunkStack;
 }
 
 function selectBranchesForUiStacks(branches: Branch[]): Branch[] {

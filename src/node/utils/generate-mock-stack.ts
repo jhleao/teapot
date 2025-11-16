@@ -1,4 +1,4 @@
-import type { UiStack, UiCommitRebaseStatus, UiWorkingTreeFile } from '@shared/types'
+import type { UiCommitRebaseStatus, UiStack, UiWorkingTreeFile } from '@shared/types'
 
 const MOCK_BRANCH_NAMES = [
   'feature/auth',

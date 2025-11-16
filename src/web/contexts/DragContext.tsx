@@ -2,13 +2,13 @@ import {
   createContext,
   useContext,
   useEffect,
-  useState,
   useRef,
+  useState,
   type ReactNode,
   type RefObject
 } from 'react'
-import { throttle } from '../utils/throttle'
 import { findClosestCommitBelowMouse } from '../utils/dragging'
+import { throttle } from '../utils/throttle'
 import { useUiStateContext } from './UiStateContext'
 
 interface DragContextValue {
@@ -23,7 +23,7 @@ interface DragContextValue {
 const DragContext = createContext<DragContextValue | undefined>(undefined)
 
 export function DragProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const { uiState, setUiState } = useUiStateContext()
+  const { uiState, submitRebaseIntent } = useUiStateContext()
   const [draggingCommitSha, setDraggingCommitSha] = useState<string | null>(null)
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
 
@@ -95,16 +95,11 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   useEffect(() => {
     if (!draggingCommitSha || !commitBelowMouse || !uiState) return
 
-    window.api
-      .submitRebaseIntent({
-        headSha: draggingCommitSha,
-        baseSha: commitBelowMouse
-      })
-      .then((newUiState) => {
-        if(!newUiState) return
-        setUiState(newUiState)
-      })
-  }, [commitBelowMouse, draggingCommitSha, uiState, setUiState])
+    submitRebaseIntent({
+      headSha: draggingCommitSha,
+      baseSha: commitBelowMouse
+    })
+  }, [commitBelowMouse, draggingCommitSha, uiState, submitRebaseIntent])
 
   return (
     <DragContext.Provider

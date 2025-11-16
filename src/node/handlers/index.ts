@@ -1,7 +1,7 @@
+import { registerLocalStateHandlers } from './local-state'
 import { registerRepoHandlers } from './repo'
-import { registerTestHandlers } from './test'
 
 export function registerHandlers(): void {
-  registerTestHandlers()
   registerRepoHandlers()
+  registerLocalStateHandlers()
 }

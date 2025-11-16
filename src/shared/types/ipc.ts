@@ -12,7 +12,12 @@ export const IPC_CHANNELS = {
   discardStaged: 'discardStaged',
   amend: 'amend',
   commit: 'commit',
-  setFilesStageStatus: 'setFilesStageStatus'
+  setFilesStageStatus: 'setFilesStageStatus',
+  getLocalRepos: 'getLocalRepos',
+  selectLocalRepo: 'selectLocalRepo',
+  addLocalRepo: 'addLocalRepo',
+  removeLocalRepo: 'removeLocalRepo',
+  showFolderPicker: 'showFolderPicker'
 } as const
 
 /**
@@ -21,36 +26,56 @@ export const IPC_CHANNELS = {
  */
 export interface IpcContract {
   [IPC_CHANNELS.getRepo]: {
-    request: void
+    request: { repoPath: string }
     response: UiState | null
   }
   [IPC_CHANNELS.submitRebaseIntent]: {
-    request: { headSha: string; baseSha: string }
+    request: { repoPath: string; headSha: string; baseSha: string }
     response: UiState | null
   }
   [IPC_CHANNELS.confirmRebaseIntent]: {
-    request: void
+    request: { repoPath: string }
     response: UiState | null
   }
   [IPC_CHANNELS.cancelRebaseIntent]: {
-    request: void
+    request: { repoPath: string }
     response: UiState | null
   }
   [IPC_CHANNELS.discardStaged]: {
-    request: void
+    request: { repoPath: string }
     response: UiState | null
   }
   [IPC_CHANNELS.amend]: {
-    request: { message: string }
+    request: { repoPath: string; message: string }
     response: UiState | null
   }
   [IPC_CHANNELS.commit]: {
-    request: { message: string }
+    request: { repoPath: string; message: string }
     response: UiState | null
   }
   [IPC_CHANNELS.setFilesStageStatus]: {
-    request: { staged: boolean; files: string[] }
+    request: { repoPath: string; staged: boolean; files: string[] }
     response: UiState | null
+  }
+  [IPC_CHANNELS.getLocalRepos]: {
+    request: void
+    response: Array<{ path: string; isSelected: boolean }>
+  }
+  [IPC_CHANNELS.selectLocalRepo]: {
+    request: { path: string }
+    response: Array<{ path: string; isSelected: boolean }>
+  }
+  [IPC_CHANNELS.addLocalRepo]: {
+    request: { path: string }
+    response: Array<{ path: string; isSelected: boolean }>
+  }
+  [IPC_CHANNELS.removeLocalRepo]: {
+    request: { path: string }
+    response: Array<{ path: string; isSelected: boolean }>
+  }
+  [IPC_CHANNELS.showFolderPicker]: {
+    request: void
+    response: string | null
   }
 }
 

@@ -1,5 +1,10 @@
+export type LocalRepo = {
+  path: string
+  isSelected: boolean
+}
+
 export type UiState = {
-  stack: UiStack 
+  stack: UiStack
   workingTree: UiWorkingTreeFile[]
 }
 

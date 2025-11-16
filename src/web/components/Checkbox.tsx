@@ -1,5 +1,4 @@
 import { Check, Minus, Square } from 'lucide-react'
-import React from 'react'
 
 export type CheckboxState = 'checked' | 'unchecked' | 'indeterminate'
 
@@ -28,4 +27,3 @@ export function Checkbox({ state, onClick }: { state: CheckboxState; onClick: ()
     </button>
   )
 }
-

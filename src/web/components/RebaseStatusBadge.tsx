@@ -1,6 +1,6 @@
+import type { UiCommit } from '@shared/types'
 import React from 'react'
 import { cn } from '../utils/cn'
-import type { UiCommit } from '@shared/types'
 
 export function RebaseStatusBadge({
   status

@@ -2,13 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import type { UiStack, UiState } from '@shared/types'
 
-const { sendSync } = ipcRenderer
-
 // Custom APIs for renderer
 const api = {
-  getRepo: (): UiState => sendSync('getRepo'),
-  submitRebaseIntent: (args: { headSha: string; baseSha: string }): UiStack =>
-    sendSync('submitRebaseIntent', args)
+  getRepo: (): Promise<UiState> => ipcRenderer.invoke('getRepo'),
+  submitRebaseIntent: (args: { headSha: string; baseSha: string }): Promise<UiStack> =>
+    ipcRenderer.invoke('submitRebaseIntent', args)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

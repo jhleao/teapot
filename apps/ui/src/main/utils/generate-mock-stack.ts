@@ -63,7 +63,7 @@ export function generateMockStack(
   depth: number = 0,
   maxDepth: number = 2,
   spinoffProbability: number = 0.2, // 40% chance = roughly 2 out of 5
-  isBase: boolean = true
+  isTrunkStack: boolean = true
 ): UiStack {
   const commits: UiStack['commits'] = []
 
@@ -146,7 +146,7 @@ export function generateMockStack(
     })
   }
 
-  return { commits, isBase }
+  return { commits, isTrunk: isTrunkStack }
 }
 
 /**

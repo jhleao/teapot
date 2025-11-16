@@ -1,14 +1,14 @@
 import type {
-  Repo,
   Branch,
   Commit as DomainCommit,
-  WorkingTreeStatus,
-  UiStack,
   RebaseIntent,
-  RebaseState,
-  RebaseProjection,
   RebaseJobId,
-  StackNodeState
+  RebaseProjection,
+  RebaseState,
+  Repo,
+  StackNodeState,
+  UiStack,
+  WorkingTreeStatus
 } from '@shared/types'
 import { createRebasePlan } from '@shared/types'
 

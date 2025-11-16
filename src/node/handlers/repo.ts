@@ -1,14 +1,15 @@
-import { ipcMain } from 'electron'
 import {
   IPC_CHANNELS,
+  IpcHandlerOf,
   UiState,
   UiWorkingTreeFile,
-  type Repo,
-  type RebaseIntent,
-  type StackNodeState,
   type Branch,
-  type Commit
+  type Commit,
+  type RebaseIntent,
+  type Repo,
+  type StackNodeState
 } from '@shared/types'
+import { ipcMain } from 'electron'
 import { buildRepoModel, buildUiState, loadConfiguration } from '../core'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 
@@ -54,9 +55,21 @@ const submitRebaseIntent = async ({ headSha, baseSha }) => {
   return uiState
 }
 
+const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = () => {
+  // TODO: Implement actual rebase confirmation logic
+  return getRepo()
+}
+
+const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = () => {
+  // TODO: Implement rebase cancellation logic
+  return getRepo()
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, (_event, request) => submitRebaseIntent(request))
+  ipcMain.handle(IPC_CHANNELS.confirmRebaseIntent, confirmRebaseIntent)
+  ipcMain.handle(IPC_CHANNELS.cancelRebaseIntent, cancelRebaseIntent)
 }
 
 /*

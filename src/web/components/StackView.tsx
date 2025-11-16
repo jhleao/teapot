@@ -1,12 +1,13 @@
-import React, { useRef, useEffect } from 'react'
-import { cn } from '../utils/cn'
-import type { UiStack, UiCommit, UiWorkingTreeFile } from '@shared/types'
+import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
+import React, { useEffect, useRef } from 'react'
 import { useDragContext } from '../contexts/DragContext'
+import { useUiStateContext } from '../contexts/UiStateContext'
+import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
-import { RebaseStatusBadge } from './RebaseStatusBadge'
-import { WorkingTreeView } from './WorkingTreeView'
-import { CommitDot, SineCurve } from './SvgPaths'
 import { BranchBadge } from './BranchBadge'
+import { RebaseStatusBadge } from './RebaseStatusBadge'
+import { CommitDot, SineCurve } from './SvgPaths'
+import { WorkingTreeView } from './WorkingTreeView'
 
 interface StackProps {
   data: UiStack
@@ -41,6 +42,7 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
+  const { setUiState } = useUiStateContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -62,11 +64,23 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
 
   const hasSpinoffs = data.spinoffs.length > 0
 
+  const handleConfirmRebase = async (): Promise<void> => {
+    const newUiState = await window.api.confirmRebaseIntent()
+    if (!newUiState) return
+    setUiState(newUiState)
+  }
+
+  const handleCancelRebase = async (): Promise<void> => {
+    const newUiState = await window.api.cancelRebaseIntent()
+    if (!newUiState) return
+    setUiState(newUiState)
+  }
+
   return (
-    <div className="pl-2 w-full">
+    <div className="w-full pl-2">
       {hasSpinoffs && (
         <div className="flex w-full">
-          <div className="w-[2px] h-auto border-border border-r-2" />
+          <div className="border-border h-auto w-[2px] border-r-2" />
           <div className="ml-[-2px] w-full">
             {data.spinoffs.map((spinoff, index) => (
               <div key={`spinoff-${data.name}-${index}`}>
@@ -80,7 +94,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
 
       {Boolean(showWorkingTree && !isTopOfStack) && (
         <div className="flex w-full">
-          <div className="w-[2px] h-auto border-border border-r-2" />
+          <div className="border-border h-auto w-[2px] border-r-2" />
           <div className="ml-[-2px] w-full">
             <WorkingTreeView className="ml-[8px]" files={workingTree} />
             <SineCurve className="text-accent" />
@@ -96,7 +110,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
       <div
         ref={commitRef}
         className={cn(
-          'gap-2 flex items-center transition-colors -ml-[11px]',
+          '-ml-[11px] flex items-center gap-2 transition-colors',
           isPartOfRebasePlan && 'bg-accent/30'
         )}
       >
@@ -115,8 +129,24 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
           </div>
         )}
         <div className={cn('font-mono text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
-        <div className="text-xs text-muted-foreground">{formatRelativeTime(data.timestampMs)}</div>
+        <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
         {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}
+        {data.rebaseStatus === 'prompting' && (
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleCancelRebase}
+              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmRebase}
+              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
+            >
+              Confirm
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

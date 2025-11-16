@@ -42,7 +42,7 @@ export type SubmitRebaseIntentOptions = {
 export async function submitRebaseIntent(
   intent: RebaseIntent,
   options: SubmitRebaseIntentOptions = {}
-): Promise<UiStack> {
+): Promise<UiStack | null> {
   const { repo, config = loadConfiguration(), generateJobId } = options
   const repoModel = repo ?? (await buildRepoModel(config))
 

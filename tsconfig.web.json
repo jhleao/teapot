@@ -12,7 +12,7 @@
     "baseUrl": ".",
     "paths": {
       "@renderer/*": ["src/web/src/*"],
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
     }
   }
 }

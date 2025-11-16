@@ -15,7 +15,8 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@shared': path.resolve(__dirname, './src/shared')
+        '@shared': path.resolve(__dirname, './src/shared'),
+        '@shared/types': path.resolve(__dirname, './src/shared/types/index.ts')
       }
     }
   },
@@ -30,7 +31,8 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@shared': path.resolve(__dirname, './src/shared')
+        '@shared': path.resolve(__dirname, './src/shared'),
+        '@shared/types': path.resolve(__dirname, './src/shared/types/index.ts')
       }
     }
   },
@@ -46,7 +48,8 @@ export default defineConfig({
     },
     resolve: {
       alias: {
-        '@shared': path.resolve(__dirname, './src/shared')
+        '@shared': path.resolve(__dirname, './src/shared'),
+        '@shared/types': path.resolve(__dirname, './src/shared/types/index.ts')
       }
     }
   }

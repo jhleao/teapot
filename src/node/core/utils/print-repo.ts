@@ -1,5 +1,5 @@
 import type { Repo, UiStack } from '@shared/types'
-import { buildUiState } from './build-ui-state.js'
+import { buildUiStack } from './build-ui-state.js'
 
 export function printRepo(repo: Repo): void {
   printWorkingTree(repo)
@@ -63,7 +63,7 @@ function printWorkingTree(repo: Repo): void {
 }
 
 function printStackState(repo: Repo): void {
-  const stack = buildUiState(repo)
+  const stack = buildUiStack(repo)
   const hasStack = stack !== null
   console.log(`\nStacks (${hasStack ? 1 : 0} top-level):`)
   if (!stack) {

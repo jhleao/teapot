@@ -160,14 +160,14 @@ function getCommitDotLayout(
   const hasSpinoffs = commit.spinoffs.length > 0
   const isOldestCommit = commitIdx === stack.commits.length - 1
   const isNewestCommit = commitIdx === 0
-  const isBaseStack = stack.isBase
+  const isTrunkStack = stack.isTrunk
 
-  if (isOldestCommit && isBaseStack && !hasSpinoffs) showTopLine = false
+  if (isOldestCommit && isTrunkStack && !hasSpinoffs) showTopLine = false
   if (isNewestCommit) showBottomLine = false
 
   if (!showTopLine) {
     console.log(commit)
-    console.log({ isFirstCommit: isOldestCommit, isLastCommit: isNewestCommit, isBaseStack })
+    console.log({ isFirstCommit: isOldestCommit, isLastCommit: isNewestCommit, isTrunkStack })
     console.log({ showTopLine, showBottomLine })
   }
 

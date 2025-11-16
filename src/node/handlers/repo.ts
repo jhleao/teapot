@@ -1,13 +1,19 @@
-import { IPC_CHANNELS, IpcHandlerOf, UiState, UiWorkingTreeFile } from '@shared/types'
-import { ipcMain } from 'electron'
-import { buildRepoModel, buildUiStack, loadConfiguration } from '../core'
-import { buildFullUiState } from '../core/utils/build-ui-state'
+import {
+  IPC_CHANNELS,
+  IpcHandlerOf,
+  UiState,
+  UiWorkingTreeFile,
+  type Configuration
+} from '@shared/types'
+import { ipcMain, IpcMainEvent } from 'electron'
+import { buildRepoModel, buildUiStack } from '../core'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
+import { buildFullUiState } from '../core/utils/build-ui-state'
 
-const getRepo = async () => {
+const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath }) => {
   const workingTree = [] as UiWorkingTreeFile[]
 
-  const config = loadConfiguration()
+  const config: Configuration = { repoPath }
   const repo = await buildRepoModel(config)
   const stack = buildUiStack(repo)
 
@@ -21,10 +27,13 @@ const getRepo = async () => {
   return uiState
 }
 
-const submitRebaseIntent = async ({ headSha, baseSha }) => {
+const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
+  _event,
+  { repoPath, headSha, baseSha }
+) => {
   const workingTree = [] as UiWorkingTreeFile[]
 
-  const config = loadConfiguration()
+  const config: Configuration = { repoPath }
   const repo = await buildRepoModel(config)
 
   const rebaseIntent = buildRebaseIntent(repo, headSha, baseSha)
@@ -46,43 +55,46 @@ const submitRebaseIntent = async ({ headSha, baseSha }) => {
   return uiState
 }
 
-const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = () => {
+const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = (_event, { repoPath }) => {
   // TODO: Implement actual rebase confirmation logic
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = () => {
+const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = (_event, { repoPath }) => {
   // TODO: Implement rebase cancellation logic
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const discardStaged: IpcHandlerOf<'discardStaged'> = () => {
+const discardStaged: IpcHandlerOf<'discardStaged'> = (_event, { repoPath }) => {
   // TODO: Implement discard staged changes logic
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const amend: IpcHandlerOf<'amend'> = (_event, { message }) => {
+const amend: IpcHandlerOf<'amend'> = (_event, { repoPath, message }) => {
   // TODO: Implement amend commit logic
   void message
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const commit: IpcHandlerOf<'commit'> = (_event, { message }) => {
+const commit: IpcHandlerOf<'commit'> = (_event, { repoPath, message }) => {
   // TODO: Implement commit logic
   void message
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = (_event, { staged, files }) => {
+const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = (
+  _event,
+  { repoPath, staged, files }
+) => {
   // TODO: Implement set files stage status logic
   void staged
   void files
-  return getRepo()
+  return getRepo({} as IpcMainEvent, { repoPath })
 }
 
 export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
-  ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, (_event, request) => submitRebaseIntent(request))
+  ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.confirmRebaseIntent, confirmRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.cancelRebaseIntent, cancelRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.discardStaged, discardStaged)

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { Branch, Commit, Repo, WorkingTreeStatus } from '@shared/types'
+import { describe, expect, it } from 'vitest'
 import { buildUiStack } from '../build-ui-state.js'
 
 describe('buildUiState', () => {

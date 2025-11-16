@@ -1,4 +1,4 @@
-export type * from './ui'
-export type * from './repo'
-export * from './ipc'
 export * from '../../node/core/rebase'
+export * from './ipc'
+export type * from './repo'
+export type * from './ui'

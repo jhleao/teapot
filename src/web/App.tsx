@@ -1,25 +1,66 @@
 import { StackView } from './components/StackView'
+import { Topbar } from './components/Topbar'
 import { useUiStateContext } from './contexts/UiStateContext'
+import { useLocalStateContext } from './contexts/LocalStateContext'
 
 function App(): React.JSX.Element {
   const { toggleTheme, uiState } = useUiStateContext()
+  const { selectedRepo, addRepo } = useLocalStateContext()
+
+  const handleAddRepo = async (): Promise<void> => {
+    const selectedPath = await window.api.showFolderPicker()
+    if (selectedPath) {
+      await addRepo(selectedPath)
+    }
+  }
 
   return (
     <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Git Stack</h1>
-        <button
-          onClick={toggleTheme}
-          className="relative inline-flex h-6 w-11 items-center rounded-full bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-foreground focus:ring-offset-2"
-          role="switch"
-          aria-label="Toggle dark mode"
-        >
-          <span className="inline-block h-4 w-4 transform rounded-full bg-card-foreground transition-transform translate-x-1" />
-        </button>
-      </div>
+      <Topbar onToggleTheme={toggleTheme} />
 
       <div className="">
-        {uiState?.stack ? (
+        {!selectedRepo ? (
+          <div className="flex min-h-[400px] items-center justify-center">
+            <div className="text-center">
+              <svg
+                className="text-muted-foreground mx-auto mb-4 h-16 w-16"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+              <h2 className="text-foreground mb-2 text-xl font-semibold">No Repository Selected</h2>
+              <p className="text-muted-foreground mb-6 text-sm">
+                Select a repository to get started with your Git workflow
+              </p>
+              <button
+                onClick={handleAddRepo}
+                className="bg-accent text-accent-foreground hover:bg-accent/90 focus:ring-accent inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span>Select Repository</span>
+              </button>
+            </div>
+          </div>
+        ) : uiState?.stack ? (
           <StackView data={uiState.stack} workingTree={uiState.workingTree} />
         ) : (
           <div className="text-muted-foreground">Loading...</div>

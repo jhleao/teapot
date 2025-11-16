@@ -42,7 +42,7 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { setUiState } = useUiStateContext()
+  const { confirmRebaseIntent, cancelRebaseIntent } = useUiStateContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -65,15 +65,11 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
   const hasSpinoffs = data.spinoffs.length > 0
 
   const handleConfirmRebase = async (): Promise<void> => {
-    const newUiState = await window.api.confirmRebaseIntent()
-    if (!newUiState) return
-    setUiState(newUiState)
+    await confirmRebaseIntent()
   }
 
   const handleCancelRebase = async (): Promise<void> => {
-    const newUiState = await window.api.cancelRebaseIntent()
-    if (!newUiState) return
-    setUiState(newUiState)
+    await cancelRebaseIntent()
   }
 
   return (

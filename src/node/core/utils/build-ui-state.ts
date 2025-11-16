@@ -301,6 +301,8 @@ function getOrCreateUiCommit(sha: string, state: BuildState): UiCommit | null {
   }
 
   const uiCommit: UiCommit = {
+    isCurrent: false,
+    rebaseStatus: null,
     sha: commit.sha,
     name: formatCommitName(commit),
     timestampMs: commit.timeMs ?? 0,

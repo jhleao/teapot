@@ -5,8 +5,8 @@ declare global {
   interface Window {
     electron: ElectronAPI
     api: {
-      getRepo: () => UiState
-      submitRebaseIntent: (args: { headSha: string; baseSha: string }) => UiState
+      getRepo: () => Promise<UiState>
+      submitRebaseIntent: (args: { headSha: string; baseSha: string }) => Promise<UiStack>
     }
   }
 }

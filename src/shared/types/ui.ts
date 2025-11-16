@@ -1,5 +1,5 @@
 export type UiState = {
-  stack: UiStack
+  stack: UiStack 
   workingTree: UiWorkingTreeFile[]
 }
 

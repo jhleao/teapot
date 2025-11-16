@@ -1,54 +1,85 @@
 import { ipcMain } from 'electron'
-import type { UiStack } from '@shared/types'
-import { generateMockStack } from '../utils/generate-mock-stack'
-import { RebaseIntent, Repo, RebaseJobId, Configuration } from '@shared/types'
-import { buildFullUiState } from '../core/utils/build-ui-state.js'
-import { buildRepoModel, loadConfiguration } from '../core'
+import { IPC_CHANNELS, UiState, UiWorkingTreeFile, type IpcHandlerOf } from '@shared/types'
+import { buildRepoModel, buildUiState, loadConfiguration } from '../core'
+import { buildFullUiState } from '../core/utils/build-ui-state'
 
-const getRepo: IpcHandlerOf<'getRepo'> = () => {
-  const now = Date.now()
-  const baseTime = now - 172800000 // 2 days ago
-  const timeStep = 7200000 // 2 hours between commits
+const getRepo: IpcHandlerOf<'getRepo'> = async () => {
+  const workingTree = [] as UiWorkingTreeFile[]
 
-  const stack = generateMockStack(baseTime, timeStep)
-  const workingTree = generateMockWorkingTreeFiles()
+  const config = loadConfiguration()
+  const repo = await buildRepoModel(config)
+  const stack = buildUiState(repo)
 
-  return {
+  if (!stack) return null
+
+  const uiState: UiState = {
     stack,
     workingTree
   }
+
+  return uiState
+}
+
+const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (args) => {
+  const workingTree = [] as UiWorkingTreeFile[]
+
+  const { repo, config = loadConfiguration(), generateJobId } = options;
+  
+  const repoModel = repo ?? (await buildRepoModel(config));
+
+  const fullUiState = buildFullUiState(repoModel, {
+    rebaseIntent: headSha,
+    generateJobId
+  })
+  
+  const uiState: UiState = {
+    fullUiState.projectedStack,
+    workingTree
+  }
+
+  return uiState
 }
 
 export function registerRepoHandlers(): void {
-  ipcMain.handle('getRepo', getRepo)
+  ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
+  ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
 }
 
-export type SubmitRebaseIntentOptions = {
-  /**
-   * Optional repository model, when the caller already has the latest Repo snapshot.
-   * When omitted the function will load configuration and rebuild the Repo.
-   */
-  repo?: Repo
-  /** Override configuration to locate the repo when a model is not provided. */
-  config?: Configuration
-  /** Deterministic job id generator for tests/previews. */
-  generateJobId?: () => RebaseJobId
+/*
+
+import { ipcMain } from 'electron'
+import { IPC_CHANNELS, UiWorkingTreeFile, type IpcHandlerOf, type UiStack } from '@shared/types'
+import { buildRepoModel, buildUiState, loadConfiguration } from '../core'
+
+const getRepo: IpcHandlerOf<'getRepo'> = async () => buildUiStateResponse()
+
+const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (_intent) =>
+  buildUiStateResponse()
+
+export function registerRepoHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
+  ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
 }
 
-/**
- * Entry point for the UI: accepts a rebase intent, refreshes the repo model if needed,
- * and returns the derived UI projection (current + planned stacks plus queue metadata).
- */
-export async function submitRebaseIntent(
-  intent: RebaseIntent,
-  options: SubmitRebaseIntentOptions = {}
-): Promise<UiStack | null> {
-  const { repo, config = loadConfiguration(), generateJobId } = options
-  const repoModel = repo ?? (await buildRepoModel(config))
+async function buildUiStateResponse(): Promise<{
+  stack: UiStack
+  workingTree: UiWorkingTreeFile[]
+}> {
+  const config = loadConfiguration()
+  const repo = await buildRepoModel(config)
+  const stack = buildUiState(repo) ?? createEmptyStack()
 
-  const newState = buildFullUiState(repoModel, {
-    rebaseIntent: intent,
-    generateJobId
-  })
-  return newState.projectedStack
+  // TODO: wire up a real working-tree projection once available
+  const workingTree: UiWorkingTreeFile[] = []
+
+  return { stack, workingTree }
 }
+
+function createEmptyStack(): UiStack {
+  return {
+    commits: [],
+    isTrunk: true
+  }
+}
+
+*/

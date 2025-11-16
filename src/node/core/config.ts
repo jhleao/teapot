@@ -1,10 +1,10 @@
-import dotenv from 'dotenv'
 import type { Configuration } from '@shared/types'
+import dotenv from 'dotenv'
 
 dotenv.config({ path: '../../.env' })
 
 export function loadConfiguration(): Configuration {
-  const repoPath = process.env.REPO_PATH || process.cwd()
+  const repoPath = '/Users/leao/Documents/weve/weve'
 
   return { repoPath }
 }

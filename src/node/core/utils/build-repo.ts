@@ -1,7 +1,7 @@
-import git from 'isomorphic-git'
+import type { Branch, Commit, Configuration, Repo, WorkingTreeStatus } from '@shared/types'
 import fs from 'fs'
+import git from 'isomorphic-git'
 import path from 'path'
-import type { Configuration, Repo, Branch, Commit, WorkingTreeStatus } from '@shared/types'
 import { getTrunkBranchRef } from './get-trunk.js'
 
 type BranchDescriptor = {

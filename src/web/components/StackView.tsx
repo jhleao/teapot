@@ -111,24 +111,28 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
       <div
         ref={commitRef}
         className={cn(
-          '-ml-[11px] flex items-center gap-2 transition-colors',
+          '-ml-[11px] flex items-center gap-2 transition-colors select-none',
           isPartOfRebasePlan && 'bg-accent/30'
         )}
       >
-        <CommitDot
-          top={showTopLine}
-          bottom={showBottomLine}
-          variant={isCurrent ? 'current' : 'default'}
-          accentLines={showWorkingTree ? 'top' : 'none'}
+        <div
+          className="flex items-center gap-2"
           onMouseDown={() => handleCommitDotMouseDown(data.sha)}
-        />
-        {data.branches.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {data.branches.map((branch, index) => (
-              <BranchBadge key={`${branch.name}-${index}`} data={branch} />
-            ))}
-          </div>
-        )}
+        >
+          <CommitDot
+            top={showTopLine}
+            bottom={showBottomLine}
+            variant={isCurrent ? 'current' : 'default'}
+            accentLines={showWorkingTree ? 'top' : 'none'}
+          />
+          {data.branches.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {data.branches.map((branch, index) => (
+                <BranchBadge key={`${branch.name}-${index}`} data={branch} />
+              ))}
+            </div>
+          )}
+        </div>
         <div className={cn('text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
         {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}

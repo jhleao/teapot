@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 interface UiStateContextValue {
   toggleTheme: () => void
+  isDark: boolean
   uiState: UiState | null
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
   commit: (params: { message: string }) => Promise<void>
@@ -106,6 +107,7 @@ export function UiStateProvider({
     <UiStateContext.Provider
       value={{
         toggleTheme,
+        isDark,
         uiState,
         setFilesStageStatus,
         commit,

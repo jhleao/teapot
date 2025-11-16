@@ -1,11 +1,12 @@
 import { StackView } from './components/StackView'
+import { ThemeToggle } from './components/ThemeToggle'
 import { TitleBar } from './components/TitleBar'
 import { Topbar } from './components/Topbar'
 import { useLocalStateContext } from './contexts/LocalStateContext'
 import { useUiStateContext } from './contexts/UiStateContext'
 
 function App(): React.JSX.Element {
-  const { toggleTheme, uiState } = useUiStateContext()
+  const { uiState } = useUiStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
 
   const handleAddRepo = async (): Promise<void> => {
@@ -19,7 +20,7 @@ function App(): React.JSX.Element {
     <div className="flex flex-col">
       <TitleBar />
       <div className="px-6 py-2">
-        <Topbar onToggleTheme={toggleTheme} />
+        <Topbar />
 
         <div className="">
           {!selectedRepo ? (
@@ -67,6 +68,7 @@ function App(): React.JSX.Element {
           )}
         </div>
       </div>
+      <ThemeToggle />
     </div>
   )
 }

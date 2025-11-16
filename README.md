@@ -1,13 +1,34 @@
-# Teapot
+# teapot
 
-## How to get determine which branch is the "main/trunk" branch?
+An Electron application with React and TypeScript
 
-The concept of "main/trunk" is not native to git. Instead, it's a conventionally named metadata symbolic reference created by git hosting tools such as github.
+## Recommended IDE Setup
 
-This means if the repository has never been pushed/pulled, there is not good way to determine which branch is the "main/trunk".
+- [VSCode](https://code.visualstudio.com/) + [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) + [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
 
-But if _is_ a remote-tracked repo, then you can obtain the reference like so:
+## Project Setup
 
+### Install
+
+```bash
+$ pnpm install
 ```
-git symbolic-ref refs/remotes/origin/HEAD
+
+### Development
+
+```bash
+$ pnpm dev
+```
+
+### Build
+
+```bash
+# For windows
+$ pnpm build:win
+
+# For macOS
+$ pnpm build:mac
+
+# For Linux
+$ pnpm build:linux
 ```

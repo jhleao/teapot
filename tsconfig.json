@@ -1,6 +1,4 @@
 {
-  "extends": "@teapot/_typescript/base.json",
-  "compilerOptions": {
-    "baseUrl": "."
-  }
+  "files": [],
+  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
 }

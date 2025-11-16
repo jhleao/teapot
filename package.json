@@ -9,7 +9,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "start": "electron-vite preview",
-    "dev": "electron-vite dev --watch",
+    "dev": "electron-vite dev",
+    "dev:watch": "electron-vite dev --watch",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
@@ -23,6 +24,7 @@
     "clsx": "^2.1.1",
     "electron-updater": "^6.3.9",
     "isomorphic-git": "^1.35.0",
+    "lucide-react": "^0.553.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

@@ -1,3 +1,7 @@
+export type UiState = {
+  stack: UiStack
+}
+
 export type UiStack = {
   commits: UiCommit[]
   isTrunk: boolean

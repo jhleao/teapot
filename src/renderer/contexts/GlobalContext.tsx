@@ -186,6 +186,7 @@ export function GlobalProvider({ children }: { children: ReactNode }): React.JSX
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useGlobalCtx(): GlobalContextValue {
   const context = useContext(GlobalContext)
   if (context === undefined) {

@@ -29,4 +29,3 @@ export function throttle<T extends unknown[]>(
     }
   }
 }
-

@@ -18,4 +18,3 @@ export type UiBranch = {
   name: string
   isCurrent: boolean
 }
-

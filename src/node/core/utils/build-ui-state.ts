@@ -20,6 +20,7 @@ type BuildState = {
   commitMap: Map<string, DomainCommit>
   commitNodes: Map<string, UiCommit>
   currentBranch: string
+  currentCommitSha: string
   trunkShas: Set<string>
   UiStackMembership: Map<string, UiStack>
 }
@@ -50,6 +51,7 @@ export function buildUiStack(repo: Repo): UiStack | null {
     commitMap,
     commitNodes: new Map(),
     currentBranch: repo.workingTreeStatus.currentBranch,
+    currentCommitSha: repo.workingTreeStatus.currentCommitSha,
     trunkShas: new Set(),
     UiStackMembership: new Map()
   }
@@ -301,11 +303,11 @@ function getOrCreateUiCommit(sha: string, state: BuildState): UiCommit | null {
   }
 
   const uiCommit: UiCommit = {
-    isCurrent: false,
-    rebaseStatus: null,
     sha: commit.sha,
     name: formatCommitName(commit),
     timestampMs: commit.timeMs ?? 0,
+    isCurrent: commit.sha === state.currentCommitSha,
+    rebaseStatus: null,
     spinoffs: [],
     branches: []
   }

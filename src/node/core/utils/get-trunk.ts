@@ -14,12 +14,6 @@ export async function getTrunkBranchRef(
     return remoteHeadBranch
   }
 
-  const currentBranch = await resolveBranchFromRef(dir, 'HEAD')
-  if (currentBranch && branches.includes(currentBranch)) {
-    console.log(`Using current branch as trunk: ${currentBranch}`)
-    return currentBranch
-  }
-
   console.log('Could not infer trunk from origin/HEAD, using fallback sources')
 
   // Fallback: Common trunk branch names in order of preference
@@ -41,8 +35,7 @@ async function resolveBranchFromRef(dir: string, ref: string): Promise<string | 
     }
     const remoteMatch = resolvedRef.match(/refs\/remotes\/[^/]+\/(.+)/)
     return remoteMatch && remoteMatch[1] ? remoteMatch[1] : null
-  } catch (error) {
-    console.error(`Error resolving branch from ref ${ref}:`, error)
+  } catch {
     return null
   }
 }

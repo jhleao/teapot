@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react'
 import { cn } from '../utils/cn'
 import type { UiStack, UiCommit, UiWorkingTreeFile } from '@shared/types'
-import { useGlobalCtx } from '../contexts/GlobalContext'
+import { useDragContext } from '../contexts/DragContext'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { RebaseStatusBadge } from './RebaseStatusBadge'
 import { WorkingTreeView } from './WorkingTreeView'
@@ -40,7 +40,7 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
-  const { setDraggingCommitSha, registerCommitRef, unregisterCommitRef } = useGlobalCtx()
+  const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -105,7 +105,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
           bottom={showBottomLine}
           variant={isCurrent ? 'current' : 'default'}
           accentLines={showWorkingTree ? 'top' : 'none'}
-          onClick={() => setDraggingCommitSha(data.sha)}
+          onMouseDown={() => handleCommitDotMouseDown(data.sha)}
         />
         {data.branches.length > 0 && (
           <div className="flex flex-wrap gap-2">

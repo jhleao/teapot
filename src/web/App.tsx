@@ -1,8 +1,8 @@
 import { StackView } from './components/StackView'
-import { useGlobalCtx } from './contexts/GlobalContext'
+import { useUiStateContext } from './contexts/UiStateContext'
 
 function App(): React.JSX.Element {
-  const { toggleTheme, uiState } = useGlobalCtx()
+  const { toggleTheme, uiState } = useUiStateContext()
 
   return (
     <div className="p-6">

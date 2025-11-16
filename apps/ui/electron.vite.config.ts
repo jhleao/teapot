@@ -10,7 +10,6 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
-    // @ts-expect-error - benign type version mismatch
     plugins: [react(), tailwindcss()]
   }
 })

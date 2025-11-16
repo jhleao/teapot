@@ -1,4 +1,4 @@
-import type { Repo, WorkingTreeStatus } from '../../shared/types/git.js'
+import type { Repo, WorkingTreeStatus } from '../../shared/types/repo.js'
 
 export type RebaseSessionStatus = 'pending' | 'running' | 'awaiting-user' | 'aborted' | 'completed'
 

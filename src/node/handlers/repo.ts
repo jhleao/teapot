@@ -1,6 +1,6 @@
 import { IPC_CHANNELS, IpcHandlerOf, UiState, UiWorkingTreeFile } from '@shared/types'
 import { ipcMain } from 'electron'
-import { buildRepoModel, buildUiState, loadConfiguration } from '../core'
+import { buildRepoModel, buildUiStack, loadConfiguration } from '../core'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 
@@ -9,7 +9,7 @@ const getRepo = async () => {
 
   const config = loadConfiguration()
   const repo = await buildRepoModel(config)
-  const stack = buildUiState(repo)
+  const stack = buildUiStack(repo)
 
   if (!stack) return null
 

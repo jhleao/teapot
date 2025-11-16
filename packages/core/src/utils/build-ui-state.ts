@@ -1,5 +1,7 @@
 import type { Repo, Branch, Commit as DomainCommit, WorkingTreeStatus, Stack } from '@teapot/contract';
 
+const CANONICAL_TRUNK_NAMES = ['main', 'master', 'develop'];
+
 type UiCommit = Stack['commits'][number];
 
 type BuildState = {
@@ -25,13 +27,16 @@ export function buildUiState(repo: Repo): Stack[] {
 
   const commitMap = new Map<string, DomainCommit>(repo.commits.map((commit) => [commit.sha, commit]));
   const tipOfBranches = buildTipOfBranches(repo.branches);
-  const stackBranches = selectBranchesForStacks(repo.branches);
+  const trunk = findTrunkBranch(repo.branches, repo.workingTreeStatus);
+  let stackBranches = selectBranchesForStacks(repo.branches);
+  if (trunk && !stackBranches.some((branch) => branch.ref === trunk.ref)) {
+    stackBranches = [...stackBranches, trunk];
+  }
   if (stackBranches.length === 0) {
     return [];
   }
 
   const membership = buildMembershipMap(stackBranches, commitMap);
-  const trunk = findTrunkBranch(stackBranches, repo.workingTreeStatus);
   const branchRanks = computeBranchRanks(stackBranches, membership, commitMap, trunk?.ref ?? null);
   const stackBranchRefs = new Set(stackBranches.map((branch) => branch.ref));
 
@@ -47,6 +52,15 @@ export function buildUiState(repo: Repo): Stack[] {
   };
 
   const stacks: Stack[] = [];
+  const processedRefs = new Set<string>();
+  if (trunk && stackBranchRefs.has(trunk.ref)) {
+    const trunkStack = buildTrunkStack(trunk, state);
+    if (trunkStack) {
+      stacks.push(trunkStack);
+      processedRefs.add(trunk.ref);
+    }
+  }
+
   const orderedBranches = [...stackBranches].sort((a, b) => {
     const rankDiff = (branchRanks.get(a.ref) ?? Number.MAX_SAFE_INTEGER) - (branchRanks.get(b.ref) ?? Number.MAX_SAFE_INTEGER);
     if (rankDiff !== 0) {
@@ -56,14 +70,23 @@ export function buildUiState(repo: Repo): Stack[] {
   });
 
   orderedBranches.forEach((branch) => {
+    if (processedRefs.has(branch.ref)) {
+      return;
+    }
     attachBranchStack(branch, state, stacks);
+    processedRefs.add(branch.ref);
   });
 
   return stacks;
 }
 
 function selectBranchesForStacks(branches: Branch[]): Branch[] {
-  const localOrTrunk = branches.filter((branch) => !branch.isRemote || branch.isTrunk);
+  const canonicalRefs = new Set(
+    branches.filter((branch) => isCanonicalTrunkBranch(branch)).map((branch) => branch.ref)
+  );
+  const localOrTrunk = branches.filter(
+    (branch) => !branch.isRemote || branch.isTrunk || canonicalRefs.has(branch.ref)
+  );
   return localOrTrunk.length > 0 ? localOrTrunk : branches;
 }
 
@@ -109,9 +132,14 @@ function buildMembershipMap(
 }
 
 function findTrunkBranch(branches: Branch[], workingTree: WorkingTreeStatus): Branch | null {
+  const normalizedCurrent = workingTree.currentBranch;
   return (
+    branches.find((branch) => branch.isTrunk && !branch.isRemote) ??
     branches.find((branch) => branch.isTrunk) ??
-    branches.find((branch) => branch.ref === workingTree.currentBranch) ??
+    branches.find((branch) => isCanonicalTrunkBranch(branch) && !branch.isRemote) ??
+    branches.find((branch) => isCanonicalTrunkBranch(branch)) ??
+    branches.find((branch) => normalizeBranchRef(branch) === normalizedCurrent) ??
+    branches.find((branch) => branch.ref === normalizedCurrent) ??
     branches[0] ??
     null
   );
@@ -296,4 +324,56 @@ function formatCommitName(commit: DomainCommit): string {
   const subject = commit.message.split('\n')[0] || '(no message)';
   const shortSha = commit.sha.slice(0, 7);
   return `${shortSha} ${subject}`;
+}
+
+function normalizeBranchRef(branch: Branch): string {
+  if (!branch.isRemote) {
+    return branch.ref;
+  }
+  const slashIndex = branch.ref.indexOf('/');
+  return slashIndex >= 0 ? branch.ref.slice(slashIndex + 1) : branch.ref;
+}
+
+function isCanonicalTrunkBranch(branch: Branch): boolean {
+  const normalized = normalizeBranchRef(branch);
+  return CANONICAL_TRUNK_NAMES.includes(normalized);
+}
+
+function buildTrunkStack(branch: Branch, state: BuildState): Stack | null {
+  if (!branch.headSha) {
+    return null;
+  }
+  const shas: string[] = [];
+  let currentSha: string | null = branch.headSha;
+  const visited = new Set<string>();
+  while (currentSha && !visited.has(currentSha)) {
+    visited.add(currentSha);
+    shas.push(currentSha);
+    const commit = state.commitMap.get(currentSha);
+    if (!commit?.parentSha) {
+      break;
+    }
+    currentSha = commit.parentSha;
+  }
+  if (shas.length === 0) {
+    return null;
+  }
+  const commits: UiCommit[] = [];
+  shas
+    .slice()
+    .reverse()
+    .forEach((sha) => {
+      const node = getOrCreateUiCommit(sha, state);
+      if (node) {
+        commits.push(node);
+      }
+    });
+  if (commits.length === 0) {
+    return null;
+  }
+  commits[commits.length - 1].branch = {
+    name: branch.ref,
+    isCurrent: branch.ref === state.currentBranch,
+  };
+  return { commits };
 }

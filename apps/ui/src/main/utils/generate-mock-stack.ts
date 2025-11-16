@@ -59,11 +59,11 @@ function getRandomBranchName(): string {
 export function generateMockStack(
   baseTime: number,
   timeStep: number = 7200000, // 2 hours default
-  commitCount: number = randomInt(1, 3),
+  commitCount: number = randomInt(2, 5),
   depth: number = 0,
   maxDepth: number = 2,
-  spinoffProbability: number = 0.2, // 40% chance = roughly 2 out of 5
-  isTrunkStack: boolean = true
+  spinoffProbability: number = 0.4, // 40% chance = roughly 2 out of 5
+  isTrunk: boolean = true
 ): UiStack {
   const commits: UiStack['commits'] = []
 
@@ -83,8 +83,9 @@ export function generateMockStack(
     }
 
     // Generate spinoffs if applicable
+    // NEVER create spinoffs for the last commit in a stack
     const spinoffs: UiStack[] = []
-    if (hasSpinoff && depth < maxDepth) {
+    if (hasSpinoff && depth < maxDepth && !isLastCommit) {
       // Random number of spinoffs (1-3)
       const numSpinoffs = randomInt(1, depth === 0 ? 3 : 2)
 
@@ -146,7 +147,7 @@ export function generateMockStack(
     })
   }
 
-  return { commits, isTrunk: isTrunkStack }
+  return { commits, isTrunk }
 }
 
 /**

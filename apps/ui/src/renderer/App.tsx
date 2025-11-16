@@ -9,6 +9,8 @@ function App(): React.JSX.Element {
     window.api.getRepo().then(setStack)
   }, [])
 
+  console.log(stack)
+
   return (
     <div className="p-6">
       <div className="mb-4">

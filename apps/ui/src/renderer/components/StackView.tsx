@@ -4,6 +4,7 @@ import type { UiStack, UiCommit, UiBranch } from '@teapot/contract'
 
 interface StackProps {
   data: UiStack
+  className?: string
 }
 
 interface CommitProps {
@@ -15,13 +16,12 @@ interface BranchProps {
   data: UiBranch
 }
 
-export function StackView({ data }: StackProps): React.JSX.Element {
-  // Sort commits from most recent to oldest
-  const sortedCommits = [...data.commits].sort((a, b) => b.timestampMs - a.timestampMs)
+export function StackView({ data, className }: StackProps): React.JSX.Element {
+  const newestFirst = [...data.commits].sort((a, b) => b.timestampMs - a.timestampMs)
 
   return (
-    <div className="flex flex-col ">
-      {sortedCommits.map((commit, index) => (
+    <div className={cn('flex flex-col', className)}>
+      {newestFirst.map((commit, index) => (
         <CommitView
           key={`${commit.name}-${commit.timestampMs}-${index}`}
           data={commit}
@@ -44,12 +44,12 @@ export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
         <div className="flex items-stretch">
           <div className="w-[2px] bg-gray-300 ml-[11px]" />
           <div className="ml-[-2px]">
-            <div className="ml-[9px]">
-              {data.spinoffs.map((spinoff, index) => (
-                <StackView key={`spinoff-${data.name}-${index}`} data={spinoff} />
-              ))}
-            </div>
-            <SineCurve />
+            {data.spinoffs.map((spinoff, index) => (
+              <div key={`spinoff-${data.name}-${index}`}>
+                <StackView className="ml-[9px]" data={spinoff} />
+                <SineCurve />
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -65,7 +65,7 @@ export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
           </div>
         )}
         <div className={cn('font-mono text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
-        <div className="text-xs text-gray-500">{new Date(data.timestampMs).toLocaleString()}</div>
+        <div className="text-xs text-gray-500">{new Date(data.timestampMs).toISOString()}</div>
       </div>
     </div>
   )
@@ -152,24 +152,20 @@ function getCommitDotLayout(
   commit: UiCommit,
   stack: UiStack
 ): { showTopLine: boolean; showBottomLine: boolean } {
-  const commitIdx = stack.commits.indexOf(commit)
+  const newestFirst = [...stack.commits].sort((a, b) => b.timestampMs - a.timestampMs)
+
+  const commitIdx = newestFirst.indexOf(commit)
 
   let showTopLine = true
   let showBottomLine = true
 
   const hasSpinoffs = commit.spinoffs.length > 0
-  const isOldestCommit = commitIdx === stack.commits.length - 1
   const isNewestCommit = commitIdx === 0
-  const isTrunkStack = stack.isTrunk
+  const isOldestCommit = commitIdx === newestFirst.length - 1
+  const isBaseStack = stack.isTrunk
 
-  if (isOldestCommit && isTrunkStack && !hasSpinoffs) showTopLine = false
-  if (isNewestCommit) showBottomLine = false
-
-  if (!showTopLine) {
-    console.log(commit)
-    console.log({ isFirstCommit: isOldestCommit, isLastCommit: isNewestCommit, isTrunkStack })
-    console.log({ showTopLine, showBottomLine })
-  }
+  if (isBaseStack && isOldestCommit) showBottomLine = false
+  if (isNewestCommit && !hasSpinoffs) showTopLine = false
 
   return { showTopLine, showBottomLine }
 }

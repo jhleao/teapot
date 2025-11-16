@@ -42,7 +42,7 @@ export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
       {/* Render spinoffs first with left margin */}
       {data.spinoffs.length > 0 && (
         <div className="flex items-stretch">
-          <div className="w-[2px] bg-gray-300 ml-[11px]" />
+          <div className="w-[2px] bg-border ml-[11px]" />
           <div className="ml-[-2px]">
             {data.spinoffs.map((spinoff, index) => (
               <div key={`spinoff-${data.name}-${index}`}>
@@ -65,7 +65,9 @@ export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
           </div>
         )}
         <div className={cn('font-mono text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
-        <div className="text-xs text-gray-500">{new Date(data.timestampMs).toISOString()}</div>
+        <div className="text-xs text-muted-foreground">
+          {new Date(data.timestampMs).toISOString()}
+        </div>
       </div>
     </div>
   )
@@ -76,8 +78,8 @@ export function BranchView({ data }: BranchProps): React.JSX.Element {
     <span
       className={`inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium ${
         data.isCurrent
-          ? 'bg-blue-100 text-blue-800 border border-blue-300'
-          : 'bg-gray-100 text-gray-700 border border-gray-300'
+          ? 'bg-accent text-accent-foreground border border-accent-border'
+          : 'bg-muted text-muted-foreground border border-border'
       }`}
     >
       {data.isCurrent && (
@@ -105,7 +107,7 @@ function SineCurve({ className }: { className?: string }) {
       <path
         d="M21 0C 21 22, 0 7, 1 32"
         strokeWidth="2px"
-        className="stroke-gray-300 "
+        className="stroke-border "
         fill="transparent"
       ></path>
     </svg>
@@ -122,17 +124,13 @@ function CommitDot({
   return (
     <svg width="24px" height="36" xmlns="http://www.w3.org/2000/svg">
       {showTopLine && (
-        <path
-          d="M12,0 L12,15"
-          strokeWidth="2px"
-          className="stroke-gray-300 fill-transparent"
-        ></path>
+        <path d="M12,0 L12,15" strokeWidth="2px" className="stroke-border fill-transparent"></path>
       )}
       <circle
         cx="12"
         cy="18"
         r="4"
-        className="stroke-gray-300 fill-transparent"
+        className="stroke-border fill-transparent"
         strokeWidth="2"
         strokeDasharray="0"
       ></circle>
@@ -140,7 +138,7 @@ function CommitDot({
         <path
           d="M12,22 L12,36"
           strokeWidth="2px"
-          className="stroke-gray-300 fill-transparent"
+          className="stroke-border fill-transparent"
           strokeDasharray="0"
         ></path>
       )}

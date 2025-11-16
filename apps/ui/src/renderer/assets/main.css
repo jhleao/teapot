@@ -1,2 +1,77 @@
 @import 'tailwindcss';
 
+/**
+ * Semantic color tokens (light mode - default)
+ * Maps to Tailwind's built-in color palette
+ */
+:root {
+  /* Background colors */
+  --background: var(--color-gray-50);
+  --foreground: var(--color-gray-950);
+
+  /* Muted colors */
+  --muted: var(--color-gray-100);
+  --muted-foreground: var(--color-gray-600);
+
+  /* Border colors */
+  --border: var(--color-gray-300);
+
+  /* Accent colors (for current branch) */
+  --accent: var(--color-blue-100);
+  --accent-foreground: var(--color-blue-800);
+  --accent-border: var(--color-blue-300);
+
+  /* Card colors */
+  --card: var(--color-white);
+  --card-foreground: var(--color-gray-950);
+}
+
+/**
+ * Semantic color tokens (dark mode)
+ */
+.dark {
+  /* Background colors */
+  --background: var(--color-gray-950);
+  --foreground: var(--color-gray-50);
+
+  /* Muted colors */
+  --muted: var(--color-gray-800);
+  --muted-foreground: var(--color-gray-400);
+
+  /* Border colors */
+  --border: var(--color-gray-700);
+
+  /* Accent colors (for current branch) */
+  --accent: var(--color-blue-900);
+  --accent-foreground: var(--color-blue-100);
+  --accent-border: var(--color-blue-700);
+
+  /* Card colors */
+  --card: var(--color-gray-900);
+  --card-foreground: var(--color-gray-50);
+}
+
+/**
+ * Map semantic tokens to Tailwind theme variables
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-border: var(--accent-border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+}
+
+/**
+ * Base styles
+ */
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+  }
+}

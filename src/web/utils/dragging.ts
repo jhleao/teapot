@@ -2,16 +2,21 @@ import { UiStack } from '@shared/types'
 import { RefObject } from 'react'
 import { getUiCommitBySha } from './stack-utils'
 
+export interface CommitBoundingBox {
+  sha: string
+  centerY: number
+}
+
 /**
- * Finds the closest commit below the mouse cursor.
+ * Captures the initial bounding boxes of all commits at drag start.
+ * These positions are frozen and used throughout the drag operation to prevent
+ * flickering when the optimistic UI updates.
  */
-export function findClosestCommitBelowMouse(
-  mouseY: number,
+export function captureCommitBoundingBoxes(
   commitRefsMap: Map<string, RefObject<HTMLDivElement>>,
   stacks: UiStack
-): string | null {
-  let closestSha: string | null = null
-  let closestDistance = Infinity
+): CommitBoundingBox[] {
+  const boundingBoxes: CommitBoundingBox[] = []
 
   for (const [sha, ref] of commitRefsMap.entries()) {
     const commit = getUiCommitBySha(stacks, sha)
@@ -24,12 +29,30 @@ export function findClosestCommitBelowMouse(
     const rect = element.getBoundingClientRect()
     const commitCenterY = rect.top + rect.height / 2
 
+    boundingBoxes.push({ sha, centerY: commitCenterY })
+  }
+
+  return boundingBoxes
+}
+
+/**
+ * Finds the closest commit below the mouse cursor using pre-captured bounding boxes.
+ * This prevents flickering by using stable positions throughout the drag operation.
+ */
+export function findClosestCommitBelowMouse(
+  mouseY: number,
+  boundingBoxes: CommitBoundingBox[]
+): string | null {
+  let closestSha: string | null = null
+  let closestDistance = Infinity
+
+  for (const box of boundingBoxes) {
     // Only consider commits that are below the mouse
-    if (commitCenterY > mouseY) {
-      const distance = commitCenterY - mouseY
+    if (box.centerY > mouseY) {
+      const distance = box.centerY - mouseY
       if (distance < closestDistance) {
         closestDistance = distance
-        closestSha = sha
+        closestSha = box.sha
       }
     }
   }

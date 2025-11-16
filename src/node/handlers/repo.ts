@@ -17,5 +17,6 @@ function getRepo(): UiState {
 }
 
 export function registerRepoHandlers(): void {
+  ipcMain.handle('getRepo', getRepo)
   ipcMain.handle('submitRebaseIntent', getRepo)
 }

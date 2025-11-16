@@ -7,44 +7,9 @@ import {
   type ReactNode,
   type RefObject
 } from 'react'
-import type { UiStack, UiState } from '@shared/types'
+import type { UiState } from '@shared/types'
 import { throttle } from '../utils/throttle'
-import { getUiCommitBySha } from '../utils/stack-utils'
-
-/**
- * Finds the closest commit below the mouse cursor.
- */
-function findClosestCommitBelowMouse(
-  mouseY: number,
-  commitRefsMap: Map<string, RefObject<HTMLDivElement>>,
-  stacks: UiStack
-): string | null {
-  let closestSha: string | null = null
-  let closestDistance = Infinity
-
-  for (const [sha, ref] of commitRefsMap.entries()) {
-    const commit = getUiCommitBySha(stacks, sha)
-    if (!commit) continue
-    if (commit.rebaseStatus) continue // Skip commits under planning
-
-    const element = ref.current
-    if (!element) continue
-
-    const rect = element.getBoundingClientRect()
-    const commitCenterY = rect.top + rect.height / 2
-
-    // Only consider commits that are below the mouse
-    if (commitCenterY > mouseY) {
-      const distance = commitCenterY - mouseY
-      if (distance < closestDistance) {
-        closestDistance = distance
-        closestSha = sha
-      }
-    }
-  }
-
-  return closestSha
-}
+import { findClosestCommitBelowMouse } from '../utils/dragging'
 
 interface GlobalContextValue {
   toggleTheme: () => void
@@ -64,9 +29,12 @@ export function GlobalProvider({ children }: { children: ReactNode }): React.JSX
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
   const [uiState, setUiState] = useState<UiState | null>(null)
 
+  console.log('hello')
   useEffect(() => {
-    const uiState = window.api.getRepo()
-    setUiState(uiState)
+    ;(async () => {
+      const uiState = await window.api.getRepo()
+      setUiState(uiState)
+    })()
   }, [])
 
   const commitRefsMap = useRef<Map<string, RefObject<HTMLDivElement>>>(new Map())
@@ -107,12 +75,14 @@ export function GlobalProvider({ children }: { children: ReactNode }): React.JSX
   useEffect(() => {
     if (!draggingCommitSha || !commitBelowMouse || !uiState) return
 
-    const newUiState = window.api.submitRebaseIntent({
-      headSha: draggingCommitSha,
-      baseSha: commitBelowMouse
-    })
-
-    setUiState(newUiState)
+    window.api
+      .submitRebaseIntent({
+        headSha: draggingCommitSha,
+        baseSha: commitBelowMouse
+      })
+      .then((newUiState) => {
+        setUiState(newUiState)
+      })
   }, [commitBelowMouse, draggingCommitSha, uiState])
 
   const toggleTheme = (): void => {

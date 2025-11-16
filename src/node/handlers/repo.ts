@@ -65,11 +65,41 @@ const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = () => {
   return getRepo()
 }
 
+const discardStaged: IpcHandlerOf<'discardStaged'> = () => {
+  // TODO: Implement discard staged changes logic
+  return getRepo()
+}
+
+const amend: IpcHandlerOf<'amend'> = ({ message }) => {
+  // TODO: Implement amend commit logic
+  void message
+  return getRepo()
+}
+
+const commit: IpcHandlerOf<'commit'> = ({ message }) => {
+  // TODO: Implement commit logic
+  void message
+  return getRepo()
+}
+
+const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = ({ staged, files }) => {
+  // TODO: Implement set files stage status logic
+  void staged
+  void files
+  return getRepo()
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, (_event, request) => submitRebaseIntent(request))
   ipcMain.handle(IPC_CHANNELS.confirmRebaseIntent, confirmRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.cancelRebaseIntent, cancelRebaseIntent)
+  ipcMain.handle(IPC_CHANNELS.discardStaged, discardStaged)
+  ipcMain.handle(IPC_CHANNELS.amend, (_event, request) => amend(request))
+  ipcMain.handle(IPC_CHANNELS.commit, (_event, request) => commit(request))
+  ipcMain.handle(IPC_CHANNELS.setFilesStageStatus, (_event, request) =>
+    setFilesStageStatus(request)
+  )
 }
 
 /*

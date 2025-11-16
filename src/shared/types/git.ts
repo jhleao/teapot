@@ -52,4 +52,3 @@ export type WorkingTreeStatus = {
 export type Configuration = {
   repoPath: string
 }
-

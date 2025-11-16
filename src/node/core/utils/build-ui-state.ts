@@ -109,6 +109,10 @@ export type FullUiState = {
   rebase: RebaseProjection
 }
 
+/**
+ * @TODO Delete the FullUiState model for simplicity. Use the lower level utilities instead
+ * or create a high level replacement that fn(repo, rebaseQueue) -> UiState
+ */
 export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
   const stack = buildUiStack(repo)
   const rebase = deriveRebaseProjection(repo, options)

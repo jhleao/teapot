@@ -9,13 +9,13 @@ import { ipcMain, IpcMainEvent } from 'electron'
 import { buildRepoModel, buildUiStack } from '../core'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
+import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
 
 const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath }) => {
-  const workingTree = [] as UiWorkingTreeFile[]
-
   const config: Configuration = { repoPath }
   const repo = await buildRepoModel(config)
   const stack = buildUiStack(repo)
+  const workingTree = buildUiWorkingTree(repo)
 
   if (!stack) return null
 

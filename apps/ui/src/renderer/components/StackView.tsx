@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import { cn } from '../utils/cn'
 import type { UiStack, UiCommit, UiBranch } from '@teapot/contract'
+import { useGlobalCtx } from '../contexts/GlobalContext'
 
 interface StackProps {
   data: UiStack
@@ -17,11 +18,12 @@ interface BranchProps {
 }
 
 export function StackView({ data, className }: StackProps): React.JSX.Element {
-  const newestFirst = [...data.commits].sort((a, b) => b.timestampMs - a.timestampMs)
+  // Display in reverse order: children first (higher index), parents last (lower index)
+  const childrenFirst = [...data.commits].reverse()
 
   return (
     <div className={cn('flex flex-col', className)}>
-      {newestFirst.map((commit, index) => (
+      {childrenFirst.map((commit, index) => (
         <CommitView
           key={`${commit.name}-${commit.timestampMs}-${index}`}
           data={commit}
@@ -34,8 +36,22 @@ export function StackView({ data, className }: StackProps): React.JSX.Element {
 
 export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
   const isCurrent = data.branches.some((branch) => branch.isCurrent)
+  const { setDraggingCommitSha, registerCommitRef, unregisterCommitRef, isInsideDraggingStack } =
+    useGlobalCtx()
+
+  const commitRef = useRef<HTMLDivElement>(null!)
+
+  // Register/unregister this commit's ref
+  useEffect(() => {
+    registerCommitRef(data.sha, commitRef)
+    return () => {
+      unregisterCommitRef(data.sha)
+    }
+  }, [data.sha, registerCommitRef, unregisterCommitRef])
 
   const { showTopLine, showBottomLine } = getCommitDotLayout(data, stack)
+
+  const shouldHighlight = isInsideDraggingStack(data.sha)
 
   return (
     <div>
@@ -55,8 +71,18 @@ export function CommitView({ data, stack }: CommitProps): React.JSX.Element {
       )}
 
       {/* Render the actual commit */}
-      <div className=" gap-2 flex items-center transition-colors">
-        <CommitDot showTopLine={showTopLine} showBottomLine={showBottomLine} />
+      <div
+        ref={commitRef}
+        className={cn(
+          'gap-2 flex items-center transition-colors',
+          shouldHighlight && 'bg-accent/30'
+        )}
+      >
+        <CommitDot
+          showTopLine={showTopLine}
+          showBottomLine={showBottomLine}
+          onClick={() => setDraggingCommitSha(data.sha)}
+        />
         {data.branches.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {data.branches.map((branch, index) => (
@@ -116,13 +142,21 @@ function SineCurve({ className }: { className?: string }) {
 
 function CommitDot({
   showTopLine,
-  showBottomLine
+  showBottomLine,
+  onClick
 }: {
   showTopLine: boolean
   showBottomLine: boolean
+  onClick?: () => void
 }) {
   return (
-    <svg width="24px" height="36" xmlns="http://www.w3.org/2000/svg">
+    <svg
+      width="24px"
+      height="36"
+      xmlns="http://www.w3.org/2000/svg"
+      onClick={onClick}
+      className={onClick ? 'cursor-grab' : ''}
+    >
       {showTopLine && (
         <path d="M12,0 L12,15" strokeWidth="2px" className="stroke-border fill-transparent"></path>
       )}
@@ -150,16 +184,17 @@ function getCommitDotLayout(
   commit: UiCommit,
   stack: UiStack
 ): { showTopLine: boolean; showBottomLine: boolean } {
-  const newestFirst = [...stack.commits].sort((a, b) => b.timestampMs - a.timestampMs)
-
-  const commitIdx = newestFirst.indexOf(commit)
+  // Array is ordered: parent first (lower index), child last (higher index)
+  const commitIdx = stack.commits.indexOf(commit)
 
   let showTopLine = true
   let showBottomLine = true
 
   const hasSpinoffs = commit.spinoffs.length > 0
-  const isNewestCommit = commitIdx === 0
-  const isOldestCommit = commitIdx === newestFirst.length - 1
+  // Last commit in array is the newest (head/child)
+  const isNewestCommit = commitIdx === stack.commits.length - 1
+  // First commit in array is the oldest (parent)
+  const isOldestCommit = commitIdx === 0
   const isBaseStack = stack.isTrunk
 
   if (isBaseStack && isOldestCommit) showBottomLine = false

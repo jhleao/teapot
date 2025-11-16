@@ -101,6 +101,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
         baseSha: commitBelowMouse
       })
       .then((newUiState) => {
+        if(!newUiState) return
         setUiState(newUiState)
       })
   }, [commitBelowMouse, draggingCommitSha, uiState, setUiState])

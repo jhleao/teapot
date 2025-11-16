@@ -1,6 +1,6 @@
 export type UiStack = {
   commits: UiCommit[]
-  isBase: boolean
+  isTrunk: boolean
 }
 
 export type UiCommit = {

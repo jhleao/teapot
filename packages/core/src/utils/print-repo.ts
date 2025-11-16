@@ -1,4 +1,4 @@
-import type { Repo, Stack } from '@teapot/contract';
+import type { Repo, UiStack } from '@teapot/contract';
 import { buildUiState } from './build-ui-state.js';
 
 export function printRepo(repo: Repo): void {
@@ -72,24 +72,25 @@ function printStackState(repo: Repo): void {
     return;
   }
   stacks.forEach((stack, index) => {
-    console.log(`  Stack ${index + 1}:`);
+    const stackLabel = stack.isTrunk ? ' [base]' : '';
+    console.log(`  Stack ${index + 1}${stackLabel}:`);
     printStack(stack, '    ');
   });
 }
 
-function printStack(stack: Stack, indent: string): void {
+function printStack(stack: UiStack, indent: string): void {
   stack.commits.forEach((commit) => {
     const timestamp =
       commit.timestampMs > 0 ? new Date(commit.timestampMs).toISOString() : 'unknown';
-    const tipSummary = commit.tipOfBranches.length
-      ? commit.tipOfBranches.join(', ')
-      : '(none)';
-    const branchInfo = commit.branch
-      ? ` branch=${commit.branch.name}${commit.branch.isCurrent ? ' [current]' : ''}`
-      : '';
-    console.log(`${indent}- ${commit.sha} ${commit.name}${branchInfo}`);
-    console.log(`${indent}    time : ${timestamp}`);
-    console.log(`${indent}    tips : ${tipSummary}`);
+    const branchSummary =
+      commit.branches.length > 0
+        ? commit.branches
+            .map((branch) => `${branch.name}${branch.isCurrent ? ' [current]' : ''}`)
+            .join(', ')
+        : '(none)';
+    console.log(`${indent}- ${commit.sha} ${commit.name}`);
+    console.log(`${indent}    time     : ${timestamp}`);
+    console.log(`${indent}    branches : ${branchSummary}`);
     if (commit.spinoffs.length > 0) {
       console.log(`${indent}    spinoffs:`);
       commit.spinoffs.forEach((spinoff, idx) => {

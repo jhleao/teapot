@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
 import type { UiState } from '@shared/types'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
 interface UiStateContextValue {
   toggleTheme: () => void
@@ -12,6 +12,8 @@ const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
 export function UiStateProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
+
+  console.log(uiState)
 
   useEffect(() => {
     ;(async () => {

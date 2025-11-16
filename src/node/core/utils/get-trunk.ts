@@ -1,6 +1,6 @@
-import git from 'isomorphic-git'
-import fs from 'fs'
 import type { Configuration } from '@shared/types'
+import fs from 'fs'
+import git from 'isomorphic-git'
 
 export async function getTrunkBranchRef(
   config: Configuration,

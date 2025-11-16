@@ -1,12 +1,9 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { UiState } from '@shared/types'
+import type { api } from './index'
 
 declare global {
   interface Window {
     electron: ElectronAPI
-    api: {
-      getRepo: () => Promise<UiState>
-      submitRebaseIntent: (args: { headSha: string; baseSha: string }) => Promise<UiStack>
-    }
+    api: typeof api
   }
 }

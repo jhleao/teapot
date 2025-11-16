@@ -1,8 +1,8 @@
 import { ipcMain } from 'electron'
-import type { UiState } from '@shared/types'
+import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
 import { generateMockStack, generateMockWorkingTreeFiles } from '../utils/generate-mock-stack'
 
-function getRepo(): UiState {
+const getRepo: IpcHandlerOf<'getRepo'> = () => {
   const now = Date.now()
   const baseTime = now - 172800000 // 2 days ago
   const timeStep = 7200000 // 2 hours between commits
@@ -17,6 +17,6 @@ function getRepo(): UiState {
 }
 
 export function registerRepoHandlers(): void {
-  ipcMain.handle('getRepo', getRepo)
-  ipcMain.handle('submitRebaseIntent', getRepo)
+  ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
+  ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, getRepo)
 }

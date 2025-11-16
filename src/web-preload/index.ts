@@ -1,13 +1,28 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { UiStack, UiState } from '@shared/types'
+import { IPC_CHANNELS, type IpcContract, type IpcRequest, type IpcResponse } from '@shared/types'
 
-// Custom APIs for renderer
-const api = {
-  getRepo: (): Promise<UiState> => ipcRenderer.invoke('getRepo'),
-  submitRebaseIntent: (args: { headSha: string; baseSha: string }): Promise<UiStack> =>
-    ipcRenderer.invoke('submitRebaseIntent', args)
+function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
+  type ApiType = {
+    [K in keyof IpcContract]: (
+      ...args: IpcRequest<K> extends void ? [] : [IpcRequest<K>]
+    ) => Promise<IpcResponse<K>>
+  }
+
+  return Object.fromEntries(
+    Object.entries(channels).map(([key, channel]) => [
+      key,
+      (...args: unknown[]) => {
+        const typedChannel = channel as keyof IpcContract
+        // void vs non-void request types
+        if (args.length === 0) return ipcRenderer.invoke(typedChannel)
+        return ipcRenderer.invoke(typedChannel, args[0])
+      }
+    ])
+  ) as ApiType
 }
+
+export const api = generateApi(IPC_CHANNELS)
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise

@@ -1,3 +1,4 @@
+import { IpcMainInvokeEvent } from 'electron'
 import type { UiState } from './ui'
 
 /**
@@ -37,19 +38,19 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.discardStaged]: {
     request: void
-    response: UiState
+    response: UiState | null
   }
   [IPC_CHANNELS.amend]: {
     request: { message: string }
-    response: UiState
+    response: UiState | null
   }
   [IPC_CHANNELS.commit]: {
     request: { message: string }
-    response: UiState
+    response: UiState | null
   }
   [IPC_CHANNELS.setFilesStageStatus]: {
     request: { staged: boolean; files: string[] }
-    response: UiState
+    response: UiState | null
   }
 }
 
@@ -79,6 +80,7 @@ export type IpcResponseOf<T extends keyof IpcContract> = IpcResponse<T>
  * Type-safe IPC handler function signature
  */
 export type IpcHandler<T extends keyof IpcContract> = (
+  event: IpcMainInvokeEvent,
   ...args: IpcRequest<T> extends void ? [] : [IpcRequest<T>]
 ) => IpcResponse<T> | Promise<IpcResponse<T>>
 

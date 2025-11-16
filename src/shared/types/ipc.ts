@@ -5,7 +5,9 @@ import type { UiState } from './ui'
  */
 export const IPC_CHANNELS = {
   getRepo: 'getRepo',
-  submitRebaseIntent: 'submitRebaseIntent'
+  submitRebaseIntent: 'submitRebaseIntent',
+  confirmRebaseIntent: 'confirmRebaseIntent',
+  cancelRebaseIntent: 'cancelRebaseIntent'
 } as const
 
 /**
@@ -19,6 +21,14 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.submitRebaseIntent]: {
     request: { headSha: string; baseSha: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.confirmRebaseIntent]: {
+    request: void
+    response: UiState | null
+  }
+  [IPC_CHANNELS.cancelRebaseIntent]: {
+    request: void
     response: UiState | null
   }
 }

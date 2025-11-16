@@ -7,7 +7,11 @@ export const IPC_CHANNELS = {
   getRepo: 'getRepo',
   submitRebaseIntent: 'submitRebaseIntent',
   confirmRebaseIntent: 'confirmRebaseIntent',
-  cancelRebaseIntent: 'cancelRebaseIntent'
+  cancelRebaseIntent: 'cancelRebaseIntent',
+  discardStaged: 'discardStaged',
+  amend: 'amend',
+  commit: 'commit',
+  setFilesStageStatus: 'setFilesStageStatus'
 } as const
 
 /**
@@ -30,6 +34,22 @@ export interface IpcContract {
   [IPC_CHANNELS.cancelRebaseIntent]: {
     request: void
     response: UiState | null
+  }
+  [IPC_CHANNELS.discardStaged]: {
+    request: void
+    response: UiState
+  }
+  [IPC_CHANNELS.amend]: {
+    request: { message: string }
+    response: UiState
+  }
+  [IPC_CHANNELS.commit]: {
+    request: { message: string }
+    response: UiState
+  }
+  [IPC_CHANNELS.setFilesStageStatus]: {
+    request: { staged: boolean; files: string[] }
+    response: UiState
   }
 }
 

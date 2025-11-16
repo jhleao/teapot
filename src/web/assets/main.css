@@ -17,13 +17,18 @@
   --border: var(--color-gray-300);
 
   /* Accent colors (for current branch) */
-  --accent: var(--color-blue-100);
-  --accent-foreground: var(--color-blue-800);
-  --accent-border: var(--color-blue-300);
+  --accent: var(--color-sky-100);
+  --accent-foreground: var(--color-sky-800);
+  --accent-border: var(--color-sky-300);
 
   /* Card colors */
   --card: var(--color-white);
   --card-foreground: var(--color-gray-950);
+
+  /* Status colors */
+  --success: var(--color-green-600);
+  --warning: var(--color-yellow-600);
+  --error: var(--color-red-600);
 }
 
 /**
@@ -42,13 +47,18 @@
   --border: var(--color-gray-700);
 
   /* Accent colors (for current branch) */
-  --accent: var(--color-blue-900);
-  --accent-foreground: var(--color-blue-100);
-  --accent-border: var(--color-blue-700);
+  --accent: var(--color-sky-700);
+  --accent-foreground: var(--color-sky-100);
+  --accent-border: var(--color-sky-700);
 
   /* Card colors */
   --card: var(--color-gray-900);
   --card-foreground: var(--color-gray-50);
+
+  /* Status colors */
+  --success: var(--color-green-500);
+  --warning: var(--color-yellow-500);
+  --error: var(--color-red-500);
 }
 
 /**
@@ -65,6 +75,9 @@
   --color-accent-border: var(--accent-border);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
 }
 
 /**

@@ -3,7 +3,7 @@ import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { RepoMetadata } from './RepoMetadata'
 import { RepoSelector } from './RepoSelector'
 
-export function Topbar({ onToggleTheme }: { onToggleTheme: () => void }): React.JSX.Element {
+export function Topbar(): React.JSX.Element {
   const { repos, selectedRepo, selectRepo, addRepo, removeRepo } = useLocalStateContext()
 
   const handleAddRepo = async (): Promise<void> => {
@@ -32,16 +32,6 @@ export function Topbar({ onToggleTheme }: { onToggleTheme: () => void }): React.
           onAddRepo={handleAddRepo}
           onRemoveRepo={removeRepo}
         />
-
-        {/* Theme toggle button */}
-        <button
-          onClick={onToggleTheme}
-          className="bg-muted focus:ring-foreground relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
-          role="switch"
-          aria-label="Toggle dark mode"
-        >
-          <span className="bg-card-foreground inline-block h-4 w-4 translate-x-1 transform rounded-full transition-transform" />
-        </button>
       </div>
     </div>
   )

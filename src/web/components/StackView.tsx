@@ -95,7 +95,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
       {Boolean(showWorkingTree && !isTopOfStack) && (
         <div className="flex w-full">
           <div className="border-border h-auto w-[2px] border-r-2" />
-          <div className="ml-[-2px] w-full">
+          <div className="ml-[-2px] w-full pt-4">
             <WorkingTreeView className="ml-[8px]" files={workingTree} />
             <SineCurve className="text-accent" />
           </div>
@@ -103,7 +103,12 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
       )}
 
       {Boolean(showWorkingTree && isTopOfStack) && (
-        <WorkingTreeView className="-ml-[12px]" files={workingTree} />
+        <div className="flex w-full">
+          <div className="border-accent h-auto w-[2px] border-r-2" />
+          <div className="ml-[-22px] w-full pb-4">
+            <WorkingTreeView className="ml-[8px]" files={workingTree} />
+          </div>
+        </div>
       )}
 
       {/* Render the actual commit */}
@@ -128,7 +133,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
             ))}
           </div>
         )}
-        <div className={cn('font-mono text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
+        <div className={cn('text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
         {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}
         {data.rebaseStatus === 'prompting' && (

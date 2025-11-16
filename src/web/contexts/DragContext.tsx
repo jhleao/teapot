@@ -7,7 +7,11 @@ import {
   type ReactNode,
   type RefObject
 } from 'react'
-import { findClosestCommitBelowMouse } from '../utils/dragging'
+import {
+  captureCommitBoundingBoxes,
+  findClosestCommitBelowMouse,
+  type CommitBoundingBox
+} from '../utils/dragging'
 import { throttle } from '../utils/throttle'
 import { useUiStateContext } from './UiStateContext'
 
@@ -29,6 +33,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const potentialDragSha = useRef<string | null>(null)
   const draggingCommitShaRef = useRef<string | null>(null)
+  const frozenBoundingBoxes = useRef<CommitBoundingBox[]>([])
 
   const commitRefsMap = useRef<Map<string, RefObject<HTMLDivElement>>>(new Map())
   const unregisterCommitRef = (sha: string) => commitRefsMap.current.delete(sha)
@@ -48,17 +53,20 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   // Handle mousemove to start drag if mousedown happened
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent): void => {
+      const stacks = uiState?.stack
+      if (!stacks) return
+
       // If we have a potential drag and haven't started dragging yet, start dragging
       if (potentialDragSha.current && !draggingCommitShaRef.current) {
+        // Capture initial bounding boxes before starting drag
+        frozenBoundingBoxes.current = captureCommitBoundingBoxes(commitRefsMap.current, stacks)
         setDraggingCommitSha(potentialDragSha.current)
       }
 
-      // If we're already dragging, update commit below mouse
-      if (draggingCommitShaRef.current) {
-        const stacks = uiState?.stack
-        if (!stacks) return
+      // If we're already dragging, update commit below mouse using frozen positions
+      if (draggingCommitShaRef.current && frozenBoundingBoxes.current.length > 0) {
         const { clientY } = e
-        const closestSha = findClosestCommitBelowMouse(clientY, commitRefsMap.current, stacks)
+        const closestSha = findClosestCommitBelowMouse(clientY, frozenBoundingBoxes.current)
         setCommitBelowMouse(closestSha)
       }
     }
@@ -68,6 +76,8 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       if (draggingCommitShaRef.current) {
         setDraggingCommitSha(null)
         setCommitBelowMouse(null)
+        // Clear frozen bounding boxes
+        frozenBoundingBoxes.current = []
       }
       // Clear potential drag
       potentialDragSha.current = null

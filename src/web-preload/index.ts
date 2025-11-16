@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IPC_CHANNELS, type IpcContract, type IpcRequest, type IpcResponse } from '@shared/types'
+import { contextBridge, ipcRenderer } from 'electron'
 
 function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
   type ApiType = {

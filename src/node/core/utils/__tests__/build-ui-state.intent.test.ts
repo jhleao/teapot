@@ -1,13 +1,13 @@
-import { describe, it, expect } from 'vitest'
 import type {
-  Repo,
-  Commit,
   Branch,
-  WorkingTreeStatus,
+  Commit,
   RebaseIntent,
-  StackNodeState
+  Repo,
+  StackNodeState,
+  WorkingTreeStatus
 } from '@shared/types'
-import { buildUiStack, buildFullUiState } from '../build-ui-state.js'
+import { describe, expect, it } from 'vitest'
+import { buildFullUiState, buildUiStack } from '../build-ui-state.js'
 
 const COMMITS = {
   cde: 'cde3150c3d2772348b51cd0ce26a87a8b250996c',

@@ -106,7 +106,7 @@ export function WorkingTreeView({
   className?: string
 }): React.JSX.Element {
   const [commitMessage, setCommitMessage] = useState('')
-  const { setUiState } = useUiStateContext()
+  const { setFilesStageStatus, commit, amend, discardStaged } = useUiStateContext()
 
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
 
@@ -115,11 +115,10 @@ export function WorkingTreeView({
   // ============================================================================
 
   const handleFileToggle = async (file: UiWorkingTreeFile): Promise<void> => {
-    const newUiState = await window.api.setFilesStageStatus({
+    await setFilesStageStatus({
       staged: !file.isStaged,
       files: [file.path]
     })
-    setUiState(newUiState)
   }
 
   const handleSelectAllToggle = async (): Promise<void> => {
@@ -128,19 +127,17 @@ export function WorkingTreeView({
 
     if (allStaged) {
       // Unstage all
-      const newUiState = await window.api.setFilesStageStatus({
+      await setFilesStageStatus({
         staged: false,
         files: sortedFiles.map((file) => file.path)
       })
-      setUiState(newUiState)
     } else {
       // Stage all remaining unstaged files
       const unstagedPaths = sortedFiles.filter((file) => !file.isStaged).map((file) => file.path)
-      const newUiState = await window.api.setFilesStageStatus({
+      await setFilesStageStatus({
         staged: true,
         files: unstagedPaths
       })
-      setUiState(newUiState)
     }
   }
 
@@ -150,21 +147,18 @@ export function WorkingTreeView({
 
   const handleCommit = async (): Promise<void> => {
     if (!commitMessage.trim()) return
-    const newUiState = await window.api.commit({ message: commitMessage })
-    setUiState(newUiState)
+    await commit({ message: commitMessage })
     setCommitMessage('')
   }
 
   const handleAmend = async (): Promise<void> => {
     if (!commitMessage.trim()) return
-    const newUiState = await window.api.amend({ message: commitMessage })
-    setUiState(newUiState)
+    await amend({ message: commitMessage })
     setCommitMessage('')
   }
 
   const handleDiscard = async (): Promise<void> => {
-    const newUiState = await window.api.discardStaged()
-    setUiState(newUiState)
+    await discardStaged()
     setCommitMessage('')
   }
 

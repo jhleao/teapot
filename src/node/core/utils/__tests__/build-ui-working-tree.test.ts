@@ -18,12 +18,12 @@ describe('buildUiWorkingTree', () => {
     const result = buildUiWorkingTree(repo)
 
     expect(result).toEqual([
-      { path: 'src/file1.ts', isStaged: true, status: 'modified' },
-      { path: 'src/file2.ts', isStaged: false, status: 'modified' },
-      { path: 'src/file3.ts', isStaged: false, status: 'deleted' },
-      { path: 'src/file4.ts', isStaged: false, status: 'renamed' },
-      { path: 'src/file5.ts', isStaged: false, status: 'untracked' },
-      { path: 'src/file6.ts', isStaged: false, status: 'untracked' }
+      { path: 'src/file1.ts', stageStatus: 'staged', status: 'modified' },
+      { path: 'src/file2.ts', stageStatus: 'unstaged', status: 'modified' },
+      { path: 'src/file3.ts', stageStatus: 'unstaged', status: 'deleted' },
+      { path: 'src/file4.ts', stageStatus: 'unstaged', status: 'renamed' },
+      { path: 'src/file5.ts', stageStatus: 'unstaged', status: 'added' },
+      { path: 'src/file6.ts', stageStatus: 'unstaged', status: 'added' }
     ])
   })
 })

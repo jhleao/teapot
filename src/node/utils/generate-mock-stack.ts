@@ -366,11 +366,11 @@ export function generateMockWorkingTreeFiles(count?: number): UiWorkingTreeFile[
     'src/services/api.ts'
   ]
 
-  const statuses: Array<'modified' | 'deleted' | 'renamed' | 'untracked'> = [
+  const statuses: Array<'modified' | 'deleted' | 'renamed' | 'added'> = [
     'modified',
     'deleted',
     'renamed',
-    'untracked'
+    'added'
   ]
 
   const usedPaths = new Set<string>()
@@ -383,10 +383,10 @@ export function generateMockWorkingTreeFiles(count?: number): UiWorkingTreeFile[
     usedPaths.add(path)
 
     const status = statuses[randomInt(0, statuses.length - 1)]
-    const isStaged = Math.random() > 0.5 // 50% chance of being staged
+    const stageStatus = Math.random() > 0.5 ? 'staged' : 'unstaged'
 
     files.push({
-      isStaged,
+      stageStatus,
       path,
       status
     })

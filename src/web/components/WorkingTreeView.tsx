@@ -3,6 +3,14 @@ import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { Checkbox, type CheckboxState } from './Checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from './Dialog'
 import { FileItem } from './FileItem'
 import { CommitDot } from './SvgPaths'
 
@@ -109,6 +117,7 @@ export function WorkingTreeView({
 }): React.JSX.Element {
   const [commitMessage, setCommitMessage] = useState('')
   const { setFilesStageStatus, commit, amend, discardStaged } = useUiStateContext()
+  const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
 
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
 
@@ -169,9 +178,15 @@ export function WorkingTreeView({
     setCommitMessage('')
   }
 
-  const handleDiscard = async (): Promise<void> => {
+  const handleDiscardClick = (): void => {
+    if (files.length === 0) return
+    setIsDiscardDialogOpen(true)
+  }
+
+  const handleConfirmDiscard = async (): Promise<void> => {
     await discardStaged()
     setCommitMessage('')
+    setIsDiscardDialogOpen(false)
   }
 
   // ============================================================================
@@ -197,9 +212,34 @@ export function WorkingTreeView({
           onMessageChange={setCommitMessage}
           onCommit={handleCommit}
           onAmend={handleAmend}
-          onDiscard={handleDiscard}
+          onDiscard={handleDiscardClick}
         />
       </div>
+
+      <Dialog open={isDiscardDialogOpen} onOpenChange={setIsDiscardDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Discard Changes?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to discard all changes? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              onClick={() => setIsDiscardDialogOpen(false)}
+              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDiscard}
+              className="bg-error hover:bg-error/90 rounded border border-transparent px-3 py-1 text-sm text-white transition-colors"
+            >
+              Discard Changes
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

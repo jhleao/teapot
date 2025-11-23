@@ -27,7 +27,7 @@ interface DragContextValue {
 const DragContext = createContext<DragContextValue | undefined>(undefined)
 
 export function DragProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const { uiState, submitRebaseIntent } = useUiStateContext()
+  const { uiState, submitRebaseIntent, isWorkingTreeDirty } = useUiStateContext()
   const [draggingCommitSha, setDraggingCommitSha] = useState<string | null>(null)
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
 
@@ -47,6 +47,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
   // Handle mousedown on commit dot - prepare for potential drag
   const handleCommitDotMouseDown = (sha: string): void => {
+    if (isWorkingTreeDirty) return
     potentialDragSha.current = sha
   }
 

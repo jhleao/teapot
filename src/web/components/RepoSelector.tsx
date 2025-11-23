@@ -147,7 +147,7 @@ export function RepoSelector({
                     </div>
                     <button
                       onClick={(e) => handleRemoveRepo(e, repo.path)}
-                      className="text-muted-foreground hover:text-destructive shrink-0 rounded p-1 transition-colors hover:bg-destructive/10"
+                      className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 rounded p-1 transition-colors"
                       aria-label="Remove repository"
                       title="Remove repository"
                     >

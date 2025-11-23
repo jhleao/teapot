@@ -173,7 +173,6 @@ export function WorkingTreeView({
   }
 
   const handleAmend = async (): Promise<void> => {
-    if (!commitMessage.trim()) return
     await amend({ message: commitMessage })
     setCommitMessage('')
   }

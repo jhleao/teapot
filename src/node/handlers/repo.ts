@@ -7,9 +7,18 @@ import {
 } from '@shared/types'
 import { ipcMain, IpcMainEvent } from 'electron'
 import { buildRepoModel, buildUiStack } from '../core'
+import { GitWatcher } from '../core/git-watcher'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
+
+const watchRepo: IpcHandlerOf<'watchRepo'> = (event, { repoPath }) => {
+  GitWatcher.getInstance().watch(repoPath, event.sender)
+}
+
+const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {
+  GitWatcher.getInstance().stop()
+}
 
 const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath }) => {
   const config: Configuration = { repoPath }
@@ -101,4 +110,6 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.amend, amend)
   ipcMain.handle(IPC_CHANNELS.commit, commit)
   ipcMain.handle(IPC_CHANNELS.setFilesStageStatus, setFilesStageStatus)
+  ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
+  ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
 }

@@ -1,5 +1,6 @@
 import type { UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useGitWatcher } from '../hooks/use-git-watcher'
 
 interface UiStateContextValue {
   toggleTheme: () => void
@@ -26,19 +27,28 @@ export function UiStateProvider({
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
 
-  useEffect(() => {
+  const refreshRepo = useCallback(async () => {
     if (!repoPath) {
       setUiState(null)
       return
     }
 
-    ;(async () => {
-      const uiState = await window.api.getRepo({ repoPath })
-      if (uiState) {
-        setUiState(uiState)
-      }
-    })()
+    const uiState = await window.api.getRepo({ repoPath })
+    if (uiState) {
+      setUiState(uiState)
+    }
   }, [repoPath])
+
+  useEffect(() => {
+    refreshRepo()
+  }, [refreshRepo])
+
+  useEffect(() => {
+    window.addEventListener('focus', refreshRepo)
+    return () => window.removeEventListener('focus', refreshRepo)
+  }, [refreshRepo])
+
+  useGitWatcher({ repoPath, onRepoChange: refreshRepo })
 
   useEffect(() => {
     const html = document.documentElement

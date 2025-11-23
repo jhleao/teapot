@@ -1,5 +1,11 @@
 import { electronAPI } from '@electron-toolkit/preload'
-import { IPC_CHANNELS, type IpcContract, type IpcRequest, type IpcResponse } from '@shared/types'
+import {
+  IPC_CHANNELS,
+  IPC_EVENTS,
+  type IpcContract,
+  type IpcRequest,
+  type IpcResponse
+} from '@shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
 
 function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
@@ -22,7 +28,19 @@ function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
   ) as ApiType
 }
 
-export const api = generateApi(IPC_CHANNELS)
+const generatedApi = generateApi(IPC_CHANNELS)
+
+export const api = {
+  ...generatedApi,
+  onRepoChange: (callback: () => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const subscription = (_event: any): void => callback()
+    ipcRenderer.on(IPC_EVENTS.repoChange, subscription)
+    return (): void => {
+      ipcRenderer.removeListener(IPC_EVENTS.repoChange, subscription)
+    }
+  }
+}
 
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise

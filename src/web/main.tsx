@@ -4,9 +4,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { DragProvider } from './contexts/DragContext'
-import { LocalStateProvider } from './contexts/LocalStateContext'
+import { LocalStateProvider, useLocalStateContext } from './contexts/LocalStateContext'
 import { UiStateProvider } from './contexts/UiStateContext'
-import { useLocalStateContext } from './contexts/LocalStateContext'
 
 function AppWithProviders(): React.JSX.Element {
   const { selectedRepo } = useLocalStateContext()

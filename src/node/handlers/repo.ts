@@ -12,6 +12,7 @@ import {
   buildUiStack,
   checkout,
   commitToNewBranch,
+  deleteBranch,
   discardChanges,
   updateFileStageStatus
 } from '../core'
@@ -110,6 +111,14 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (_event, { repoPath, ref
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
+const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (
+  _event,
+  { repoPath, branchName }
+) => {
+  await deleteBranch(repoPath, branchName)
+  return getRepo({} as IpcMainEvent, { repoPath })
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
@@ -120,6 +129,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.commit, commit)
   ipcMain.handle(IPC_CHANNELS.setFilesStageStatus, setFilesStageStatus)
   ipcMain.handle(IPC_CHANNELS.checkout, checkoutHandler)
+  ipcMain.handle(IPC_CHANNELS.deleteBranch, deleteBranchHandler)
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
 }

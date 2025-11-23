@@ -18,8 +18,8 @@
   --border: var(--color-gray-300);
 
   /* Accent colors (for current branch) */
-  --accent: var(--color-sky-100);
-  --accent-foreground: var(--color-sky-800);
+  --accent: var(--color-sky-600);
+  --accent-foreground: var(--color-sky-100);
   --accent-border: var(--color-sky-300);
 
   /* Card colors */

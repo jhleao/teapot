@@ -13,7 +13,9 @@ function SelectAllToggle({
   files: UiWorkingTreeFile[]
   onToggle: () => void
 }) {
-  const stagedCount = files.filter((file) => file.isStaged).length
+  const stagedCount = files.filter(
+    (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
+  ).length
   const allStaged = stagedCount === files.length && files.length > 0
   const noneStaged = stagedCount === 0
   const someStaged = !allStaged && !noneStaged
@@ -115,14 +117,20 @@ export function WorkingTreeView({
   // ============================================================================
 
   const handleFileToggle = async (file: UiWorkingTreeFile): Promise<void> => {
+    // If it's staged (fully), we unstage.
+    // If it's unstaged or partially staged, we stage (fully).
+    const shouldStage = file.stageStatus !== 'staged'
+
     await setFilesStageStatus({
-      staged: !file.isStaged,
+      staged: shouldStage,
       files: [file.path]
     })
   }
 
   const handleSelectAllToggle = async (): Promise<void> => {
-    const stagedCount = sortedFiles.filter((file) => file.isStaged).length
+    const stagedCount = sortedFiles.filter(
+      (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
+    ).length
     const allStaged = stagedCount === sortedFiles.length && sortedFiles.length > 0
 
     if (allStaged) {
@@ -132,11 +140,15 @@ export function WorkingTreeView({
         files: sortedFiles.map((file) => file.path)
       })
     } else {
-      // Stage all remaining unstaged files
-      const unstagedPaths = sortedFiles.filter((file) => !file.isStaged).map((file) => file.path)
+      // Stage all (including partially staged)
+      // We want to stage everything that isn't fully staged
+      const filesToStage = sortedFiles
+        .filter((file) => file.stageStatus !== 'staged')
+        .map((file) => file.path)
+
       await setFilesStageStatus({
         staged: true,
-        files: unstagedPaths
+        files: filesToStage
       })
     }
   }

@@ -6,7 +6,7 @@ import {
   type Configuration
 } from '@shared/types'
 import { ipcMain, IpcMainEvent } from 'electron'
-import { buildRepoModel, buildUiStack } from '../core'
+import { buildRepoModel, buildUiStack, commitToNewBranch, updateFileStageStatus } from '../core'
 import { GitWatcher } from '../core/git-watcher'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
@@ -85,19 +85,16 @@ const amend: IpcHandlerOf<'amend'> = (_event, { repoPath, message }) => {
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const commit: IpcHandlerOf<'commit'> = (_event, { repoPath, message }) => {
-  // TODO: Implement commit logic
-  void message
+const commit: IpcHandlerOf<'commit'> = async (_event, { repoPath, message, newBranchName }) => {
+  await commitToNewBranch(repoPath, message, newBranchName)
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = (
+const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = async (
   _event,
   { repoPath, staged, files }
 ) => {
-  // TODO: Implement set files stage status logic
-  void staged
-  void files
+  await updateFileStageStatus(repoPath, files, staged)
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 

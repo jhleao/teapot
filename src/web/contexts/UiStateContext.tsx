@@ -13,6 +13,7 @@ interface UiStateContextValue {
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
   confirmRebaseIntent: () => Promise<void>
   cancelRebaseIntent: () => Promise<void>
+  checkout: (params: { ref: string }) => Promise<void>
 }
 
 const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
@@ -113,6 +114,14 @@ export function UiStateProvider({
     await callApi(window.api.cancelRebaseIntent({ repoPath }))
   }, [repoPath, callApi])
 
+  const checkout = useCallback(
+    async (params: { ref: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.checkout({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   return (
     <UiStateContext.Provider
       value={{
@@ -125,7 +134,8 @@ export function UiStateProvider({
         discardStaged,
         submitRebaseIntent,
         confirmRebaseIntent,
-        cancelRebaseIntent
+        cancelRebaseIntent,
+        checkout
       }}
     >
       {children}

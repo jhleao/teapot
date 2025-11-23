@@ -51,28 +51,33 @@ function CommitForm({
   onMessageChange,
   onCommit,
   onAmend,
-  onDiscard
+  onDiscard,
+  canCommit
 }: {
   message: string
   onMessageChange: (message: string) => void
   onCommit: () => void
   onAmend: () => void
   onDiscard: () => void
+  canCommit: boolean
 }) {
   function CommitFormButton({
     onClick,
     children,
-    className
+    className,
+    disabled
   }: {
     onClick: () => void
     children: React.ReactNode
     className?: string
+    disabled?: boolean
   }) {
     return (
       <button
         onClick={onClick}
+        disabled={disabled}
         className={cn(
-          'border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-sm transition-colors',
+          'border-border bg-muted text-foreground hover:bg-muted/80 border px-3 py-2 text-sm transition-opacity disabled:pointer-events-none disabled:opacity-50',
           className
         )}
       >
@@ -90,14 +95,23 @@ function CommitForm({
         placeholder="Commit message"
         className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-accent rounded border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
       />
-      <div className="ml-auto flex gap-2">
-        <CommitFormButton onClick={onDiscard}>Discard</CommitFormButton>
-        <CommitFormButton onClick={onAmend}>Amend</CommitFormButton>
+      <div className="ml-auto flex items-center">
         <CommitFormButton
           onClick={onCommit}
-          className="bg-accent text-accent-foreground hover:bg-accent/90 border-0"
+          disabled={!canCommit}
+          className="z-10 rounded-l-md border-y border-l"
         >
           Commit
+        </CommitFormButton>
+        <CommitFormButton
+          onClick={onAmend}
+          disabled={!canCommit}
+          className="rounded-none border-l-0"
+        >
+          Amend
+        </CommitFormButton>
+        <CommitFormButton onClick={onDiscard} className="rounded-l-none rounded-r-md border-l-0">
+          Discard
         </CommitFormButton>
       </div>
     </div>
@@ -188,6 +202,11 @@ export function WorkingTreeView({
     setIsDiscardDialogOpen(false)
   }
 
+  const hasStagedChanges = files.some(
+    (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
+  )
+  const canCommit = hasStagedChanges && commitMessage.trim() !== ''
+
   // ============================================================================
   // Render
   // ============================================================================
@@ -212,6 +231,7 @@ export function WorkingTreeView({
           onCommit={handleCommit}
           onAmend={handleAmend}
           onDiscard={handleDiscardClick}
+          canCommit={canCommit}
         />
       </div>
 

@@ -8,4 +8,3 @@ export async function checkout(repoPath: string, ref: string): Promise<void> {
     ref
   })
 }
-

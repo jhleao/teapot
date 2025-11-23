@@ -322,8 +322,7 @@ function getOrCreateUiCommit(sha: string, state: BuildState): UiCommit | null {
 
 function formatCommitName(commit: DomainCommit): string {
   const subject = commit.message.split('\n')[0] || '(no message)'
-  const shortSha = commit.sha.slice(0, 7)
-  return `${shortSha} ${subject}`
+  return subject
 }
 
 function normalizeBranchRef(branch: Branch): string {

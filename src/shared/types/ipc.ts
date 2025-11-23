@@ -20,7 +20,8 @@ export const IPC_CHANNELS = {
   showFolderPicker: 'showFolderPicker',
   watchRepo: 'watchRepo',
   unwatchRepo: 'unwatchRepo',
-  checkout: 'checkout'
+  checkout: 'checkout',
+  deleteBranch: 'deleteBranch'
 } as const
 
 export const IPC_EVENTS = {
@@ -94,6 +95,10 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.checkout]: {
     request: { repoPath: string; ref: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.deleteBranch]: {
+    request: { repoPath: string; branchName: string }
     response: UiState | null
   }
 }

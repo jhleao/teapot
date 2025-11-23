@@ -17,7 +17,13 @@ export const IPC_CHANNELS = {
   selectLocalRepo: 'selectLocalRepo',
   addLocalRepo: 'addLocalRepo',
   removeLocalRepo: 'removeLocalRepo',
-  showFolderPicker: 'showFolderPicker'
+  showFolderPicker: 'showFolderPicker',
+  watchRepo: 'watchRepo',
+  unwatchRepo: 'unwatchRepo'
+} as const
+
+export const IPC_EVENTS = {
+  repoChange: 'repoChange'
 } as const
 
 /**
@@ -76,6 +82,14 @@ export interface IpcContract {
   [IPC_CHANNELS.showFolderPicker]: {
     request: void
     response: string | null
+  }
+  [IPC_CHANNELS.watchRepo]: {
+    request: { repoPath: string }
+    response: void
+  }
+  [IPC_CHANNELS.unwatchRepo]: {
+    request: { repoPath: string }
+    response: void
   }
 }
 

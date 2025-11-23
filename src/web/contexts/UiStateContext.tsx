@@ -8,7 +8,7 @@ interface UiStateContextValue {
   uiState: UiState | null
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
   commit: (params: { message: string }) => Promise<void>
-  amend: (params: { message: string }) => Promise<void>
+  amend: (params: { message?: string }) => Promise<void>
   discardStaged: () => Promise<void>
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
   confirmRebaseIntent: () => Promise<void>
@@ -84,7 +84,7 @@ export function UiStateProvider({
   )
 
   const amend = useCallback(
-    async (params: { message: string }) => {
+    async (params: { message?: string }) => {
       if (!repoPath) return
       await callApi(window.api.amend({ repoPath, ...params }))
     },

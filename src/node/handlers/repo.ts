@@ -7,6 +7,7 @@ import {
 } from '@shared/types'
 import { ipcMain, IpcMainEvent } from 'electron'
 import {
+  amend as amendCommit,
   buildRepoModel,
   buildUiStack,
   checkout,
@@ -86,9 +87,8 @@ const discardStaged: IpcHandlerOf<'discardStaged'> = async (_event, { repoPath }
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const amend: IpcHandlerOf<'amend'> = (_event, { repoPath, message }) => {
-  // TODO: Implement amend commit logic
-  void message
+const amend: IpcHandlerOf<'amend'> = async (_event, { repoPath, message }) => {
+  await amendCommit(repoPath, message)
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 

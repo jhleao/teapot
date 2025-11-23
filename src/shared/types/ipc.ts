@@ -53,7 +53,7 @@ export interface IpcContract {
     response: UiState | null
   }
   [IPC_CHANNELS.amend]: {
-    request: { repoPath: string; message: string }
+    request: { repoPath: string; message?: string }
     response: UiState | null
   }
   [IPC_CHANNELS.commit]: {

@@ -1,5 +1,6 @@
 export * from './discard-changes'
 export * from './stage'
+export * from './utils/amend'
 export * from './utils/build-repo'
 export * from './utils/build-ui-state'
 export * from './utils/checkout'

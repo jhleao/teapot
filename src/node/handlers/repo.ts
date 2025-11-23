@@ -6,7 +6,14 @@ import {
   type Configuration
 } from '@shared/types'
 import { ipcMain, IpcMainEvent } from 'electron'
-import { buildRepoModel, buildUiStack, commitToNewBranch, updateFileStageStatus } from '../core'
+import {
+  buildRepoModel,
+  buildUiStack,
+  checkout,
+  commitToNewBranch,
+  discardChanges,
+  updateFileStageStatus
+} from '../core'
 import { GitWatcher } from '../core/git-watcher'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
@@ -74,8 +81,8 @@ const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = (_event, { repoPa
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const discardStaged: IpcHandlerOf<'discardStaged'> = (_event, { repoPath }) => {
-  // TODO: Implement discard staged changes logic
+const discardStaged: IpcHandlerOf<'discardStaged'> = async (_event, { repoPath }) => {
+  await discardChanges(repoPath)
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
@@ -98,6 +105,11 @@ const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = async (
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
+const checkoutHandler: IpcHandlerOf<'checkout'> = async (_event, { repoPath, ref }) => {
+  await checkout(repoPath, ref)
+  return getRepo({} as IpcMainEvent, { repoPath })
+}
+
 export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
@@ -107,6 +119,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.amend, amend)
   ipcMain.handle(IPC_CHANNELS.commit, commit)
   ipcMain.handle(IPC_CHANNELS.setFilesStageStatus, setFilesStageStatus)
+  ipcMain.handle(IPC_CHANNELS.checkout, checkoutHandler)
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
 }

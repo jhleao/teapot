@@ -1,10 +1,19 @@
 import type { UiBranch } from '@shared/types'
 import React from 'react'
+import { useUiStateContext } from '../contexts/UiStateContext'
 
 export function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
+  const { checkout } = useUiStateContext()
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    checkout({ ref: data.name })
+  }
+
   return (
     <span
-      className={`inline-flex items-center rounded-lg px-2 py-1 text-xs font-medium ${
+      onDoubleClick={handleDoubleClick}
+      className={`inline-flex cursor-pointer items-center rounded-lg px-2 py-1 text-xs font-medium select-none ${
         data.isCurrent
           ? 'bg-accent text-accent-foreground border-accent-border border'
           : 'bg-muted text-muted-foreground border-border border'

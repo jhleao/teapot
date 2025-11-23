@@ -39,7 +39,7 @@ export type UiBranch = {
 export type UiWorkingTreeFile = {
   stageStatus: 'staged' | 'unstaged' | 'partially-staged'
   path: string
-  status: 'modified' | 'deleted' | 'renamed' | 'untracked'
+  status: 'modified' | 'deleted' | 'renamed' | 'added'
 }
 
 export type UiCommitRebaseStatus =

@@ -8,9 +8,11 @@ import type {
   Repo,
   StackNodeState,
   UiStack,
+  UiPullRequest,
   WorkingTreeStatus
 } from '@shared/types'
 import { createRebasePlan } from '@shared/types'
+import { GitForgeState } from '../../../shared/types/git-forge'
 
 const CANONICAL_TRUNK_NAMES = ['main', 'master', 'develop']
 
@@ -30,7 +32,7 @@ type TrunkBuildResult = {
   trunkSet: Set<string>
 }
 
-export function buildUiStack(repo: Repo): UiStack | null {
+export function buildUiStack(repo: Repo, gitForgeState: GitForgeState | null = null): UiStack | null {
   if (!repo.commits.length) {
     return null
   }
@@ -91,7 +93,7 @@ export function buildUiStack(repo: Repo): UiStack | null {
     return a.ref.localeCompare(b.ref)
   })
 
-  annotateBranchHeads(annotationBranches, state)
+  annotateBranchHeads(annotationBranches, state, gitForgeState)
 
   return trunkStack
 }
@@ -100,6 +102,7 @@ export type FullUiStateOptions = {
   rebaseIntent?: RebaseIntent | null
   rebaseSession?: RebaseState | null
   generateJobId?: () => RebaseJobId
+  gitForgeState?: GitForgeState | null
 }
 
 export type FullUiState = {
@@ -114,9 +117,9 @@ export type FullUiState = {
  * or create a high level replacement that fn(repo, rebaseQueue) -> UiState
  */
 export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
-  const stack = buildUiStack(repo)
+  const stack = buildUiStack(repo, options.gitForgeState)
   const rebase = deriveRebaseProjection(repo, options)
-  const projectedStack = deriveProjectedStack(repo, rebase)
+  const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState)
 
   return {
     stack,
@@ -276,7 +279,11 @@ function getOrderedChildren(
   })
 }
 
-function annotateBranchHeads(branches: Branch[], state: BuildState): void {
+function annotateBranchHeads(
+  branches: Branch[],
+  state: BuildState,
+  gitForgeState: GitForgeState | null
+): void {
   branches.forEach((branch) => {
     if (!branch.headSha) {
       return
@@ -289,9 +296,26 @@ function annotateBranchHeads(branches: Branch[], state: BuildState): void {
     if (alreadyAnnotated) {
       return
     }
+
+    let pullRequest: UiPullRequest | undefined
+    if (gitForgeState) {
+      const normalizedRef = normalizeBranchRef(branch)
+      const pr = gitForgeState.pullRequests.find((pr) => pr.headRefName === normalizedRef)
+      if (pr) {
+        pullRequest = {
+          number: pr.number,
+          title: pr.title,
+          url: pr.url,
+          state: pr.state,
+          isInSync: pr.headSha === branch.headSha
+        }
+      }
+    }
+
     commitNode.branches.push({
       name: branch.ref,
-      isCurrent: branch.ref === state.currentBranch
+      isCurrent: branch.ref === state.currentBranch,
+      pullRequest
     })
   })
 }
@@ -372,7 +396,11 @@ function createDefaultPreviewJobIdGenerator(): () => RebaseJobId {
   }
 }
 
-function deriveProjectedStack(repo: Repo, projection: RebaseProjection): UiStack | null {
+function deriveProjectedStack(
+  repo: Repo,
+  projection: RebaseProjection,
+  gitForgeState: GitForgeState | null = null
+): UiStack | null {
   if (projection.kind !== 'planning') {
     return null
   }
@@ -385,7 +413,7 @@ function deriveProjectedStack(repo: Repo, projection: RebaseProjection): UiStack
     ...repo,
     commits: projectedCommits
   }
-  return buildUiStack(projectedRepo)
+  return buildUiStack(projectedRepo, gitForgeState)
 }
 
 type SyntheticCommit = DomainCommit & { childrenSha: string[] }

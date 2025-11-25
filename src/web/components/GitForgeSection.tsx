@@ -3,19 +3,22 @@ import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 
-interface CommitGitForgeSectionProps {
+interface GitForgeSectionProps {
   branches: UiBranch[]
+  isTrunk: boolean
 }
 
 /**
  * This component is about anything regarding git forge within a given commit.
  */
-export function CommitGitForgeSection({
-  branches
-}: CommitGitForgeSectionProps): React.JSX.Element | null {
+export function GitForgeSection({
+  branches,
+  isTrunk
+}: GitForgeSectionProps): React.JSX.Element | null {
   const { createPullRequest } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
 
+  if (isTrunk) return null
   if (branches.length === 0) return null
 
   // Pick the first PR associated with any branch associated with that commit.
@@ -64,7 +67,7 @@ export function CommitGitForgeSection({
     <button
       onClick={handleCreatePr}
       disabled={isLoading}
-      className="text-muted-foreground bg-muted rounded-md border px-2 py-1 text-sm hover:underline disabled:opacity-50"
+      className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors"
     >
       {isLoading ? 'Creating PR...' : 'Create PR'}
     </button>

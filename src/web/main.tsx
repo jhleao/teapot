@@ -7,6 +7,7 @@ import { DragProvider } from './contexts/DragContext'
 import { LocalStateProvider, useLocalStateContext } from './contexts/LocalStateContext'
 import { UiStateProvider } from './contexts/UiStateContext'
 
+// eslint-disable-next-line react-refresh/only-export-components
 function AppWithProviders(): React.JSX.Element {
   const { selectedRepo } = useLocalStateContext()
 

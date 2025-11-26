@@ -44,4 +44,6 @@ export interface GitForgeAdapter {
     baseBranch: string,
     draft?: boolean
   ): Promise<ForgePullRequest>
+
+  closePullRequest(number: number): Promise<void>
 }

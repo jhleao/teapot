@@ -17,6 +17,7 @@ interface UiStateContextValue {
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
+  uncommit: (params: { commitSha: string }) => Promise<void>
   isWorkingTreeDirty: boolean
 }
 
@@ -158,6 +159,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const uncommit = useCallback(
+    async (params: { commitSha: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.uncommit({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
   return (
@@ -177,6 +186,7 @@ export function UiStateProvider({
         checkout,
         deleteBranch,
         createPullRequest,
+        uncommit,
         isWorkingTreeDirty
       }}
     >

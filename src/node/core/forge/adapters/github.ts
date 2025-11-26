@@ -1,5 +1,9 @@
 import { request } from 'undici'
-import { ForgePullRequest, GitForgeAdapter, GitForgeState } from '../../../../shared/types/git-forge'
+import {
+  ForgePullRequest,
+  GitForgeAdapter,
+  GitForgeState
+} from '../../../../shared/types/git-forge'
 
 export class GitHubAdapter implements GitForgeAdapter {
   constructor(
@@ -84,6 +88,28 @@ export class GitHubAdapter implements GitForgeAdapter {
       headSha: pr.head.sha,
       baseRefName: pr.base.ref,
       createdAt: pr.created_at
+    }
+  }
+
+  async closePullRequest(number: number): Promise<void> {
+    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls/${number}`
+
+    const { body, statusCode } = await request(url, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${this.pat}`,
+        'User-Agent': 'Teapot-Git-Client',
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        state: 'closed'
+      })
+    })
+
+    if (statusCode !== 200) {
+      const text = await body.text()
+      throw new Error(`GitHub API failed with status ${statusCode}: ${text}`)
     }
   }
 }

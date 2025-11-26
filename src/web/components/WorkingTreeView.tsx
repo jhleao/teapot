@@ -52,7 +52,8 @@ function CommitForm({
   onCommit,
   onAmend,
   onDiscard,
-  canCommit
+  canCommit,
+  canAmend
 }: {
   message: string
   onMessageChange: (message: string) => void
@@ -60,6 +61,7 @@ function CommitForm({
   onAmend: () => void
   onDiscard: () => void
   canCommit: boolean
+  canAmend: boolean
 }) {
   function CommitFormButton({
     onClick,
@@ -105,7 +107,7 @@ function CommitForm({
         </CommitFormButton>
         <CommitFormButton
           onClick={onAmend}
-          disabled={!canCommit}
+          disabled={!canAmend}
           className="rounded-none border-l-0"
         >
           Amend
@@ -206,6 +208,7 @@ export function WorkingTreeView({
     (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
   )
   const canCommit = hasStagedChanges && commitMessage.trim() !== ''
+  const canAmend = hasStagedChanges
 
   // ============================================================================
   // Render
@@ -232,6 +235,7 @@ export function WorkingTreeView({
           onAmend={handleAmend}
           onDiscard={handleDiscardClick}
           canCommit={canCommit}
+          canAmend={canAmend}
         />
       </div>
 

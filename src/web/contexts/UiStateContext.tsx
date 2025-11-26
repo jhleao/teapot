@@ -1,6 +1,7 @@
 import type { UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useGitWatcher } from '../hooks/use-git-watcher'
+import { log } from '@shared/logger'
 
 interface UiStateContextValue {
   toggleTheme: () => void
@@ -48,7 +49,7 @@ export function UiStateProvider({
         setRepoError(null)
       }
     } catch (error) {
-      console.error('Failed to refresh repo:', error)
+      log.error('Failed to refresh repo:', error)
       setRepoError(error instanceof Error ? error.message : String(error))
       setUiState(null)
     }

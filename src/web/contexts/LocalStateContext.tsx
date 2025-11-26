@@ -1,5 +1,6 @@
 import type { LocalRepo } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { log } from '@shared/logger'
 
 interface LocalStateContextValue {
   repos: LocalRepo[]
@@ -26,7 +27,7 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
         const loadedRepos = await window.api.getLocalRepos()
         setRepos(loadedRepos)
       } catch (error) {
-        console.error('Failed to load repos:', error)
+        log.error('Failed to load repos:', error)
       } finally {
         setIsLoading(false)
       }
@@ -39,7 +40,7 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
       const updatedRepos = await window.api.selectLocalRepo({ path })
       setRepos(updatedRepos)
     } catch (error) {
-      console.error('Failed to select repo:', error)
+      log.error('Failed to select repo:', error)
     }
   }, [])
 
@@ -49,7 +50,7 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
       const updatedRepos = await window.api.selectLocalRepo({ path })
       setRepos(updatedRepos)
     } catch (error) {
-      console.error('Failed to add repo:', error)
+      log.error('Failed to add repo:', error)
     }
   }, [])
 
@@ -58,7 +59,7 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
       const updatedRepos = await window.api.removeLocalRepo({ path })
       setRepos(updatedRepos)
     } catch (error) {
-      console.error('Failed to remove repo:', error)
+      log.error('Failed to remove repo:', error)
     }
   }, [])
 

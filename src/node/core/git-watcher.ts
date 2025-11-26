@@ -23,6 +23,11 @@ export class GitWatcher {
       })
     } catch (error) {
       console.error('Failed to watch repo:', error)
+      if (!webContents.isDestroyed()) {
+        // Extract message if it's an Error object, otherwise assume it's a string or send a generic message
+        const message = error instanceof Error ? error.message : String(error)
+        webContents.send(IPC_EVENTS.repoError, message)
+      }
     }
   }
 

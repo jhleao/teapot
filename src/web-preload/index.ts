@@ -39,6 +39,14 @@ export const api = {
     return (): void => {
       ipcRenderer.removeListener(IPC_EVENTS.repoChange, subscription)
     }
+  },
+  onRepoError: (callback: (error: string) => void) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const subscription = (_event: any, error: string): void => callback(error)
+    ipcRenderer.on(IPC_EVENTS.repoError, subscription)
+    return (): void => {
+      ipcRenderer.removeListener(IPC_EVENTS.repoError, subscription)
+    }
   }
 }
 

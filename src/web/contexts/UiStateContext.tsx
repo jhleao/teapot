@@ -6,6 +6,7 @@ interface UiStateContextValue {
   toggleTheme: () => void
   isDark: boolean
   uiState: UiState | null
+  repoError: string | null
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
   commit: (params: { message: string }) => Promise<void>
   amend: (params: { message?: string }) => Promise<void>
@@ -29,16 +30,25 @@ export function UiStateProvider({
 }): React.JSX.Element {
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
+  const [repoError, setRepoError] = useState<string | null>(null)
 
   const refreshRepo = useCallback(async () => {
     if (!repoPath) {
       setUiState(null)
+      setRepoError(null)
       return
     }
 
-    const uiState = await window.api.getRepo({ repoPath })
-    if (uiState) {
-      setUiState(uiState)
+    try {
+      const uiState = await window.api.getRepo({ repoPath })
+      if (uiState) {
+        setUiState(uiState)
+        setRepoError(null)
+      }
+    } catch (error) {
+      console.error('Failed to refresh repo:', error)
+      setRepoError(error instanceof Error ? error.message : String(error))
+      setUiState(null)
     }
   }, [repoPath])
 
@@ -51,7 +61,14 @@ export function UiStateProvider({
     return () => window.removeEventListener('focus', refreshRepo)
   }, [refreshRepo])
 
-  useGitWatcher({ repoPath, onRepoChange: refreshRepo })
+  useGitWatcher({
+    repoPath,
+    onRepoChange: refreshRepo,
+    onRepoError: (error) => {
+      setRepoError(error)
+      setUiState(null)
+    }
+  })
 
   useEffect(() => {
     const html = document.documentElement
@@ -140,6 +157,7 @@ export function UiStateProvider({
         toggleTheme,
         isDark,
         uiState,
+        repoError,
         setFilesStageStatus,
         commit,
         amend,

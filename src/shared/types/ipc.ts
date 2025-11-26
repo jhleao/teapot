@@ -25,7 +25,8 @@ export const IPC_CHANNELS = {
 } as const
 
 export const IPC_EVENTS = {
-  repoChange: 'repoChange'
+  repoChange: 'repoChange',
+  repoError: 'repoError'
 } as const
 
 /**

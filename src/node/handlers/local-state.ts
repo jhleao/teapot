@@ -1,5 +1,6 @@
 import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
 import { dialog, ipcMain } from 'electron'
+import { gitForgeService } from '../core/forge/service'
 import { configStore } from '../store'
 
 const getLocalReposHandler: IpcHandlerOf<'getLocalRepos'> = () => {
@@ -31,10 +32,21 @@ const showFolderPickerHandler: IpcHandlerOf<'showFolderPicker'> = async () => {
   return result.filePaths[0]
 }
 
+const getGithubPatHandler: IpcHandlerOf<'getGithubPat'> = () => {
+  return configStore.getGithubPat() ?? null
+}
+
+const setGithubPatHandler: IpcHandlerOf<'setGithubPat'> = (_event, { token }) => {
+  configStore.setGithubPat(token)
+  gitForgeService.invalidateAll()
+}
+
 export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getLocalRepos, getLocalReposHandler)
   ipcMain.handle(IPC_CHANNELS.selectLocalRepo, selectLocalRepoHandler)
   ipcMain.handle(IPC_CHANNELS.addLocalRepo, addLocalRepoHandler)
   ipcMain.handle(IPC_CHANNELS.removeLocalRepo, removeLocalRepoHandler)
   ipcMain.handle(IPC_CHANNELS.showFolderPicker, showFolderPickerHandler)
+  ipcMain.handle(IPC_CHANNELS.getGithubPat, getGithubPatHandler)
+  ipcMain.handle(IPC_CHANNELS.setGithubPat, setGithubPatHandler)
 }

@@ -3,6 +3,7 @@ import Store from 'electron-store'
 
 interface StoreSchema {
   repos: LocalRepo[]
+  githubPat?: string
 }
 
 export class ConfigStore {
@@ -19,6 +20,14 @@ export class ConfigStore {
 
   getLocalRepos(): LocalRepo[] {
     return this.store.get('repos', [])
+  }
+
+  getGithubPat(): string | undefined {
+    return this.store.get('githubPat')
+  }
+
+  setGithubPat(token: string): void {
+    this.store.set('githubPat', token)
   }
 
   private setRepos(repos: LocalRepo[]): void {

@@ -1,5 +1,7 @@
+import { Settings } from 'lucide-react'
+import React, { useState } from 'react'
+import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
-import { ThemeToggle } from './components/ThemeToggle'
 import { TitleBar } from './components/TitleBar'
 import { Topbar } from './components/Topbar'
 import { useLocalStateContext } from './contexts/LocalStateContext'
@@ -8,6 +10,7 @@ import { useUiStateContext } from './contexts/UiStateContext'
 function App(): React.JSX.Element {
   const { uiState, repoError } = useUiStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const handleAddRepo = async (): Promise<void> => {
     const selectedPath = await window.api.showFolderPicker()
@@ -98,7 +101,16 @@ function App(): React.JSX.Element {
           )}
         </div>
       </div>
-      <ThemeToggle />
+      
+      <button
+        onClick={() => setIsSettingsOpen(true)}
+        className="focus:ring-foreground fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none shadow-lg"
+        aria-label="Settings"
+      >
+        <Settings className="h-5 w-5" />
+      </button>
+
+      <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
     </div>
   )
 }

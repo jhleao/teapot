@@ -2,6 +2,7 @@ import { Moon, Sun } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog'
+import { log } from '@shared/logger'
 
 interface SettingsDialogProps {
   open: boolean
@@ -25,7 +26,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
       const storedPat = await window.api.getGithubPat()
       setPat(storedPat || '')
     } catch (error) {
-      console.error('Failed to load PAT:', error)
+      log.error('Failed to load PAT:', error)
     } finally {
       setIsLoading(false)
     }
@@ -37,7 +38,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
     try {
       await window.api.setGithubPat({ token: newValue })
     } catch (error) {
-      console.error('Failed to save PAT:', error)
+      log.error('Failed to save PAT:', error)
     }
   }
 

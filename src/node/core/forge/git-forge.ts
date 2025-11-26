@@ -1,4 +1,5 @@
 import { GitForgeAdapter, GitForgeState } from '../../../shared/types/git-forge'
+import { log } from '@shared/logger'
 
 // Re-exporting shared types here for convenience if needed by consumers in node/
 export type { GitForgeAdapter, GitForgeState }
@@ -21,7 +22,7 @@ export class GitForgeClient {
         this.state = await this.adapter.fetchState()
         this.lastFetchTime = now
       } catch (error) {
-        console.error('Failed to fetch git forge state:', error)
+        log.error('Failed to fetch git forge state:', error)
         // Return stale state on error to prevent UI flicker
       }
     }

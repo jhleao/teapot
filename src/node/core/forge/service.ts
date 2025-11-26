@@ -4,6 +4,7 @@ import { GitForgeState } from '../../../shared/types/git-forge'
 import { configStore } from '../../store'
 import { GitHubAdapter } from './adapters/github'
 import { GitForgeClient } from './git-forge'
+import { log } from '@shared/logger'
 
 export class GitForgeService {
   private clients = new Map<string, GitForgeClient>()
@@ -42,7 +43,7 @@ export class GitForgeService {
     try {
       remotes = await git.listRemotes({ fs, dir: repoPath })
     } catch (e) {
-      console.error('Failed to list remotes:', e)
+      log.error('Failed to list remotes:', e)
       return null
     }
 

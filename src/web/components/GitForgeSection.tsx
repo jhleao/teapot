@@ -2,6 +2,7 @@ import type { UiBranch } from '@shared/types'
 import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
+import { log } from '@shared/logger'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
@@ -57,7 +58,7 @@ export function GitForgeSection({
     try {
       await createPullRequest({ headBranch: branch.name })
     } catch (error) {
-      console.error('Failed to create PR:', error)
+      log.error('Failed to create PR:', error)
     } finally {
       setIsLoading(false)
     }

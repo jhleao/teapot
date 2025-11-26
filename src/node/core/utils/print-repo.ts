@@ -1,9 +1,10 @@
 import type { Repo, UiStack } from '@shared/types'
 import { buildUiStack } from './build-ui-state.js'
+import { log } from '@shared/logger'
 
 export function printRepo(repo: Repo): void {
   printWorkingTree(repo)
-  console.log(`\nBranches (${repo.branches.length}):`)
+  log.debug(`\nBranches (${repo.branches.length}):`)
 
   const sortedBranches = [...repo.branches].sort((a, b) => {
     if (a.isTrunk && !b.isTrunk) return -1
@@ -17,20 +18,20 @@ export function printRepo(repo: Repo): void {
     const trunkMarker = branch.isTrunk ? ' (TRUNK)' : ''
     const remoteMarker = branch.isRemote ? ' [remote]' : ' [local]'
     const headSha = branch.headSha || 'unknown'
-    console.log(`  - ${branch.ref}${trunkMarker}${remoteMarker} -> ${headSha}`)
+    log.debug(`  - ${branch.ref}${trunkMarker}${remoteMarker} -> ${headSha}`)
   })
 
-  console.log(`\nCommits (${repo.commits.length}):`)
+  log.debug(`\nCommits (${repo.commits.length}):`)
   repo.commits.forEach((commit) => {
     const timestamp = commit.timeMs > 0 ? new Date(commit.timeMs).toISOString() : 'unknown date'
     const parent = commit.parentSha || 'none'
     const children = commit.childrenSha.length > 0 ? commit.childrenSha.join(', ') : 'none'
     const message = commit.message.split('\n')[0] || '(no message)'
-    console.log(`  - ${commit.sha}`)
-    console.log(`      message : ${message}`)
-    console.log(`      time    : ${timestamp}`)
-    console.log(`      parent  : ${parent}`)
-    console.log(`      children: ${children}`)
+    log.debug(`  - ${commit.sha}`)
+    log.debug(`      message : ${message}`)
+    log.debug(`      time    : ${timestamp}`)
+    log.debug(`      parent  : ${parent}`)
+    log.debug(`      children: ${children}`)
   })
 
   printStackState(repo)
@@ -38,13 +39,13 @@ export function printRepo(repo: Repo): void {
 
 function printWorkingTree(repo: Repo): void {
   const status = repo.workingTreeStatus
-  console.log('\nWorking Tree:')
-  console.log(`  Branch   : ${status.currentBranch}`)
-  console.log(`  HEAD SHA : ${status.currentCommitSha}`)
-  console.log(
+  log.debug('\nWorking Tree:')
+  log.debug(`  Branch   : ${status.currentBranch}`)
+  log.debug(`  HEAD SHA : ${status.currentCommitSha}`)
+  log.debug(
     `  Tracking : ${status.tracking ?? '(no upstream)'}${status.detached ? ' [detached]' : ''}`
   )
-  console.log(`  Rebasing : ${status.isRebasing ? 'yes' : 'no'}`)
+  log.debug(`  Rebasing : ${status.isRebasing ? 'yes' : 'no'}`)
   const sections: Array<[string, string[]]> = [
     ['Staged', status.staged],
     ['Modified', status.modified],
@@ -55,9 +56,9 @@ function printWorkingTree(repo: Repo): void {
     ['Conflicted', status.conflicted]
   ]
   sections.forEach(([label, files]) => {
-    console.log(`  ${label.padEnd(10)}: ${files.length > 0 ? files.join(', ') : '(none)'}`)
+    log.debug(`  ${label.padEnd(10)}: ${files.length > 0 ? files.join(', ') : '(none)'}`)
   })
-  console.log(
+  log.debug(
     `  All changed: ${status.allChangedFiles.length > 0 ? status.allChangedFiles.join(', ') : '(none)'}`
   )
 }
@@ -65,13 +66,13 @@ function printWorkingTree(repo: Repo): void {
 function printStackState(repo: Repo): void {
   const stack = buildUiStack(repo)
   const hasStack = stack !== null
-  console.log(`\nStacks (${hasStack ? 1 : 0} top-level):`)
+  log.debug(`\nStacks (${hasStack ? 1 : 0} top-level):`)
   if (!stack) {
-    console.log('  (no stacks)')
+    log.debug('  (no stacks)')
     return
   }
   const stackLabel = stack.isTrunk ? ' [base]' : ''
-  console.log(`  Stack 1${stackLabel}:`)
+  log.debug(`  Stack 1${stackLabel}:`)
   printStack(stack, '    ')
 }
 
@@ -85,13 +86,13 @@ function printStack(stack: UiStack, indent: string): void {
             .map((branch) => `${branch.name}${branch.isCurrent ? ' [current]' : ''}`)
             .join(', ')
         : '(none)'
-    console.log(`${indent}- ${commit.sha} ${commit.name}`)
-    console.log(`${indent}    time     : ${timestamp}`)
-    console.log(`${indent}    branches : ${branchSummary}`)
+    log.debug(`${indent}- ${commit.sha} ${commit.name}`)
+    log.debug(`${indent}    time     : ${timestamp}`)
+    log.debug(`${indent}    branches : ${branchSummary}`)
     if (commit.spinoffs.length > 0) {
-      console.log(`${indent}    spinoffs:`)
+      log.debug(`${indent}    spinoffs:`)
       commit.spinoffs.forEach((spinoff, idx) => {
-        console.log(`${indent}      -> ${idx + 1}`)
+        log.debug(`${indent}      -> ${idx + 1}`)
         printStack(spinoff, `${indent}         `)
       })
     }

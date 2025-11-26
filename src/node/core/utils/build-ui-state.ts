@@ -7,8 +7,8 @@ import type {
   RebaseState,
   Repo,
   StackNodeState,
-  UiStack,
   UiPullRequest,
+  UiStack,
   WorkingTreeStatus
 } from '@shared/types'
 import { createRebasePlan } from '@shared/types'
@@ -32,7 +32,10 @@ type TrunkBuildResult = {
   trunkSet: Set<string>
 }
 
-export function buildUiStack(repo: Repo, gitForgeState: GitForgeState | null = null): UiStack | null {
+export function buildUiStack(
+  repo: Repo,
+  gitForgeState: GitForgeState | null = null
+): UiStack | null {
   if (!repo.commits.length) {
     return null
   }

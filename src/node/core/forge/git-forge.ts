@@ -44,4 +44,9 @@ export class GitForgeClient {
     // Immediately refresh state to include the new PR
     return this.refresh()
   }
+
+  async closePullRequest(number: number): Promise<GitForgeState> {
+    await this.adapter.closePullRequest(number)
+    return this.refresh()
+  }
 }

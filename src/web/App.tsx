@@ -83,9 +83,7 @@ function App(): React.JSX.Element {
                 <h2 className="text-foreground mb-2 text-xl font-semibold">
                   Failed to load repository
                 </h2>
-                <p className="text-muted-foreground mb-6 text-sm max-w-md mx-auto">
-                  {repoError}
-                </p>
+                <p className="text-muted-foreground mx-auto mb-6 max-w-md text-sm">{repoError}</p>
                 <button
                   onClick={() => window.location.reload()}
                   className="bg-accent text-accent-foreground hover:bg-accent/90 focus:ring-accent inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
@@ -101,10 +99,10 @@ function App(): React.JSX.Element {
           )}
         </div>
       </div>
-      
+
       <button
         onClick={() => setIsSettingsOpen(true)}
-        className="focus:ring-foreground fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none shadow-lg"
+        className="focus:ring-foreground bg-secondary text-secondary-foreground hover:bg-secondary/80 fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
         aria-label="Settings"
       >
         <Settings className="h-5 w-5" />

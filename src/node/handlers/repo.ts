@@ -12,8 +12,10 @@ import {
   buildUiStack,
   checkout,
   commitToNewBranch,
+  createPullRequest as createPullRequestCore,
   deleteBranch,
   discardChanges,
+  uncommit as uncommitCore,
   updateFileStageStatus
 } from '../core'
 import { gitForgeService } from '../core/forge/service'
@@ -130,70 +132,12 @@ const createPullRequest: IpcHandlerOf<'createPullRequest'> = async (
   _event,
   { repoPath, headBranch }
 ) => {
-  const config: Configuration = { repoPath }
-  // We need the repo model to find the base branch and commit message
-  const repo = await buildRepoModel(config)
-  
-  const headBranchObj = repo.branches.find(b => b.ref === headBranch)
-  if (!headBranchObj) {
-    throw new Error(`Branch ${headBranch} not found`)
-  }
+  await createPullRequestCore(repoPath, headBranch)
+  return getRepo({} as IpcMainEvent, { repoPath })
+}
 
-  const headCommit = repo.commits.find(c => c.sha === headBranchObj.headSha)
-  if (!headCommit) {
-    throw new Error(`Commit ${headBranchObj.headSha} not found`)
-  }
-  
-  const title = headCommit.message.split('\n')[0] || 'No title'
-  
-  // Find base branch by traversing up the parents
-  let baseBranch = ''
-  let currentSha = headCommit.parentSha
-  
-  // Safety limit for traversal
-  let depth = 0
-  const MAX_DEPTH = 1000
-
-  while (currentSha && depth < MAX_DEPTH) {
-    depth++
-    
-    // Check if any local branch points to this SHA
-    const branchesOnCommit = repo.branches.filter(
-      b => b.headSha === currentSha && !b.isRemote
-    )
-    
-    if (branchesOnCommit.length > 0) {
-      // Prioritize trunk if present
-      const trunk = branchesOnCommit.find(b => b.isTrunk)
-      if (trunk) {
-        baseBranch = trunk.ref
-        break
-      }
-      // Otherwise pick the first one
-      baseBranch = branchesOnCommit[0].ref
-      break
-    }
-
-    const currentCommit = repo.commits.find(c => c.sha === currentSha)
-    if (!currentCommit) break
-    currentSha = currentCommit.parentSha
-  }
-  
-  if (!baseBranch) {
-    // Fallback to trunk if we can't find anything
-    const trunk = repo.branches.find(b => b.isTrunk && !b.isRemote)
-    if (trunk) {
-      baseBranch = trunk.ref
-    } else {
-      // If no local trunk, try remote trunk? 
-      // Usually git-forge expects a branch name that exists on the remote.
-      // If we have 'main' local, we use 'main'.
-      // If we don't, maybe we should error.
-      throw new Error('Could not determine base branch for PR')
-    }
-  }
-
-  await gitForgeService.createPullRequest(repoPath, title, headBranch, baseBranch, false)
+const uncommit: IpcHandlerOf<'uncommit'> = async (_event, { repoPath, commitSha }) => {
+  await uncommitCore(repoPath, commitSha)
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
@@ -211,4 +155,5 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
   ipcMain.handle(IPC_CHANNELS.createPullRequest, createPullRequest)
+  ipcMain.handle(IPC_CHANNELS.uncommit, uncommit)
 }

@@ -1,9 +1,9 @@
-import { configStore } from '../../store'
-import { GitForgeClient } from './git-forge'
-import { GitHubAdapter } from './adapters/github'
-import git from 'isomorphic-git'
 import fs from 'fs'
+import git from 'isomorphic-git'
 import { GitForgeState } from '../../../shared/types/git-forge'
+import { configStore } from '../../store'
+import { GitHubAdapter } from './adapters/github'
+import { GitForgeClient } from './git-forge'
 
 export class GitForgeService {
   private clients = new Map<string, GitForgeClient>()
@@ -11,29 +11,29 @@ export class GitForgeService {
   async getClient(repoPath: string): Promise<GitForgeClient | null> {
     const pat = configStore.getGithubPat()
     if (!pat) {
-      // If no PAT, we can't do anything. Clear any existing client if we want to be strict, 
+      // If no PAT, we can't do anything. Clear any existing client if we want to be strict,
       // but for now let's just return null.
       return null
     }
 
     // If we have a client and the PAT hasn't changed, return it.
     // However, if the PAT *changes*, we should probably recreate the client.
-    // Since we don't easily know if the PAT changed without checking store every time, 
+    // Since we don't easily know if the PAT changed without checking store every time,
     // let's assume checking store is cheap (it's in-memory).
-    // But the client holds the adapter which holds the PAT. 
+    // But the client holds the adapter which holds the PAT.
     // We should probably cache the PAT used to create the client.
-    
-    // For simplicity: if we have a cached client, use it. 
+
+    // For simplicity: if we have a cached client, use it.
     // Ideally, we'd listen for config changes to invalidate the cache.
     // Given the constraints, let's just check if we have one.
     // If the user updates the PAT, they might need to restart or we need a way to clear cache.
     // Let's add a `clearCache` method or similar if needed later.
-    
+
     if (this.clients.has(repoPath)) {
-       // We might want to check if the PAT inside the adapter matches the current PAT,
-       // but the adapter encapsulates it. 
-       // Let's blindly trust the cache for now.
-       return this.clients.get(repoPath)!
+      // We might want to check if the PAT inside the adapter matches the current PAT,
+      // but the adapter encapsulates it.
+      // Let's blindly trust the cache for now.
+      return this.clients.get(repoPath)!
     }
 
     // Determine owner/repo from remotes
@@ -50,7 +50,7 @@ export class GitForgeService {
       return null
     }
 
-    const origin = remotes.find(r => r.remote === 'origin') || remotes[0]
+    const origin = remotes.find((r) => r.remote === 'origin') || remotes[0]
     if (!origin) return null
 
     const { owner, repo } = this.parseRemoteUrl(origin.url)
@@ -69,7 +69,7 @@ export class GitForgeService {
     // https://github.com/owner/repo.git
     // git@github.com:owner/repo.git
     // https://github.com/owner/repo
-    
+
     try {
       let cleanUrl = url
       if (cleanUrl.endsWith('.git')) {
@@ -87,13 +87,13 @@ export class GitForgeService {
       return { owner: null, repo: null }
     }
   }
-  
+
   async getState(repoPath: string): Promise<GitForgeState> {
-      const client = await this.getClient(repoPath)
-      if (!client) {
-          return { pullRequests: [] }
-      }
-      return client.getState()
+    const client = await this.getClient(repoPath)
+    if (!client) {
+      return { pullRequests: [] }
+    }
+    return client.getState()
   }
 
   async createPullRequest(
@@ -109,13 +109,20 @@ export class GitForgeService {
     }
     await client.createPullRequest(title, headBranch, baseBranch, draft)
   }
-  
-  invalidateCache(repoPath: string) {
-      this.clients.delete(repoPath)
+
+  async closePullRequest(repoPath: string, number: number): Promise<void> {
+    const client = await this.getClient(repoPath)
+    if (client) {
+      await client.closePullRequest(number)
+    }
   }
-  
+
+  invalidateCache(repoPath: string) {
+    this.clients.delete(repoPath)
+  }
+
   invalidateAll() {
-      this.clients.clear()
+    this.clients.clear()
   }
 }
 

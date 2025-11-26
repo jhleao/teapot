@@ -24,7 +24,8 @@ export const IPC_CHANNELS = {
   deleteBranch: 'deleteBranch',
   getGithubPat: 'getGithubPat',
   setGithubPat: 'setGithubPat',
-  createPullRequest: 'createPullRequest'
+  createPullRequest: 'createPullRequest',
+  uncommit: 'uncommit'
 } as const
 
 export const IPC_EVENTS = {
@@ -118,6 +119,10 @@ export interface IpcContract {
       repoPath: string
       headBranch: string
     }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.uncommit]: {
+    request: { repoPath: string; commitSha: string }
     response: UiState | null
   }
 }

@@ -43,7 +43,7 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent } = useUiStateContext()
+  const { confirmRebaseIntent, cancelRebaseIntent, uncommit } = useUiStateContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -71,6 +71,11 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
 
   const handleCancelRebase = async (): Promise<void> => {
     await cancelRebaseIntent()
+  }
+
+  const handleUncommit = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    await uncommit({ commitSha: data.sha })
   }
 
   return (
@@ -137,6 +142,14 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
         <div className={cn('text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
         <GitForgeSection branches={data.branches} isTrunk={stack.isTrunk} />
+        {!stack.isTrunk && isCurrent && (
+          <button
+            onClick={handleUncommit}
+            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors"
+          >
+            Uncommit
+          </button>
+        )}
         {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}
         {data.rebaseStatus === 'prompting' && (
           <div className="ml-auto flex gap-2">

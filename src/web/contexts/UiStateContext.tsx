@@ -16,6 +16,7 @@ interface UiStateContextValue {
   cancelRebaseIntent: () => Promise<void>
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
+  createPullRequest: (params: { headBranch: string }) => Promise<void>
   isWorkingTreeDirty: boolean
 }
 
@@ -149,6 +150,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const createPullRequest = useCallback(
+    async (params: { headBranch: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.createPullRequest({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
   return (
@@ -167,6 +176,7 @@ export function UiStateProvider({
         cancelRebaseIntent,
         checkout,
         deleteBranch,
+        createPullRequest,
         isWorkingTreeDirty
       }}
     >

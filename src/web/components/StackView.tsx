@@ -5,6 +5,7 @@ import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { BranchBadge } from './BranchBadge'
+import { GitForgeSection } from './GitForgeSection'
 import { RebaseStatusBadge } from './RebaseStatusBadge'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
@@ -135,6 +136,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
         </div>
         <div className={cn('text-sm', isCurrent && 'font-semibold')}>{data.name}</div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
+        <GitForgeSection branches={data.branches} isTrunk={stack.isTrunk} />
         {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}
         {data.rebaseStatus === 'prompting' && (
           <div className="ml-auto flex gap-2">

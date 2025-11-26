@@ -34,6 +34,18 @@ export type UiBranch = {
    * or just directly to the commit.
    */
   isCurrent: boolean
+  pullRequest?: UiPullRequest
+}
+
+export type UiPullRequest = {
+  number: number
+  title: string
+  url: string
+  state: 'open' | 'closed' | 'merged' | 'draft'
+  /**
+   * True if the local branch tip matches the PR head SHA.
+   */
+  isInSync: boolean
 }
 
 export type UiWorkingTreeFile = {

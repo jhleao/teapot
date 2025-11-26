@@ -21,7 +21,10 @@ export const IPC_CHANNELS = {
   watchRepo: 'watchRepo',
   unwatchRepo: 'unwatchRepo',
   checkout: 'checkout',
-  deleteBranch: 'deleteBranch'
+  deleteBranch: 'deleteBranch',
+  getGithubPat: 'getGithubPat',
+  setGithubPat: 'setGithubPat',
+  createPullRequest: 'createPullRequest'
 } as const
 
 export const IPC_EVENTS = {
@@ -100,6 +103,21 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.deleteBranch]: {
     request: { repoPath: string; branchName: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.getGithubPat]: {
+    request: void
+    response: string | null
+  }
+  [IPC_CHANNELS.setGithubPat]: {
+    request: { token: string }
+    response: void
+  }
+  [IPC_CHANNELS.createPullRequest]: {
+    request: {
+      repoPath: string
+      headBranch: string
+    }
     response: UiState | null
   }
 }

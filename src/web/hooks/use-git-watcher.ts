@@ -2,10 +2,12 @@ import { useEffect } from 'react'
 
 export function useGitWatcher({
   repoPath,
-  onRepoChange
+  onRepoChange,
+  onRepoError
 }: {
   repoPath: string | null
   onRepoChange: () => void
+  onRepoError?: (error: string) => void
 }): void {
   useEffect(() => {
     if (!repoPath) return
@@ -16,9 +18,19 @@ export function useGitWatcher({
       onRepoChange()
     })
 
+    let cleanupErrorListener: (() => void) | undefined
+    if (onRepoError) {
+      cleanupErrorListener = window.api.onRepoError((error) => {
+        onRepoError(error)
+      })
+    }
+
     return () => {
       cleanupListener()
+      if (cleanupErrorListener) {
+        cleanupErrorListener()
+      }
       void window.api.unwatchRepo({ repoPath })
     }
-  }, [repoPath, onRepoChange])
+  }, [repoPath, onRepoChange, onRepoError])
 }

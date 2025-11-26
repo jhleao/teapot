@@ -2,6 +2,7 @@ import { exec } from 'child_process'
 import fs from 'fs'
 import git from 'isomorphic-git'
 import { promisify } from 'util'
+import { log } from '@shared/logger'
 
 const execAsync = promisify(exec)
 
@@ -33,7 +34,7 @@ export async function getAuthorIdentity(dir: string): Promise<AuthorIdentity> {
 
     if (systemName && systemEmail) return { name: systemName, email: systemEmail }
   } catch (error) {
-    console.warn('Failed to resolve git author identity:', error)
+    log.warn('Failed to resolve git author identity:', error)
   }
 
   throw new Error('Failed to resolve git author identity')

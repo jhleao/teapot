@@ -8,12 +8,13 @@ import type {
 } from '@shared/types'
 import type { FullUiStateOptions } from './build-ui-state.js'
 import { buildFullUiState } from './build-ui-state.js'
+import { log } from '@shared/logger'
 
 export function printUiState(repo: Repo, options: FullUiStateOptions = {}): void {
   const uiState = buildFullUiState(repo, options)
 
-  console.log('UI State')
-  console.log('========')
+  log.debug('UI State')
+  log.debug('========')
   printWorkingTree(uiState.workingTree)
   printStackState('Current', uiState.stack)
   printStackState('Projected', uiState.projectedStack)
@@ -21,25 +22,25 @@ export function printUiState(repo: Repo, options: FullUiStateOptions = {}): void
 }
 
 function printWorkingTree(status: Repo['workingTreeStatus']): void {
-  console.log('\nWorking Tree:')
-  console.log(`  Branch   : ${status.currentBranch}`)
-  console.log(`  HEAD SHA : ${status.currentCommitSha}`)
-  console.log(
+  log.debug('\nWorking Tree:')
+  log.debug(`  Branch   : ${status.currentBranch}`)
+  log.debug(`  HEAD SHA : ${status.currentCommitSha}`)
+  log.debug(
     `  Tracking : ${status.tracking ?? '(no upstream)'}${status.detached ? ' [detached]' : ''}`
   )
-  console.log(`  Rebasing : ${status.isRebasing ? 'yes' : 'no'}`)
+  log.debug(`  Rebasing : ${status.isRebasing ? 'yes' : 'no'}`)
 }
 
 function printStackState(label: string, stack: UiStack | null): void {
   const hasStack = Boolean(stack)
-  console.log(`\n${label} Stack${hasStack ? '' : 's'} (${hasStack ? 1 : 0} top-level):`)
+  log.debug(`\n${label} Stack${hasStack ? '' : 's'} (${hasStack ? 1 : 0} top-level):`)
   if (!stack) {
-    console.log('  (no stacks)')
+    log.debug('  (no stacks)')
     return
   }
 
   const marker = stack.isTrunk ? ' [base]' : ''
-  console.log(`  Stack 1${marker}:`)
+  log.debug(`  Stack 1${marker}:`)
   printStack(stack, '    ')
 }
 
@@ -53,13 +54,13 @@ function printStack(stack: UiStack, indent: string): void {
             .map((branch) => `${branch.name}${branch.isCurrent ? ' [current]' : ''}`)
             .join(', ')
         : '(none)'
-    console.log(`${indent}- ${commit.sha} ${commit.name}`)
-    console.log(`${indent}    time     : ${timestamp}`)
-    console.log(`${indent}    branches : ${branchSummary}`)
+    log.debug(`${indent}- ${commit.sha} ${commit.name}`)
+    log.debug(`${indent}    time     : ${timestamp}`)
+    log.debug(`${indent}    branches : ${branchSummary}`)
     if (commit.spinoffs.length > 0) {
-      console.log(`${indent}    spinoffs:`)
+      log.debug(`${indent}    spinoffs:`)
       commit.spinoffs.forEach((spinoff, idx) => {
-        console.log(`${indent}      -> ${idx + 1}`)
+        log.debug(`${indent}      -> ${idx + 1}`)
         printStack(spinoff, `${indent}         `)
       })
     }
@@ -67,50 +68,50 @@ function printStack(stack: UiStack, indent: string): void {
 }
 
 function printRebaseProjection(projection: RebaseProjection): void {
-  console.log('\nRebase:')
+  log.debug('\nRebase:')
   if (projection.kind === 'idle') {
-    console.log('  state   : idle')
+    log.debug('  state   : idle')
     return
   }
 
   if (projection.kind === 'planning') {
-    console.log('  state   : planning')
+    log.debug('  state   : planning')
     printPlan(projection.plan)
     return
   }
 
-  console.log('  state   : rebasing')
+  log.debug('  state   : rebasing')
   printSession(projection.session)
 }
 
 function printPlan(plan: RebasePlan): void {
-  console.log(`  intent  : ${plan.intent.id}`)
-  console.log(`  targets : ${plan.intent.targets.length}`)
+  log.debug(`  intent  : ${plan.intent.id}`)
+  log.debug(`  targets : ${plan.intent.targets.length}`)
   printQueue(plan.state)
 }
 
 function printSession(state: RebaseState): void {
-  console.log(`  session : ${state.session.id}`)
-  console.log(`  status  : ${state.session.status}`)
+  log.debug(`  session : ${state.session.id}`)
+  log.debug(`  status  : ${state.session.status}`)
   printQueue(state)
 }
 
 function printQueue(state: RebaseState): void {
   const { queue } = state
-  console.log(`  active  : ${queue.activeJobId ?? '(none)'}`)
-  console.log(`  pending : ${queue.pendingJobIds.length}`)
-  console.log(`  blocked : ${queue.blockedJobIds.length}`)
+  log.debug(`  active  : ${queue.activeJobId ?? '(none)'}`)
+  log.debug(`  pending : ${queue.pendingJobIds.length}`)
+  log.debug(`  blocked : ${queue.blockedJobIds.length}`)
   const orderedJobIds = state.session.jobs
   if (!orderedJobIds.length) {
-    console.log('  jobs    : (none)')
+    log.debug('  jobs    : (none)')
     return
   }
 
-  console.log('  jobs:')
+  log.debug('  jobs:')
   orderedJobIds.forEach((jobId, idx) => {
     const job = state.jobsById[jobId]
     if (!job) {
-      console.log(`    ${idx + 1}. ${jobId} (missing)`)
+      log.debug(`    ${idx + 1}. ${jobId} (missing)`)
       return
     }
     printJob(job, `    ${idx + 1}.`)
@@ -118,14 +119,14 @@ function printQueue(state: RebaseState): void {
 }
 
 function printJob(job: RebaseJob, label: string): void {
-  console.log(`${label} id      : ${job.id}`)
-  console.log(`${label} branch  : ${job.branch}`)
-  console.log(`${label} status  : ${job.status}`)
-  console.log(`${label} base    : ${job.originalBaseSha} -> ${job.targetBaseSha}`)
-  console.log(
+  log.debug(`${label} id      : ${job.id}`)
+  log.debug(`${label} branch  : ${job.branch}`)
+  log.debug(`${label} status  : ${job.status}`)
+  log.debug(`${label} base    : ${job.originalBaseSha} -> ${job.targetBaseSha}`)
+  log.debug(
     `${label} head    : ${job.originalHeadSha}${job.rebasedHeadSha ? ` => ${job.rebasedHeadSha}` : ''}`
   )
   if (job.conflicts && job.conflicts.length > 0) {
-    console.log(`${label} conflicts: ${job.conflicts.length}`)
+    log.debug(`${label} conflicts: ${job.conflicts.length}`)
   }
 }

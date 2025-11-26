@@ -1,6 +1,7 @@
 import fs from 'fs'
 import git from 'isomorphic-git'
 import path from 'path'
+import { log } from '@shared/logger'
 
 export async function discardChanges(repoPath: string): Promise<void> {
   let hasHead = false
@@ -42,7 +43,7 @@ export async function discardChanges(repoPath: string): Promise<void> {
           await fs.promises.rm(fullPath, { force: true, recursive: true })
         } catch (e) {
           // Ignore errors
-          console.error(`Failed to remove ${fullPath}:`, e)
+          log.error(`Failed to remove ${fullPath}:`, e)
         }
       }
     }

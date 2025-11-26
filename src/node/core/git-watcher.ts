@@ -1,6 +1,7 @@
 import { IPC_EVENTS } from '@shared/types'
 import { WebContents } from 'electron'
 import { FSWatcher, watch } from 'fs'
+import { log } from '@shared/logger'
 
 export class GitWatcher {
   private currentWatcher: FSWatcher | null = null
@@ -22,7 +23,7 @@ export class GitWatcher {
         this.handleFileChange(webContents)
       })
     } catch (error) {
-      console.error('Failed to watch repo:', error)
+      log.error('Failed to watch repo:', error)
       if (!webContents.isDestroyed()) {
         // Extract message if it's an Error object, otherwise assume it's a string or send a generic message
         const message = error instanceof Error ? error.message : String(error)

@@ -7,6 +7,7 @@ import {
   type IpcResponse
 } from '@shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
+import { log } from '@shared/logger'
 
 function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
   type ApiType = {
@@ -58,7 +59,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
-    console.error(error)
+    log.error(error)
   }
 } else {
   // @ts-ignore (define in dts)

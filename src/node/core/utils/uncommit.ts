@@ -1,3 +1,4 @@
+import { log } from '@shared/logger'
 import fs from 'fs'
 import git from 'isomorphic-git'
 import path from 'path'
@@ -5,7 +6,7 @@ import { gitForgeService } from '../forge/service'
 import { deleteBranch } from './delete-branch'
 
 export async function uncommit(repoPath: string, commitSha: string): Promise<void> {
-  console.log(`[uncommit] Starting uncommit for ${commitSha}`)
+  log.debug(`[uncommit] Starting uncommit for ${commitSha}`)
 
   // 1. Get commit and parent
   const commit = await git.readCommit({ fs, dir: repoPath, oid: commitSha })
@@ -33,12 +34,12 @@ export async function uncommit(repoPath: string, commitSha: string): Promise<voi
     for (const branch of branchesToDelete) {
       const pr = forgeState.pullRequests.find((p) => p.headRefName === branch && p.state === 'open')
       if (pr) {
-        console.log(`[uncommit] Closing associated PR #${pr.number} for branch ${branch}`)
+        log.debug(`[uncommit] Closing associated PR #${pr.number} for branch ${branch}`)
         await gitForgeService.closePullRequest(repoPath, pr.number)
       }
     }
   } catch (e) {
-    console.warn('[uncommit] Failed to handle GitHub PRs during uncommit:', e)
+    log.warn('[uncommit] Failed to handle GitHub PRs during uncommit:', e)
   }
 
   // 3. Identify current state

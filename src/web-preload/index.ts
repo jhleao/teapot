@@ -1,4 +1,5 @@
 import { electronAPI } from '@electron-toolkit/preload'
+import { log } from '@shared/logger'
 import {
   IPC_CHANNELS,
   IPC_EVENTS,
@@ -7,7 +8,6 @@ import {
   type IpcResponse
 } from '@shared/types'
 import { contextBridge, ipcRenderer } from 'electron'
-import { log } from '@shared/logger'
 
 function generateApi<T extends typeof IPC_CHANNELS>(channels: T) {
   type ApiType = {

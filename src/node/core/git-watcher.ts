@@ -1,7 +1,7 @@
+import { log } from '@shared/logger'
 import { IPC_EVENTS } from '@shared/types'
 import { WebContents } from 'electron'
 import { FSWatcher, watch } from 'fs'
-import { log } from '@shared/logger'
 
 export class GitWatcher {
   private currentWatcher: FSWatcher | null = null

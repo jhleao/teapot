@@ -194,22 +194,13 @@ function buildTrunkUiStack(
     return null
   }
 
-  console.log('[DEBUG] buildTrunkUiStack:', {
-    localBranch: branch.ref,
-    localHead: branch.headSha,
-    remoteBranch: remoteTrunk?.ref,
-    remoteHead: remoteTrunk?.headSha
-  })
-
   // Collect lineage from local trunk
   const localLineage = collectBranchLineage(branch.headSha, state.commitMap)
-  console.log('[DEBUG] Local trunk lineage length:', localLineage.length)
 
   // If remote trunk exists and differs from local, merge both lineages
   let lineage = localLineage
   if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
     const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
-    console.log('[DEBUG] Remote trunk lineage length:', remoteLineage.length)
 
     // Merge both lineages - use a Set to deduplicate, then sort by topological order
     // The lineages are already in order (oldest to newest), so we can merge them
@@ -223,7 +214,6 @@ function buildTrunkUiStack(
       // Sort by time to maintain chronological order
       return (commitA.timeMs ?? 0) - (commitB.timeMs ?? 0)
     })
-    console.log('[DEBUG] Merged trunk lineage length:', lineage.length)
   }
 
   if (lineage.length === 0) {
@@ -238,8 +228,6 @@ function buildTrunkUiStack(
     }
   })
 
-  console.log('[DEBUG] Final trunk stack commits:', commits.length)
-
   if (commits.length === 0) {
     return null
   }
@@ -253,28 +241,16 @@ function collectBranchLineage(headSha: string, commitMap: Map<string, DomainComm
   let currentSha: string | null = headSha
   const visited = new Set<string>()
 
-  const headCommit = commitMap.get(headSha)
-  console.log('[DEBUG] collectBranchLineage starting from:', {
-    headSha: headSha.substring(0, 8),
-    message: headCommit?.message?.substring(0, 50),
-    hasParent: !!headCommit?.parentSha
-  })
-
   while (currentSha && !visited.has(currentSha)) {
     visited.add(currentSha)
     shas.push(currentSha)
     const commit = commitMap.get(currentSha)
     if (!commit?.parentSha) {
-      console.log('[DEBUG] Stopped at commit with no parent:', {
-        sha: currentSha.substring(0, 8),
-        message: commit?.message?.substring(0, 50)
-      })
       break
     }
     currentSha = commit.parentSha
   }
 
-  console.log('[DEBUG] collectBranchLineage collected', shas.length, 'commits')
   return shas.slice().reverse()
 }
 

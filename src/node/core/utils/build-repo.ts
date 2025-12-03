@@ -233,13 +233,6 @@ async function collectCommitsFromDescriptors(
   const trunkBranch = branches.find((b) => b.ref === trunkBranchName && !b.isRemote)
   const remoteTrunkBranch = branches.find((b) => b.isTrunk && b.isRemote)
 
-  console.log('[DEBUG] Trunk branches:', {
-    trunkBranchName,
-    localTrunk: trunkBranch?.ref,
-    remoteTrunk: remoteTrunkBranch?.ref,
-    allTrunks: branches.filter((b) => b.isTrunk).map((b) => ({ ref: b.ref, isRemote: b.isRemote }))
-  })
-
   if (trunkBranch?.headSha) {
     const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
     if (trunkDescriptor) {
@@ -254,26 +247,12 @@ async function collectCommitsFromDescriptors(
   // Load from remote trunk HEAD until we find a commit already in commitsMap
   // This ensures we capture the gap between local and remote trunk
   if (remoteTrunkBranch?.headSha) {
-    console.log('[DEBUG] Loading remote trunk:', {
-      ref: remoteTrunkBranch.ref,
-      headSha: remoteTrunkBranch.headSha
-    })
     const remoteTrunkDescriptor = branchDescriptors.find((d) => d.ref === remoteTrunkBranch.ref)
     if (remoteTrunkDescriptor) {
-      const beforeCount = commitsMap.size
       await collectCommitsUntilKnown(dir, remoteTrunkDescriptor.fullRef, commitsMap, {
         maxCommits: maxCommitsPerBranch
       })
-      console.log('[DEBUG] Remote trunk loaded:', {
-        commitsBefore: beforeCount,
-        commitsAfter: commitsMap.size,
-        added: commitsMap.size - beforeCount
-      })
-    } else {
-      console.log('[DEBUG] Remote trunk descriptor not found!')
     }
-  } else {
-    console.log('[DEBUG] No remote trunk branch found')
   }
 
   // Step 2: Load all non-trunk branches WITHOUT depth limit

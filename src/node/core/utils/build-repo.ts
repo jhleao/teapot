@@ -246,15 +246,10 @@ async function collectCommitsForRef(
 
     for (const entry of entriesToProcess) {
       const sha = entry.oid
-
-      // Skip if already processed (happens when branches share history)
-      // But still update parent-child relationships
-      if (commitsMap.has(sha)) {
-        updateParentChildRelationships(commitsMap, entry)
-        continue
-      }
-
       const commit = ensureCommit(commitsMap, sha)
+
+      // Always populate commit metadata (message, time, parent)
+      // This ensures commits created by ensureCommit() or from other branches get full data
       commit.message = entry.commit.message.trim()
       commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
 
@@ -270,21 +265,6 @@ async function collectCommitsForRef(
     }
   } catch {
     // Ignore branches we cannot traverse (e.g. shallow clones)
-  }
-}
-
-function updateParentChildRelationships(
-  commitsMap: Map<string, Commit>,
-  entry: { oid: string; commit: { parent?: string[] } }
-): void {
-  const sha = entry.oid
-  const parentSha = entry.commit.parent?.[0]
-
-  if (parentSha && commitsMap.has(parentSha)) {
-    const parentCommit = commitsMap.get(parentSha)!
-    if (!parentCommit.childrenSha.includes(sha)) {
-      parentCommit.childrenSha.push(sha)
-    }
   }
 }
 

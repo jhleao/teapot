@@ -81,7 +81,10 @@ export function buildUiStack(
     createSpinoffUiStacks(commit, state)
   })
 
-  const annotationBranches = [...UiStackBranches].sort((a, b) => {
+  // For annotations, include ALL branches (including remote trunk)
+  // Remote trunk should not build a stack, but should still annotate commits
+  const allBranchesForAnnotation = [...repo.branches]
+  const annotationBranches = allBranchesForAnnotation.sort((a, b) => {
     if (trunk) {
       if (a.ref === trunk.ref && b.ref !== trunk.ref) {
         return -1
@@ -152,9 +155,14 @@ function selectBranchesForUiStacks(branches: Branch[]): Branch[] {
   const canonicalRefs = new Set(
     branches.filter((branch) => isCanonicalTrunkBranch(branch)).map((branch) => branch.ref)
   )
-  const localOrTrunk = branches.filter(
-    (branch) => !branch.isRemote || branch.isTrunk || canonicalRefs.has(branch.ref)
-  )
+  const localOrTrunk = branches.filter((branch) => {
+    // Exclude remote trunk branches - they should only be used for annotations, not stack building
+    if (branch.isRemote && branch.isTrunk) {
+      return false
+    }
+    // Include local branches, local trunk, and canonical trunk branches
+    return !branch.isRemote || branch.isTrunk || canonicalRefs.has(branch.ref)
+  })
   return localOrTrunk.length > 0 ? localOrTrunk : branches
 }
 

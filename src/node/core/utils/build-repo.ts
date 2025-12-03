@@ -82,6 +82,60 @@ export async function buildRepoModel(
   }
 }
 
+/**
+ * Loads the remote trunk branch (origin/main or origin/master) if it exists.
+ * This ensures we always show the sync state with remote, even when loadRemotes is false.
+ * Returns null if no origin remote exists or no trunk branch is found.
+ */
+async function loadRemoteTrunkBranch(
+  dir: string,
+  localBranches: string[]
+): Promise<BranchDescriptor | null> {
+  // Step 1: Determine trunk name from local branches
+  const trunkCandidates = ['main', 'master', 'develop', 'trunk']
+  const trunkName = trunkCandidates.find((candidate) => localBranches.includes(candidate))
+
+  if (!trunkName) {
+    // No recognizable trunk branch locally
+    return null
+  }
+
+  // Step 2: Check if origin remote exists
+  let remotes: { remote: string; url: string }[] = []
+  try {
+    remotes = await git.listRemotes({ fs, dir })
+  } catch {
+    return null
+  }
+
+  const originRemote = remotes.find((remote) => remote.remote === 'origin')
+  if (!originRemote) {
+    // No origin remote configured
+    return null
+  }
+
+  // Step 3: Check if origin/{trunk} exists
+  try {
+    const remoteBranches = await git.listBranches({
+      fs,
+      dir,
+      remote: 'origin'
+    })
+
+    if (remoteBranches.includes(trunkName)) {
+      return {
+        ref: `origin/${trunkName}`,
+        fullRef: `refs/remotes/origin/${trunkName}`,
+        isRemote: true
+      }
+    }
+  } catch {
+    // Remote branch lookup failed
+  }
+
+  return null
+}
+
 async function collectBranchDescriptors(
   dir: string,
   localBranches: string[],
@@ -94,6 +148,12 @@ async function collectBranchDescriptors(
       fullRef: `refs/heads/${ref}`,
       isRemote: false
     }))
+
+  // Always load remote trunk to show sync state, even when loadRemotes is false
+  const remoteTrunkDescriptor = await loadRemoteTrunkBranch(dir, localBranches)
+  if (remoteTrunkDescriptor) {
+    branchDescriptors.push(remoteTrunkDescriptor)
+  }
 
   // Skip remote loading if not requested
   // Remote branches can be loaded separately using the load-remote-branches module
@@ -195,15 +255,18 @@ async function collectCommitsFromDescriptors(
       continue
     }
 
-    // Skip trunk (already loaded with depth limit)
+    // Skip local trunk (already loaded with depth limit in step 1)
     if (branch.isTrunk && !branch.isRemote) {
       continue
     }
 
-    // Load feature branch completely (no depth limit)
+    // For remote trunk, use same depth limit as local trunk
+    // For feature branches, load completely (no depth limit)
+    const loadDepth = branch.isTrunk && branch.isRemote ? trunkDepth : undefined
+
     await collectCommitsForRef(dir, descriptor.fullRef, commitsMap, {
-      depth: undefined, // No depth limit for feature branches
-      maxCommits: maxCommitsPerBranch // Safety limit only
+      depth: loadDepth,
+      maxCommits: maxCommitsPerBranch
     })
   }
 

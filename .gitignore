@@ -6,3 +6,7 @@ out
 *.log*
 .history
 .env
+MULTI_COMMIT_DESIGN.md
+object.json
+IMPLEMENTATION_SUMMARY.md
+OPTIMIZATION_PLAN.md

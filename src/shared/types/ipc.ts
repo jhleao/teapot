@@ -39,7 +39,7 @@ export const IPC_EVENTS = {
  */
 export interface IpcContract {
   [IPC_CHANNELS.getRepo]: {
-    request: { repoPath: string }
+    request: { repoPath: string; declutterTrunk?: boolean }
     response: UiState | null
   }
   [IPC_CHANNELS.submitRebaseIntent]: {

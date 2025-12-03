@@ -34,8 +34,11 @@ type TrunkBuildResult = {
 
 export function buildUiStack(
   repo: Repo,
-  gitForgeState: GitForgeState | null = null
+  gitForgeState: GitForgeState | null = null,
+  options: { declutterTrunk?: boolean } = {}
 ): UiStack | null {
+  const { declutterTrunk = false } = options
+
   if (!repo.commits.length) {
     return null
   }
@@ -100,7 +103,8 @@ export function buildUiStack(
 
   // Trim trunk commits that have no useful information (no spinoffs, no branches)
   // This removes "dead" history below the deepest point of interest
-  if (trunkStack) {
+  // Can be disabled via declutterTrunk option
+  if (trunkStack && declutterTrunk) {
     trimTrunkCommits(trunkStack)
   }
 
@@ -112,6 +116,11 @@ export type FullUiStateOptions = {
   rebaseSession?: RebaseState | null
   generateJobId?: () => RebaseJobId
   gitForgeState?: GitForgeState | null
+  /**
+   * Remove trunk commits that have no useful information (no spinoffs, no branches).
+   * Default: false
+   */
+  declutterTrunk?: boolean
 }
 
 export type FullUiState = {
@@ -126,9 +135,10 @@ export type FullUiState = {
  * or create a high level replacement that fn(repo, rebaseQueue) -> UiState
  */
 export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
-  const stack = buildUiStack(repo, options.gitForgeState)
+  const { declutterTrunk = false } = options
+  const stack = buildUiStack(repo, options.gitForgeState, { declutterTrunk })
   const rebase = deriveRebaseProjection(repo, options)
-  const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState)
+  const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState, declutterTrunk)
 
   return {
     stack,
@@ -441,7 +451,8 @@ function createDefaultPreviewJobIdGenerator(): () => RebaseJobId {
 function deriveProjectedStack(
   repo: Repo,
   projection: RebaseProjection,
-  gitForgeState: GitForgeState | null = null
+  gitForgeState: GitForgeState | null = null,
+  declutterTrunk = false
 ): UiStack | null {
   if (projection.kind !== 'planning') {
     return null
@@ -455,7 +466,7 @@ function deriveProjectedStack(
     ...repo,
     commits: projectedCommits
   }
-  return buildUiStack(projectedRepo, gitForgeState)
+  return buildUiStack(projectedRepo, gitForgeState, { declutterTrunk })
 }
 
 type SyntheticCommit = DomainCommit & { childrenSha: string[] }

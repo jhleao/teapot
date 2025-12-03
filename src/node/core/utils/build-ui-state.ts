@@ -68,7 +68,12 @@ export function buildUiStack(
   if (!trunk) {
     return null
   }
-  const trunkResult = buildTrunkUiStack(trunk, state)
+
+  // Find remote trunk to extend lineage if it's ahead
+  const remoteTrunk = repo.branches.find((b) => b.isTrunk && b.isRemote)
+
+  // Build trunk stack from local trunk, extending to include remote trunk commits if ahead
+  const trunkResult = buildTrunkUiStack(trunk, state, remoteTrunk)
   if (!trunkResult) {
     return null
   }
@@ -180,14 +185,40 @@ function findTrunkBranch(branches: Branch[], workingTree: WorkingTreeStatus): Br
   )
 }
 
-function buildTrunkUiStack(branch: Branch, state: BuildState): TrunkBuildResult | null {
+function buildTrunkUiStack(
+  branch: Branch,
+  state: BuildState,
+  remoteTrunk?: Branch
+): TrunkBuildResult | null {
   if (!branch.headSha) {
     return null
   }
-  const lineage = collectBranchLineage(branch.headSha, state.commitMap)
+
+  // Collect lineage from local trunk
+  let lineage = collectBranchLineage(branch.headSha, state.commitMap)
+
+  // If remote trunk exists and is ahead, extend lineage to include those commits
+  if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
+    const remoteTrunkCommit = state.commitMap.get(remoteTrunk.headSha)
+    const localTrunkCommit = state.commitMap.get(branch.headSha)
+
+    if (remoteTrunkCommit && localTrunkCommit && remoteTrunkCommit.timeMs > localTrunkCommit.timeMs) {
+      // Remote is ahead - collect its lineage and merge
+      const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
+      // Combine lineages (remote lineage will include commits ahead of local)
+      const lineageSet = new Set([...remoteLineage, ...lineage])
+      lineage = Array.from(lineageSet).sort((a, b) => {
+        const aTime = state.commitMap.get(a)?.timeMs ?? 0
+        const bTime = state.commitMap.get(b)?.timeMs ?? 0
+        return aTime - bTime // oldest first
+      })
+    }
+  }
+
   if (lineage.length === 0) {
     return null
   }
+
   const commits: UiCommit[] = []
   lineage.forEach((sha) => {
     const node = getOrCreateUiCommit(sha, state)
@@ -195,9 +226,11 @@ function buildTrunkUiStack(branch: Branch, state: BuildState): TrunkBuildResult 
       commits.push(node)
     }
   })
+
   if (commits.length === 0) {
     return null
   }
+
   const stack: UiStack = { commits, isTrunk: true }
   return { UiStack: stack, trunkSet: new Set(lineage) }
 }
@@ -317,6 +350,12 @@ function annotateBranchHeads(
     }
     const commitNode = state.commitNodes.get(branch.headSha)
     if (!commitNode) {
+      console.log('[DEBUG] Branch head not in commitNodes:', {
+        branch: branch.ref,
+        headSha: branch.headSha,
+        isRemote: branch.isRemote,
+        isTrunk: branch.isTrunk
+      })
       return
     }
     const alreadyAnnotated = commitNode.branches.some((existing) => existing.name === branch.ref)

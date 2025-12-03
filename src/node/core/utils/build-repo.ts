@@ -228,9 +228,17 @@ async function collectCommitsFromDescriptors(
   const commitsMap = new Map<string, Commit>()
   const { trunkDepth, maxCommitsPerBranch } = options
 
-  // Step 1: Load trunk first with depth limit
+  // Step 1: Load local trunk with depth limit
   // This is crucial for large repos - trunk can have thousands of commits
   const trunkBranch = branches.find((b) => b.ref === trunkBranchName && !b.isRemote)
+  const remoteTrunkBranch = branches.find((b) => b.isTrunk && b.isRemote)
+
+  console.log('[DEBUG] Trunk branches:', {
+    trunkBranchName,
+    localTrunk: trunkBranch?.ref,
+    remoteTrunk: remoteTrunkBranch?.ref,
+    allTrunks: branches.filter((b) => b.isTrunk).map((b) => ({ ref: b.ref, isRemote: b.isRemote }))
+  })
 
   if (trunkBranch?.headSha) {
     const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
@@ -240,6 +248,32 @@ async function collectCommitsFromDescriptors(
         maxCommits: maxCommitsPerBranch
       })
     }
+  }
+
+  // Step 1.5: Load remote trunk commits
+  // Load from remote trunk HEAD until we find a commit already in commitsMap
+  // This ensures we capture the gap between local and remote trunk
+  if (remoteTrunkBranch?.headSha) {
+    console.log('[DEBUG] Loading remote trunk:', {
+      ref: remoteTrunkBranch.ref,
+      headSha: remoteTrunkBranch.headSha
+    })
+    const remoteTrunkDescriptor = branchDescriptors.find((d) => d.ref === remoteTrunkBranch.ref)
+    if (remoteTrunkDescriptor) {
+      const beforeCount = commitsMap.size
+      await collectCommitsUntilKnown(dir, remoteTrunkDescriptor.fullRef, commitsMap, {
+        maxCommits: maxCommitsPerBranch
+      })
+      console.log('[DEBUG] Remote trunk loaded:', {
+        commitsBefore: beforeCount,
+        commitsAfter: commitsMap.size,
+        added: commitsMap.size - beforeCount
+      })
+    } else {
+      console.log('[DEBUG] Remote trunk descriptor not found!')
+    }
+  } else {
+    console.log('[DEBUG] No remote trunk branch found')
   }
 
   // Step 2: Load all non-trunk branches WITHOUT depth limit
@@ -255,18 +289,15 @@ async function collectCommitsFromDescriptors(
       continue
     }
 
-    // Skip local trunk (already loaded with depth limit in step 1)
-    if (branch.isTrunk && !branch.isRemote) {
+    // Skip trunks (already loaded in steps 1 and 1.5)
+    if (branch.isTrunk) {
       continue
     }
 
-    // For remote trunk, use same depth limit as local trunk
-    // For feature branches, load completely (no depth limit)
-    const loadDepth = branch.isTrunk && branch.isRemote ? trunkDepth : undefined
-
+    // Load feature branch completely (no depth limit)
     await collectCommitsForRef(dir, descriptor.fullRef, commitsMap, {
-      depth: loadDepth,
-      maxCommits: maxCommitsPerBranch
+      depth: undefined, // No depth limit for feature branches
+      maxCommits: maxCommitsPerBranch // Safety limit only
     })
   }
 
@@ -282,6 +313,64 @@ async function resolveBranchHead(dir: string, ref: string): Promise<string> {
     })
   } catch {
     return ''
+  }
+}
+
+/**
+ * Loads commits from a ref until we find a commit already in the map.
+ * This is used for remote trunk to fill the gap between local and remote.
+ */
+async function collectCommitsUntilKnown(
+  dir: string,
+  ref: string,
+  commitsMap: Map<string, Commit>,
+  options: {
+    maxCommits?: number
+  } = {}
+): Promise<void> {
+  const { maxCommits = 1000 } = options
+
+  try {
+    const logEntries = await git.log({
+      fs,
+      dir,
+      ref
+    })
+
+    let processedCount = 0
+    for (const entry of logEntries) {
+      if (processedCount >= maxCommits) {
+        break
+      }
+
+      const sha = entry.oid
+
+      // If we've already seen this commit, stop loading
+      // This means we've reached the point where histories merge
+      if (commitsMap.has(sha)) {
+        break
+      }
+
+      const commit = ensureCommit(commitsMap, sha)
+
+      // Populate commit metadata
+      commit.message = entry.commit.message.trim()
+      commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
+
+      const parentSha = entry.commit.parent?.[0] ?? ''
+      commit.parentSha = parentSha
+
+      if (parentSha) {
+        const parentCommit = ensureCommit(commitsMap, parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
+      }
+
+      processedCount++
+    }
+  } catch {
+    // Ignore branches we cannot traverse (e.g. shallow clones)
   }
 }
 

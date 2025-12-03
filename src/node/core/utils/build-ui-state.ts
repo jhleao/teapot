@@ -98,6 +98,12 @@ export function buildUiStack(
 
   annotateBranchHeads(annotationBranches, state, gitForgeState)
 
+  // Trim trunk commits that have no useful information (no spinoffs, no branches)
+  // This removes "dead" history below the deepest point of interest
+  if (trunkStack) {
+    trimTrunkCommits(trunkStack)
+  }
+
   return trunkStack
 }
 
@@ -363,6 +369,39 @@ function normalizeBranchRef(branch: Branch): string {
 function isCanonicalTrunkBranch(branch: Branch): boolean {
   const normalized = normalizeBranchRef(branch)
   return CANONICAL_TRUNK_NAMES.includes(normalized)
+}
+
+/**
+ * Trims trunk commits from the bottom (oldest) up to the deepest point where
+ * there's meaningful information (spinoffs or branch annotations).
+ * This prevents showing "dead" history that has no branches or features.
+ */
+function trimTrunkCommits(trunkStack: UiStack): void {
+  if (!trunkStack.isTrunk || trunkStack.commits.length === 0) {
+    return
+  }
+
+  // Find the index of the deepest (oldest, earliest in array) commit that has useful info
+  let deepestUsefulIndex = trunkStack.commits.length - 1 // Start from tip (most recent)
+
+  // Walk backwards (from tip to oldest) to find the last commit with spinoffs or branches
+  for (let i = trunkStack.commits.length - 1; i >= 0; i--) {
+    const commit = trunkStack.commits[i]
+    if (!commit) continue
+
+    const hasSpinoffs = commit.spinoffs.length > 0
+    const hasBranches = commit.branches.length > 0
+
+    if (hasSpinoffs || hasBranches) {
+      // This commit has useful info, keep everything from here to the tip
+      deepestUsefulIndex = i
+      break
+    }
+  }
+
+  // Trim commits below (before) the deepest useful point
+  // Keep commits from deepestUsefulIndex to end (tip)
+  trunkStack.commits = trunkStack.commits.slice(deepestUsefulIndex)
 }
 
 function deriveRebaseProjection(repo: Repo, options: FullUiStateOptions): RebaseProjection {

@@ -344,10 +344,12 @@ async function collectCommitsUntilKnown(
       }
 
       const sha = entry.oid
+      const existingCommit = commitsMap.get(sha)
 
-      // If we've already seen this commit, stop loading
-      // This means we've reached the point where histories merge
-      if (commitsMap.has(sha)) {
+      // If we've already seen this commit AND it's fully populated, stop loading
+      // A commit is fully populated if it has a message
+      // Commits created as placeholders by ensureCommit have empty messages
+      if (existingCommit && existingCommit.message) {
         break
       }
 

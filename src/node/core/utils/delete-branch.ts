@@ -1,10 +1,6 @@
-import fs from 'fs'
-import git from 'isomorphic-git'
+import { getGitAdapter } from '../git-adapter'
 
 export async function deleteBranch(repoPath: string, branchName: string): Promise<void> {
-  await git.deleteBranch({
-    fs,
-    dir: repoPath,
-    ref: branchName
-  })
+  const git = getGitAdapter()
+  await git.deleteBranch(repoPath, branchName)
 }

@@ -41,5 +41,4 @@ export type {
 } from './types'
 
 // Adapter implementations (for testing)
-export { IsomorphicGitAdapter } from './isomorphic-git-adapter'
 export { SimpleGitAdapter } from './simple-git-adapter'

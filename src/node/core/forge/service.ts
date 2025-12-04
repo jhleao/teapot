@@ -1,10 +1,9 @@
-import fs from 'fs'
-import git from 'isomorphic-git'
+import { log } from '@shared/logger'
 import { GitForgeState } from '../../../shared/types/git-forge'
 import { configStore } from '../../store'
+import { getGitAdapter } from '../git-adapter'
 import { GitHubAdapter } from './adapters/github'
 import { GitForgeClient } from './git-forge'
-import { log } from '@shared/logger'
 
 export class GitForgeService {
   private clients = new Map<string, GitForgeClient>()
@@ -39,9 +38,10 @@ export class GitForgeService {
 
     // Determine owner/repo from remotes
     // We'll prioritize 'origin', then the first remote
-    let remotes: { remote: string; url: string }[] = []
+    const git = getGitAdapter()
+    let remotes: { name: string; url: string }[] = []
     try {
-      remotes = await git.listRemotes({ fs, dir: repoPath })
+      remotes = await git.listRemotes(repoPath)
     } catch (e) {
       log.error('Failed to list remotes:', e)
       return null
@@ -51,7 +51,7 @@ export class GitForgeService {
       return null
     }
 
-    const origin = remotes.find((r) => r.remote === 'origin') || remotes[0]
+    const origin = remotes.find((r) => r.name === 'origin') || remotes[0]
     if (!origin) return null
 
     const { owner, repo } = this.parseRemoteUrl(origin.url)

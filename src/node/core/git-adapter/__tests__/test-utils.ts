@@ -1,21 +1,25 @@
 /**
  * Test utilities for Git adapter testing
+ *
+ * Uses native Git CLI for test setup to ensure maximum reliability
+ * and remove dependency on any particular Git library.
  */
 
+import { execSync } from 'child_process'
 import fs from 'fs'
-import git from 'isomorphic-git'
 import os from 'os'
 import path from 'path'
 
 /**
- * Create a temporary test repository
+ * Create a temporary test repository using native Git CLI
  */
 export async function createTestRepo(): Promise<string> {
   const repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-adapter-test-'))
 
-  await git.init({ fs, dir: repoPath, defaultBranch: 'main' })
-  await git.setConfig({ fs, dir: repoPath, path: 'user.name', value: 'Test User' })
-  await git.setConfig({ fs, dir: repoPath, path: 'user.email', value: 'test@example.com' })
+  // Use native Git CLI for maximum reliability
+  execSync('git init -b main', { cwd: repoPath })
+  execSync('git config user.name "Test User"', { cwd: repoPath })
+  execSync('git config user.email "test@example.com"', { cwd: repoPath })
 
   return repoPath
 }
@@ -32,7 +36,7 @@ export async function cleanupTestRepo(repoPath: string): Promise<void> {
 }
 
 /**
- * Create a commit in a test repository using isomorphic-git
+ * Create a commit in a test repository using native Git CLI
  */
 export async function createCommit(
   repoPath: string,
@@ -49,31 +53,37 @@ export async function createCommit(
 
     // Write file
     await fs.promises.writeFile(fullPath, content)
-
-    // Stage file
-    await git.add({ fs, dir: repoPath, filepath })
   }
 
-  // Create commit
-  return await git.commit({ fs, dir: repoPath, message })
+  // Stage and commit using Git CLI
+  execSync('git add -A', { cwd: repoPath })
+  execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { cwd: repoPath })
+
+  // Get commit SHA
+  const sha = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
+  return sha
 }
 
 /**
- * Create a branch in a test repository
+ * Create a branch in a test repository using Git CLI
  */
 export async function createBranch(
   repoPath: string,
   branchName: string,
   checkout = false
 ): Promise<void> {
-  await git.branch({ fs, dir: repoPath, ref: branchName, checkout })
+  if (checkout) {
+    execSync(`git checkout -b ${branchName}`, { cwd: repoPath })
+  } else {
+    execSync(`git branch ${branchName}`, { cwd: repoPath })
+  }
 }
 
 /**
- * Get current HEAD SHA
+ * Get current HEAD SHA using Git CLI
  */
 export async function getHeadSha(repoPath: string): Promise<string> {
-  return await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+  return execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
 }
 
 /**

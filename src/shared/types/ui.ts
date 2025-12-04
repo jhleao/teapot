@@ -51,7 +51,7 @@ export type UiPullRequest = {
 export type UiWorkingTreeFile = {
   stageStatus: 'staged' | 'unstaged' | 'partially-staged'
   path: string
-  status: 'modified' | 'deleted' | 'renamed' | 'added'
+  status: 'modified' | 'deleted' | 'renamed' | 'added' | 'conflicted'
 }
 
 export type UiCommitRebaseStatus =

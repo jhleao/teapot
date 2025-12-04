@@ -1,5 +1,5 @@
 import type { UiWorkingTreeFile } from '@shared/types'
-import { SquareDot, SquarePlus, SquareX } from 'lucide-react'
+import { AlertTriangle, SquareDot, SquarePlus, SquareX } from 'lucide-react'
 import React from 'react'
 import { cn } from '../utils/cn'
 import { Checkbox } from './Checkbox'
@@ -11,14 +11,16 @@ const STATUS_ICON_MAP: Record<
   modified: SquareDot,
   deleted: SquareX,
   renamed: SquareDot,
-  added: SquarePlus
+  added: SquarePlus,
+  conflicted: AlertTriangle
 }
 
 const STATUS_COLOR_MAP: Record<UiWorkingTreeFile['status'], string> = {
   modified: 'text-warning',
   deleted: 'text-error',
   renamed: 'text-warning',
-  added: 'text-success'
+  added: 'text-success',
+  conflicted: 'text-error'
 }
 
 function FileStatusBadge({ status }: { status: UiWorkingTreeFile['status'] }) {

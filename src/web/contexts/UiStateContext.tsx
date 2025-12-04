@@ -1,4 +1,4 @@
-import type { UiState } from '@shared/types'
+import type { UiStack, UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useGitWatcher } from '../hooks/use-git-watcher'
 import { log } from '@shared/logger'
@@ -23,6 +23,8 @@ interface UiStateContextValue {
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
   isWorkingTreeDirty: boolean
+  /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
+  isRebasingWithConflicts: boolean
 }
 
 const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
@@ -200,6 +202,11 @@ export function UiStateProvider({
 
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
+  // Check if any commit in the stack has 'conflicted' or 'resolved' status
+  const isRebasingWithConflicts = uiState?.stack
+    ? hasRebaseConflictStatus(uiState.stack)
+    : false
+
   return (
     <UiStateContext.Provider
       value={{
@@ -221,7 +228,8 @@ export function UiStateProvider({
         deleteBranch,
         createPullRequest,
         uncommit,
-        isWorkingTreeDirty
+        isWorkingTreeDirty,
+        isRebasingWithConflicts
       }}
     >
       {children}
@@ -236,4 +244,22 @@ export function useUiStateContext(): UiStateContextValue {
     throw new Error('useUiStateContext must be used within a UiStateProvider')
   }
   return context
+}
+
+/**
+ * Recursively checks if any commit in the stack has 'conflicted' or 'resolved' rebase status
+ */
+function hasRebaseConflictStatus(stack: UiStack): boolean {
+  for (const commit of stack.commits) {
+    if (commit.rebaseStatus === 'conflicted' || commit.rebaseStatus === 'resolved') {
+      return true
+    }
+    // Check spinoffs
+    for (const spinoff of commit.spinoffs) {
+      if (hasRebaseConflictStatus(spinoff)) {
+        return true
+      }
+    }
+  }
+  return false
 }

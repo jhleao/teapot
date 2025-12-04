@@ -12,6 +12,7 @@ export function RebaseStatusBadge({
     idle: 'text-yellow-600',
     running: 'text-purple-600',
     conflicted: 'text-red-600',
+    resolved: 'text-orange-600',
     scheduled: 'text-green-600'
   }
 

@@ -63,6 +63,8 @@ export type UiCommitRebaseStatus =
   | 'running'
   /** This commit has conflicts that must be resolved before proceeding. */
   | 'conflicted'
+  /** This commit's conflicts have been resolved and is waiting for user to click Continue. */
+  | 'resolved'
   /** This commit is part of a confirmed rebase plan that is running. It's just not its turn yet. */
   | 'scheduled'
   /** This commit is not being rebased or involved in a rebasing operation. */

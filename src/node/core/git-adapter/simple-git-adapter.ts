@@ -213,10 +213,6 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       const status: StatusResult = await git.status()
 
-      // Debug: log status for conflict detection
-      console.log('[GitAdapter] status.conflicted:', status.conflicted)
-      console.log('[GitAdapter] status.files:', status.files.map(f => ({ path: f.path, index: f.index, working_dir: f.working_dir })))
-
       // Parse file statuses
       const staged = new Set<string>()
       const modified = new Set<string>()

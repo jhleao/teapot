@@ -53,7 +53,8 @@ function CommitForm({
   onAmend,
   onDiscard,
   canCommit,
-  canAmend
+  canAmend,
+  canDiscard
 }: {
   message: string
   onMessageChange: (message: string) => void
@@ -62,6 +63,7 @@ function CommitForm({
   onDiscard: () => void
   canCommit: boolean
   canAmend: boolean
+  canDiscard: boolean
 }) {
   function CommitFormButton({
     onClick,
@@ -112,7 +114,11 @@ function CommitForm({
         >
           Amend
         </CommitFormButton>
-        <CommitFormButton onClick={onDiscard} className="rounded-l-none rounded-r-md border-l-0">
+        <CommitFormButton
+          onClick={onDiscard}
+          disabled={!canDiscard}
+          className="rounded-l-none rounded-r-md border-l-0"
+        >
           Discard
         </CommitFormButton>
       </div>
@@ -132,7 +138,8 @@ export function WorkingTreeView({
   className?: string
 }): React.JSX.Element {
   const [commitMessage, setCommitMessage] = useState('')
-  const { setFilesStageStatus, commit, amend, discardStaged } = useUiStateContext()
+  const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts } =
+    useUiStateContext()
   const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
 
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
@@ -207,8 +214,10 @@ export function WorkingTreeView({
   const hasStagedChanges = files.some(
     (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
   )
-  const canCommit = hasStagedChanges && commitMessage.trim() !== ''
-  const canAmend = hasStagedChanges
+  // Disable commit/amend/discard during rebase - user should resolve conflicts and use Continue
+  const canCommit = hasStagedChanges && commitMessage.trim() !== '' && !isRebasingWithConflicts
+  const canAmend = hasStagedChanges && !isRebasingWithConflicts
+  const canDiscard = !isRebasingWithConflicts
 
   // ============================================================================
   // Render
@@ -236,6 +245,7 @@ export function WorkingTreeView({
           onDiscard={handleDiscardClick}
           canCommit={canCommit}
           canAmend={canAmend}
+          canDiscard={canDiscard}
         />
       </div>
 

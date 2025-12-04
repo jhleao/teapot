@@ -232,43 +232,6 @@ export interface GitAdapter {
    * @returns Result of the cherry-pick operation
    */
   cherryPick?(dir: string, commits: string[]): Promise<CherryPickResult>
-
-  /**
-   * Continue a paused rebase after conflicts have been resolved
-   *
-   * @param dir - Repository directory path
-   * @returns Result of the rebase continue operation
-   */
-  rebaseContinue?(dir: string): Promise<RebaseResult>
-
-  /**
-   * Abort the current rebase and restore the repository to its pre-rebase state
-   *
-   * @param dir - Repository directory path
-   */
-  rebaseAbort?(dir: string): Promise<void>
-
-  /**
-   * Skip the current commit during a rebase
-   *
-   * @param dir - Repository directory path
-   * @returns Result of the rebase skip operation
-   */
-  rebaseSkip?(dir: string): Promise<RebaseResult>
-
-  /**
-   * Get information about the current rebase state
-   *
-   * @param dir - Repository directory path
-   * @returns Rebase state information or null if no rebase is in progress
-   */
-  getRebaseState?(dir: string): Promise<{
-    branch: string
-    onto: string
-    originalHead: string
-    currentStep: number
-    totalSteps: number
-  } | null>
 }
 
 /**
@@ -296,46 +259,4 @@ export function supportsCherryPick(adapter: GitAdapter): adapter is GitAdapter &
   cherryPick: (dir: string, commits: string[]) => Promise<CherryPickResult>
 } {
   return typeof adapter.cherryPick === 'function'
-}
-
-/**
- * Type guard to check if an adapter supports rebase continue
- */
-export function supportsRebaseContinue(adapter: GitAdapter): adapter is GitAdapter & {
-  rebaseContinue: (dir: string) => Promise<RebaseResult>
-} {
-  return typeof adapter.rebaseContinue === 'function'
-}
-
-/**
- * Type guard to check if an adapter supports rebase abort
- */
-export function supportsRebaseAbort(adapter: GitAdapter): adapter is GitAdapter & {
-  rebaseAbort: (dir: string) => Promise<void>
-} {
-  return typeof adapter.rebaseAbort === 'function'
-}
-
-/**
- * Type guard to check if an adapter supports rebase skip
- */
-export function supportsRebaseSkip(adapter: GitAdapter): adapter is GitAdapter & {
-  rebaseSkip: (dir: string) => Promise<RebaseResult>
-} {
-  return typeof adapter.rebaseSkip === 'function'
-}
-
-/**
- * Type guard to check if an adapter supports getting rebase state
- */
-export function supportsGetRebaseState(adapter: GitAdapter): adapter is GitAdapter & {
-  getRebaseState: (dir: string) => Promise<{
-    branch: string
-    onto: string
-    originalHead: string
-    currentStep: number
-    totalSteps: number
-  } | null>
-} {
-  return typeof adapter.getRebaseState === 'function'
 }

@@ -228,15 +228,28 @@ async function collectCommitsFromDescriptors(
   const commitsMap = new Map<string, Commit>()
   const { trunkDepth, maxCommitsPerBranch } = options
 
-  // Step 1: Load trunk first with depth limit
+  // Step 1: Load local trunk with depth limit
   // This is crucial for large repos - trunk can have thousands of commits
   const trunkBranch = branches.find((b) => b.ref === trunkBranchName && !b.isRemote)
+  const remoteTrunkBranch = branches.find((b) => b.isTrunk && b.isRemote)
 
   if (trunkBranch?.headSha) {
     const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
     if (trunkDescriptor) {
       await collectCommitsForRef(dir, trunkDescriptor.fullRef, commitsMap, {
         depth: trunkDepth,
+        maxCommits: maxCommitsPerBranch
+      })
+    }
+  }
+
+  // Step 1.5: Load remote trunk commits
+  // Load from remote trunk HEAD until we find a commit already in commitsMap
+  // This ensures we capture the gap between local and remote trunk
+  if (remoteTrunkBranch?.headSha) {
+    const remoteTrunkDescriptor = branchDescriptors.find((d) => d.ref === remoteTrunkBranch.ref)
+    if (remoteTrunkDescriptor) {
+      await collectCommitsUntilKnown(dir, remoteTrunkDescriptor.fullRef, commitsMap, {
         maxCommits: maxCommitsPerBranch
       })
     }
@@ -255,18 +268,15 @@ async function collectCommitsFromDescriptors(
       continue
     }
 
-    // Skip local trunk (already loaded with depth limit in step 1)
-    if (branch.isTrunk && !branch.isRemote) {
+    // Skip trunks (already loaded in steps 1 and 1.5)
+    if (branch.isTrunk) {
       continue
     }
 
-    // For remote trunk, use same depth limit as local trunk
-    // For feature branches, load completely (no depth limit)
-    const loadDepth = branch.isTrunk && branch.isRemote ? trunkDepth : undefined
-
+    // Load feature branch completely (no depth limit)
     await collectCommitsForRef(dir, descriptor.fullRef, commitsMap, {
-      depth: loadDepth,
-      maxCommits: maxCommitsPerBranch
+      depth: undefined, // No depth limit for feature branches
+      maxCommits: maxCommitsPerBranch // Safety limit only
     })
   }
 
@@ -282,6 +292,66 @@ async function resolveBranchHead(dir: string, ref: string): Promise<string> {
     })
   } catch {
     return ''
+  }
+}
+
+/**
+ * Loads commits from a ref until we find a commit already in the map.
+ * This is used for remote trunk to fill the gap between local and remote.
+ */
+async function collectCommitsUntilKnown(
+  dir: string,
+  ref: string,
+  commitsMap: Map<string, Commit>,
+  options: {
+    maxCommits?: number
+  } = {}
+): Promise<void> {
+  const { maxCommits = 1000 } = options
+
+  try {
+    const logEntries = await git.log({
+      fs,
+      dir,
+      ref
+    })
+
+    let processedCount = 0
+    for (const entry of logEntries) {
+      if (processedCount >= maxCommits) {
+        break
+      }
+
+      const sha = entry.oid
+      const existingCommit = commitsMap.get(sha)
+
+      // If we've already seen this commit AND it's fully populated, stop loading
+      // A commit is fully populated if it has a message
+      // Commits created as placeholders by ensureCommit have empty messages
+      if (existingCommit && existingCommit.message) {
+        break
+      }
+
+      const commit = ensureCommit(commitsMap, sha)
+
+      // Populate commit metadata
+      commit.message = entry.commit.message.trim()
+      commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
+
+      const parentSha = entry.commit.parent?.[0] ?? ''
+      commit.parentSha = parentSha
+
+      if (parentSha) {
+        const parentCommit = ensureCommit(commitsMap, parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
+      }
+
+      processedCount++
+    }
+  } catch {
+    // Ignore branches we cannot traverse (e.g. shallow clones)
   }
 }
 

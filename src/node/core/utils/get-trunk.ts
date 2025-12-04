@@ -1,5 +1,4 @@
 import type { Configuration } from '@shared/types'
-import { log } from '@shared/logger'
 
 export async function getTrunkBranchRef(
   config: Configuration,
@@ -9,11 +8,8 @@ export async function getTrunkBranchRef(
 
   const remoteHeadBranch = await resolveBranchFromRef(dir, 'refs/remotes/origin/HEAD')
   if (remoteHeadBranch) {
-    log.debug(`Inferred trunk branch from origin/HEAD: ${remoteHeadBranch}`)
     return remoteHeadBranch
   }
-
-  log.debug('Could not infer trunk from origin/HEAD, using fallback sources')
 
   // Fallback: Common trunk branch names in order of preference
   const trunkCandidates = ['main', 'master', 'develop']

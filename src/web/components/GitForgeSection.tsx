@@ -18,6 +18,7 @@ export function GitForgeSection({
 }: GitForgeSectionProps): React.JSX.Element | null {
   const { createPullRequest } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   if (isTrunk) return null
   if (branches.length === 0) return null
@@ -55,22 +56,40 @@ export function GitForgeSection({
     if (!branch) return
 
     setIsLoading(true)
+    setError(null)
     try {
       await createPullRequest({ headBranch: branch.name })
     } catch (error) {
       log.error('Failed to create PR:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      setError(errorMessage)
+      // Error dialog will be shown by the backend handler
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <button
-      onClick={handleCreatePr}
-      disabled={isLoading}
-      className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors"
-    >
-      {isLoading ? 'Creating PR...' : 'Create PR'}
-    </button>
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={handleCreatePr}
+        disabled={isLoading}
+        className={cn(
+          'cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors',
+          error
+            ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
+            : 'text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30'
+        )}
+        title={error || undefined}
+      >
+        {isLoading ? 'Creating PR...' : error ? 'Failed - Retry' : 'Create PR'}
+      </button>
+      {error && (
+        <span className="text-red-500 text-[10px] max-w-[200px] break-words" title={error}>
+          {error.length > 50 ? `${error.substring(0, 50)}...` : error}
+        </span>
+      )}
+    </div>
   )
 }

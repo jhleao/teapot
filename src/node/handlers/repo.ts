@@ -57,14 +57,22 @@ async function getUiState(repoPath: string, declutterTrunk = false): Promise<UiS
     return null
   }
 
-  // If we're in a rebase, mark the appropriate commit with the right status
-  if (session && workingTreeStatus.isRebasing) {
-    const activeJobId = session.state.queue.activeJobId
-    const activeJob = activeJobId ? session.state.jobsById[activeJobId] : null
+  // Handle rebase state
+  if (session) {
+    if (workingTreeStatus.isRebasing) {
+      // We're mid-rebase - show the appropriate status
+      const activeJobId = session.state.queue.activeJobId
+      const activeJob = activeJobId ? session.state.jobsById[activeJobId] : null
 
-    if (activeJob) {
-      const hasConflicts = workingTreeStatus.conflicted.length > 0
-      applyRebaseStatusToStack(stack, activeJob.branch, hasConflicts ? 'conflicted' : 'resolved')
+      if (activeJob) {
+        const hasConflicts = workingTreeStatus.conflicted.length > 0
+        applyRebaseStatusToStack(stack, activeJob.branch, hasConflicts ? 'conflicted' : 'resolved')
+      }
+    } else {
+      // Git is no longer rebasing but we have a session - external tool completed the rebase
+      // Clean up the stale session synchronously before returning state
+      console.log('[getUiState] Rebase completed externally, clearing stale session')
+      await rebaseSessionStore.clearSession(repoPath)
     }
   }
 

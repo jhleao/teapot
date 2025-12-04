@@ -1,0 +1,406 @@
+{
+    "gitState": {
+        "revisionMap": {
+            "3c9817f45dc367efba4bd7f7c623b1534bac2f06": {
+                "status": [
+                    "M"
+                ],
+                "files": [
+                    "packages/core/src/utils/build-repo.ts"
+                ],
+                "hash": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "abbrevHash": "3c9817f",
+                "treeHash": "0d204a72aca7cc0e9abc145e81c673fa376f0d07",
+                "abbrevTreeHash": "0d204a7",
+                "parentHashes": "b2f07d8ef0d3f0ce454344bebf5e972d97eeffc8",
+                "abbrevParentHashes": "b2f07d8ef0d3f0ce454344bebf5e972d97eeffc8",
+                "authorName": "Nick",
+                "authorEmail": "66110313+kezaer@users.noreply.github.com",
+                "authorDate": "2025-11-15 21:22:52 +0100",
+                "authorDateRel": "3 hours ago",
+                "committerName": "GitHub",
+                "committerEmail": "noreply@github.com",
+                "committerDate": "Sat Nov 15 21:22:52 2025 +0100",
+                "committerDateRel": "3 hours ago",
+                "subject": "upd (#4)",
+                "id": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "title": "upd (#4)",
+                "parentIDs": [
+                    "b2f07d8ef0d3f0ce454344bebf5e972d97eeffc8"
+                ],
+                "parentID": "b2f07d8ef0d3f0ce454344bebf5e972d97eeffc8",
+                "childrenIDs": [
+                    "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3"
+                ],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "main",
+                    "remotes/origin/main"
+                ],
+                "localBranchIDs": [
+                    "main"
+                ],
+                "remoteBranchIDs": [
+                    "remotes/origin/main"
+                ],
+                "isTrunk": true,
+                "isLeftTrunk": true,
+                "isCleanWorkingTree": false,
+                "isDescendantOfTrunk": false,
+                "isTipOfTrunk": true,
+                "isTipOfRemoteTrunk": true,
+                "canHide": false
+            },
+            "ef95d3939c7752abb10eac92e63ee8c2e041e82e": {
+                "status": [
+                    "M",
+                    "M",
+                    "M"
+                ],
+                "files": [
+                    "packages/contract/src/index.ts",
+                    "packages/contract/src/ui-state.ts",
+                    "packages/core/src/index.ts"
+                ],
+                "hash": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "abbrevHash": "ef95d39",
+                "treeHash": "664fb4eeb5a43941b7959419ebffb26f210e22ba",
+                "abbrevTreeHash": "664fb4e",
+                "parentHashes": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "abbrevParentHashes": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "authorName": "Nick",
+                "authorEmail": "nick@colabra.pp",
+                "authorDate": "2025-11-15 22:45:13 +0000",
+                "authorDateRel": "64 minutes ago",
+                "committerName": "Nick",
+                "committerEmail": "nick@colabra.pp",
+                "committerDate": "Sat Nov 15 22:45:13 2025 +0000",
+                "committerDateRel": "64 minutes ago",
+                "subject": "add package exports",
+                "id": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "title": "add package exports",
+                "parentIDs": [
+                    "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3"
+                ],
+                "parentID": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "childrenIDs": [
+                    "440eb03af290e77afa7c192205be518d10f62688",
+                    "5ab943f2cee47e4740dd5a3ddafb315f89e2c500"
+                ],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "spr-10a84f"
+                ],
+                "localBranchIDs": [
+                    "spr-10a84f"
+                ],
+                "remoteBranchIDs": [],
+                "isTrunk": false,
+                "isLeftTrunk": false,
+                "isCleanWorkingTree": true,
+                "isDescendantOfTrunk": true,
+                "isTipOfTrunk": false,
+                "isTipOfRemoteTrunk": false,
+                "canHide": false
+            },
+            "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3": {
+                "status": [
+                    "A",
+                    "M"
+                ],
+                "files": [
+                    "packages/core/src/utils/build-ui-state.ts",
+                    "packages/core/src/utils/print-repo.ts"
+                ],
+                "hash": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "abbrevHash": "4ca0fd0",
+                "treeHash": "525654c4e2a2f2f7768b2c6ada0db849aaa6c0e7",
+                "abbrevTreeHash": "525654c",
+                "parentHashes": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "abbrevParentHashes": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "authorName": "Nick",
+                "authorEmail": "nick@colabra.pp",
+                "authorDate": "2025-11-15 22:43:58 +0000",
+                "authorDateRel": "65 minutes ago",
+                "committerName": "Nick",
+                "committerEmail": "nick@colabra.pp",
+                "committerDate": "Sat Nov 15 22:43:58 2025 +0000",
+                "committerDateRel": "65 minutes ago",
+                "subject": "build UI state",
+                "id": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "title": "build UI state",
+                "parentIDs": [
+                    "3c9817f45dc367efba4bd7f7c623b1534bac2f06"
+                ],
+                "parentID": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "childrenIDs": [
+                    "ef95d3939c7752abb10eac92e63ee8c2e041e82e"
+                ],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "spr-133fdf"
+                ],
+                "localBranchIDs": [
+                    "spr-133fdf"
+                ],
+                "remoteBranchIDs": [],
+                "isTrunk": false,
+                "isLeftTrunk": false,
+                "isCleanWorkingTree": true,
+                "isDescendantOfTrunk": true,
+                "isTipOfTrunk": false,
+                "isTipOfRemoteTrunk": false,
+                "canHide": false
+            },
+            "e077050c5a517f10e612bf6e3f36fcfd23b14bc8": {
+                "status": [
+                    "M",
+                    "M",
+                    "M"
+                ],
+                "files": [
+                    "packages/core/src/utils/build-repo.ts",
+                    "packages/core/src/utils/build-ui-state.ts",
+                    "packages/core/src/utils/get-trunk.ts"
+                ],
+                "hash": "e077050c5a517f10e612bf6e3f36fcfd23b14bc8",
+                "abbrevHash": "e077050",
+                "treeHash": "5b9b0af2b8002928a64b93869b8b8b53406a2e7f",
+                "abbrevTreeHash": "5b9b0af",
+                "parentHashes": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "abbrevParentHashes": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "authorName": "Nick",
+                "authorEmail": "nick@colabra.pp",
+                "authorDate": "2025-11-15 23:22:03 +0000",
+                "authorDateRel": "27 minutes ago",
+                "committerName": "Nick",
+                "committerEmail": "nick@colabra.pp",
+                "committerDate": "Sat Nov 15 23:22:03 2025 +0000",
+                "committerDateRel": "27 minutes ago",
+                "subject": "upd",
+                "id": "e077050c5a517f10e612bf6e3f36fcfd23b14bc8",
+                "title": "upd",
+                "parentIDs": [
+                    "5ab943f2cee47e4740dd5a3ddafb315f89e2c500"
+                ],
+                "parentID": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "childrenIDs": [],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "spr-1e355f"
+                ],
+                "localBranchIDs": [
+                    "spr-1e355f"
+                ],
+                "remoteBranchIDs": [],
+                "isTrunk": false,
+                "isLeftTrunk": false,
+                "isCleanWorkingTree": true,
+                "isDescendantOfTrunk": true,
+                "isTipOfTrunk": false,
+                "isTipOfRemoteTrunk": false,
+                "canHide": false
+            },
+            "5ab943f2cee47e4740dd5a3ddafb315f89e2c500": {
+                "status": [
+                    "M"
+                ],
+                "files": [
+                    "packages/contract/src/ui-state.ts"
+                ],
+                "hash": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "abbrevHash": "5ab943f",
+                "treeHash": "206e297630eb5e120285e93abac79c798123cdb6",
+                "abbrevTreeHash": "206e297",
+                "parentHashes": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "abbrevParentHashes": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "authorName": "Nick",
+                "authorEmail": "nick@colabra.pp",
+                "authorDate": "2025-11-15 22:54:13 +0000",
+                "authorDateRel": "55 minutes ago",
+                "committerName": "Nick",
+                "committerEmail": "nick@colabra.pp",
+                "committerDate": "Sat Nov 15 22:54:13 2025 +0000",
+                "committerDateRel": "55 minutes ago",
+                "subject": "upd whitespace",
+                "id": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "title": "upd whitespace",
+                "parentIDs": [
+                    "ef95d3939c7752abb10eac92e63ee8c2e041e82e"
+                ],
+                "parentID": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "childrenIDs": [
+                    "e077050c5a517f10e612bf6e3f36fcfd23b14bc8"
+                ],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "spr-d9391e"
+                ],
+                "localBranchIDs": [
+                    "spr-d9391e"
+                ],
+                "remoteBranchIDs": [],
+                "isTrunk": false,
+                "isLeftTrunk": false,
+                "isCleanWorkingTree": true,
+                "isDescendantOfTrunk": true,
+                "isTipOfTrunk": false,
+                "isTipOfRemoteTrunk": false,
+                "canHide": false
+            },
+            "440eb03af290e77afa7c192205be518d10f62688": {
+                "status": [
+                    "M"
+                ],
+                "files": [
+                    "packages/core/src/utils/build-ui-state.ts"
+                ],
+                "hash": "440eb03af290e77afa7c192205be518d10f62688",
+                "abbrevHash": "440eb03",
+                "treeHash": "ce251dc6cea039cb0a4247b8d94aff54ebe1e9d4",
+                "abbrevTreeHash": "ce251dc",
+                "parentHashes": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "abbrevParentHashes": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "authorName": "Nick",
+                "authorEmail": "nick@colabra.pp",
+                "authorDate": "2025-11-15 22:53:56 +0000",
+                "authorDateRel": "55 minutes ago",
+                "committerName": "Nick",
+                "committerEmail": "nick@colabra.pp",
+                "committerDate": "Sat Nov 15 22:53:56 2025 +0000",
+                "committerDateRel": "55 minutes ago",
+                "subject": "upd",
+                "id": "440eb03af290e77afa7c192205be518d10f62688",
+                "title": "upd",
+                "parentIDs": [
+                    "ef95d3939c7752abb10eac92e63ee8c2e041e82e"
+                ],
+                "parentID": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "childrenIDs": [],
+                "mergedChildrenIDs": [],
+                "branchIDs": [
+                    "spr-94ebac"
+                ],
+                "localBranchIDs": [
+                    "spr-94ebac"
+                ],
+                "remoteBranchIDs": [],
+                "isTrunk": false,
+                "isLeftTrunk": false,
+                "isCleanWorkingTree": true,
+                "isDescendantOfTrunk": true,
+                "isTipOfTrunk": false,
+                "isTipOfRemoteTrunk": false,
+                "canHide": false
+            }
+        },
+        "rootRevisionID": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+        "branches": {
+            "main": {
+                "current": false,
+                "name": "main",
+                "commit": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "label": "upd (#4)",
+                "hasRemote": true,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "spr-10a84f": {
+                "current": false,
+                "name": "spr-10a84f",
+                "commit": "ef95d3939c7752abb10eac92e63ee8c2e041e82e",
+                "label": "add package exports",
+                "hasRemote": false,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "spr-133fdf": {
+                "current": false,
+                "name": "spr-133fdf",
+                "commit": "4ca0fd0eb3f2f3ede76e161a077a6b19a6479ab3",
+                "label": "build UI state",
+                "hasRemote": false,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "spr-1e355f": {
+                "current": true,
+                "name": "spr-1e355f",
+                "commit": "e077050c5a517f10e612bf6e3f36fcfd23b14bc8",
+                "label": "upd",
+                "hasRemote": false,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "spr-94ebac": {
+                "current": false,
+                "name": "spr-94ebac",
+                "commit": "440eb03af290e77afa7c192205be518d10f62688",
+                "label": "upd",
+                "hasRemote": false,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "spr-d9391e": {
+                "current": false,
+                "name": "spr-d9391e",
+                "commit": "5ab943f2cee47e4740dd5a3ddafb315f89e2c500",
+                "label": "upd whitespace",
+                "hasRemote": false,
+                "isRemote": false,
+                "isDetached": false
+            },
+            "remotes/origin/main": {
+                "current": false,
+                "name": "remotes/origin/main",
+                "commit": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+                "label": "upd (#4)",
+                "hasRemote": false,
+                "isRemote": true,
+                "isDetached": false
+            }
+        },
+        "currentStatus": {
+            "not_added": [],
+            "conflicted": [],
+            "created": [],
+            "deleted": [],
+            "modified": [
+                "packages/core/src/utils/build-ui-state.ts"
+            ],
+            "renamed": [],
+            "files": [
+                {
+                    "path": "packages/core/src/utils/build-ui-state.ts",
+                    "index": " ",
+                    "working_dir": "M"
+                }
+            ],
+            "staged": [],
+            "ahead": 0,
+            "behind": 0,
+            "current": "spr-1e355f",
+            "tracking": null,
+            "detached": false,
+            "isClean": false,
+            "previewFilePath": null,
+            "previewFileBeforeContent": null,
+            "previewFileAfterContent": null,
+            "currentBranch": "spr-1e355f",
+            "currentRevisionID": "e077050c5a517f10e612bf6e3f36fcfd23b14bc8",
+            "isRebasing": false,
+            "conflictedMap": {},
+            "ghRepo": "teapot",
+            "ghOwner": "jhleao",
+            "allChangedFiles": [
+                {
+                    "filePath": "packages/core/src/utils/build-ui-state.ts",
+                    "type": "diff_modified"
+                }
+            ]
+        },
+        "trunkBranch": "main",
+        "trunkBranchID": "3c9817f45dc367efba4bd7f7c623b1534bac2f06",
+        "prTemplate": null
+    }
+}

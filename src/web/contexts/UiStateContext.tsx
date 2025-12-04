@@ -15,6 +15,9 @@ interface UiStateContextValue {
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
   confirmRebaseIntent: () => Promise<void>
   cancelRebaseIntent: () => Promise<void>
+  continueRebase: () => Promise<void>
+  abortRebase: () => Promise<void>
+  skipRebaseCommit: () => Promise<void>
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
@@ -136,6 +139,33 @@ export function UiStateProvider({
     await callApi(window.api.cancelRebaseIntent({ repoPath }))
   }, [repoPath, callApi])
 
+  const continueRebase = useCallback(async () => {
+    if (!repoPath) return
+    const result = await window.api.continueRebase({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Continue rebase failed:', result.error)
+    }
+  }, [repoPath])
+
+  const abortRebase = useCallback(async () => {
+    if (!repoPath) return
+    const result = await window.api.abortRebase({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Abort rebase failed:', result.error)
+    }
+  }, [repoPath])
+
+  const skipRebaseCommit = useCallback(async () => {
+    if (!repoPath) return
+    const result = await window.api.skipRebaseCommit({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Skip rebase commit failed:', result.error)
+    }
+  }, [repoPath])
+
   const checkout = useCallback(
     async (params: { ref: string }) => {
       if (!repoPath) return
@@ -184,6 +214,9 @@ export function UiStateProvider({
         submitRebaseIntent,
         confirmRebaseIntent,
         cancelRebaseIntent,
+        continueRebase,
+        abortRebase,
+        skipRebaseCommit,
         checkout,
         deleteBranch,
         createPullRequest,

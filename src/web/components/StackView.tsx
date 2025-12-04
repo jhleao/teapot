@@ -43,7 +43,7 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent, uncommit } = useUiStateContext()
+  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, skipRebaseCommit, uncommit } = useUiStateContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -71,6 +71,18 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
 
   const handleCancelRebase = async (): Promise<void> => {
     await cancelRebaseIntent()
+  }
+
+  const handleContinueRebase = async (): Promise<void> => {
+    await continueRebase()
+  }
+
+  const handleAbortRebase = async (): Promise<void> => {
+    await abortRebase()
+  }
+
+  const handleSkipRebaseCommit = async (): Promise<void> => {
+    await skipRebaseCommit()
   }
 
   const handleUncommit = async (e: React.MouseEvent): Promise<void> => {
@@ -164,6 +176,28 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
               className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
             >
               Confirm
+            </button>
+          </div>
+        )}
+        {data.rebaseStatus === 'conflicted' && (
+          <div className="ml-auto flex gap-2">
+            <button
+              onClick={handleAbortRebase}
+              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
+            >
+              Abort
+            </button>
+            <button
+              onClick={handleSkipRebaseCommit}
+              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
+            >
+              Skip
+            </button>
+            <button
+              onClick={handleContinueRebase}
+              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
+            >
+              Continue
             </button>
           </div>
         )}

@@ -59,6 +59,11 @@ export function buildUiWorkingTree(repo: Repo): UiWorkingTreeFile[] {
     }
   }
 
+  // Handle conflicted files - these take priority over other statuses
+  for (const path of workingTreeStatus.conflicted) {
+    fileMap.set(path, { stageStatus: 'unstaged', status: 'conflicted' })
+  }
+
   return Array.from(fileMap.entries())
     .map(([path, { stageStatus, status }]) => ({
       path,

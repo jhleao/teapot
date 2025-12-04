@@ -19,31 +19,24 @@ export async function loadRemoteBranches(dir: string): Promise<BranchDescriptor[
   const git = getGitAdapter()
   const remoteBranches: BranchDescriptor[] = []
 
-  let remotes: { name: string; url: string }[] = []
+  // listBranches with remote option returns ALL remote branches with prefix (e.g., 'origin/main')
+  // so we only need to call it once
   try {
-    remotes = await git.listRemotes(dir)
-  } catch {
-    // No remotes configured or unable to read
-    return []
-  }
+    const branches = await git.listBranches(dir, { remote: 'all' })
 
-  for (const remote of remotes) {
-    try {
-      const branches = await git.listBranches(dir, { remote: remote.name })
-
-      branches.forEach((remoteBranch) => {
-        if (isSymbolicBranch(remoteBranch)) {
-          return
-        }
-        remoteBranches.push({
-          ref: `${remote.name}/${remoteBranch}`,
-          fullRef: `refs/remotes/${remote.name}/${remoteBranch}`,
-          isRemote: true
-        })
+    branches.forEach((remoteBranch) => {
+      if (isSymbolicBranch(remoteBranch)) {
+        return
+      }
+      // remoteBranch already includes remote prefix (e.g., 'origin/main')
+      remoteBranches.push({
+        ref: remoteBranch,
+        fullRef: `refs/remotes/${remoteBranch}`,
+        isRemote: true
       })
-    } catch {
-      // Ignore remotes we cannot read
-    }
+    })
+  } catch {
+    // Ignore if we cannot read remote branches
   }
 
   return remoteBranches

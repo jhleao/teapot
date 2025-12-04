@@ -106,6 +106,33 @@ export class GitForgeService {
   ): Promise<void> {
     const client = await this.getClient(repoPath)
     if (!client) {
+      const pat = configStore.getGithubPat()
+      if (!pat) {
+        throw new Error(
+          'No GitHub Personal Access Token (PAT) configured. Please configure your GitHub PAT in settings to create pull requests.'
+        )
+      }
+
+      // If we have a PAT but no client, check remotes
+      const git = getGitAdapter()
+      try {
+        const remotes = await git.listRemotes(repoPath)
+        if (remotes.length === 0) {
+          throw new Error('No git remotes found. Please add a remote to create pull requests.')
+        }
+
+        const origin = remotes.find((r) => r.name === 'origin') || remotes[0]
+        const { owner, repo } = this.parseRemoteUrl(origin.url)
+        if (!owner || !repo) {
+          throw new Error(
+            `Could not parse GitHub repository from remote URL: ${origin.url}. Expected format: https://github.com/owner/repo.git or git@github.com:owner/repo.git`
+          )
+        }
+      } catch (error) {
+        log.error('Failed to get git forge client:', error)
+        throw error
+      }
+
       throw new Error('No git forge client available')
     }
     await client.createPullRequest(title, headBranch, baseBranch, draft)

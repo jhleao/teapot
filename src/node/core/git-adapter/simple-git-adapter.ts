@@ -471,12 +471,17 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
 
       // Build rebase command arguments
-      // git rebase --onto <newbase> <upstream>
-      // This replays commits from <upstream> (exclusive) to HEAD onto <newbase>
+      // git rebase --onto <newbase> <upstream> [<branch>]
+      // This replays commits from <upstream> (exclusive) to <branch> onto <newbase>
       const args = ['rebase', '--onto', options.onto]
 
       if (options.from) {
         args.push(options.from)
+      }
+
+      // Add the branch to rebase (required for proper operation)
+      if (options.to) {
+        args.push(options.to)
       }
 
       // Execute rebase

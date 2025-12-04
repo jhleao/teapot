@@ -219,7 +219,22 @@ export async function continueRebase(
   if (result.success) {
     // Job completed, mark it and continue with next jobs
     const newHeadSha = result.currentCommit ?? await gitAdapter.resolveRef(repoPath, 'HEAD')
+
+    // Check if Git is still rebasing - if not, the entire rebase is complete
+    const workingTreeStatus = await gitAdapter.getWorkingTreeStatus(repoPath)
+    console.log('[Rebase] After continue - isRebasing:', workingTreeStatus.isRebasing, 'newHeadSha:', newHeadSha)
+
     await completeCurrentJob(repoPath, session, newHeadSha)
+
+    if (!workingTreeStatus.isRebasing) {
+      // Git finished the entire rebase, finalize and return
+      console.log('[Rebase] Git completed entire rebase, finalizing session')
+      const updatedSession = await rebaseSessionStore.getSession(repoPath)
+      if (updatedSession) {
+        await finalizeRebase(repoPath, updatedSession, gitAdapter)
+      }
+      return { status: 'completed', finalState: session.state }
+    }
 
     // Continue executing remaining jobs
     return executeJobs(repoPath, gitAdapter, session.intent, options)
@@ -324,13 +339,22 @@ async function executeJobs(
       throw new SessionNotFoundError('Session disappeared during execution', repoPath)
     }
 
+    console.log('[Rebase] executeJobs - queue state:', {
+      activeJobId: session.state.queue.activeJobId,
+      pendingJobIds: session.state.queue.pendingJobIds,
+      blockedJobIds: session.state.queue.blockedJobIds
+    })
+
     // Get next job
     const next = nextJob(session.state, Date.now())
     if (!next) {
       // All jobs complete
+      console.log('[Rebase] No more jobs, finalizing rebase')
       await finalizeRebase(repoPath, session, gitAdapter)
       return { status: 'completed', finalState: session.state }
     }
+
+    console.log('[Rebase] Starting job:', next.job.id, 'branch:', next.job.branch)
 
     const { job, state: stateWithActiveJob } = next
 

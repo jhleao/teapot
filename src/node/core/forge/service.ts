@@ -39,7 +39,7 @@ export class GitForgeService {
 
     // Determine owner/repo from remotes
     // We'll prioritize 'origin', then the first remote
-    let remotes: { remote: string; url: string }[] = []
+    let remotes = []
     try {
       remotes = await git.listRemotes({ fs, dir: repoPath })
     } catch (e) {

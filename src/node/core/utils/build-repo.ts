@@ -10,44 +10,7 @@ type BranchDescriptor = {
   isRemote: boolean
 }
 
-export type BuildRepoOptions = {
-  /**
-   * Maximum commits to load for trunk branch.
-   * This prevents crashes with large repositories by limiting trunk history depth.
-   * Feature branches are always loaded completely (they're typically small).
-   * Default: 200
-   */
-  trunkDepth?: number
-  /**
-   * Whether to load remote branches.
-   * Remote branches are expensive to load and often not needed for stacked diff workflows.
-   * Use the load-remote-branches module to load them separately if needed.
-   * Default: false
-   */
-  loadRemotes?: boolean
-  /**
-   * Maximum commits to load for any single branch (safety limit).
-   * Prevents crashes from pathological cases like circular history.
-   * Default: 1000
-   */
-  maxCommitsPerBranch?: number
-}
-
-const DEFAULT_OPTIONS: BuildRepoOptions = {
-  trunkDepth: 200,
-  loadRemotes: false,
-  maxCommitsPerBranch: 1000
-}
-
-export async function buildRepoModel(
-  config: Configuration,
-  options: BuildRepoOptions = {}
-): Promise<Repo> {
-  const { trunkDepth, loadRemotes, maxCommitsPerBranch } = {
-    ...DEFAULT_OPTIONS,
-    ...options
-  }
-
+export async function buildRepoModel(config: Configuration): Promise<Repo> {
   const dir = config.repoPath
 
   const localBranches = await git.listBranches({
@@ -55,23 +18,14 @@ export async function buildRepoModel(
     dir
   })
 
-  const branchDescriptors = await collectBranchDescriptors(dir, localBranches, loadRemotes!)
+  const branchDescriptors = await collectBranchDescriptors(dir, localBranches)
   const branchNameSet = new Set<string>(localBranches)
   branchDescriptors.forEach((descriptor) => {
     branchNameSet.add(getBranchName(descriptor))
   })
   const trunkBranch = await getTrunkBranchRef(config, Array.from(branchNameSet))
   const branches = await buildBranchesFromDescriptors(dir, branchDescriptors, trunkBranch)
-  const commits = await collectCommitsFromDescriptors(
-    dir,
-    branchDescriptors,
-    branches,
-    trunkBranch,
-    {
-      trunkDepth: trunkDepth!,
-      maxCommitsPerBranch: maxCommitsPerBranch!
-    }
-  )
+  const commits = await collectCommitsFromDescriptors(dir, branchDescriptors, branches)
   const workingTreeStatus = await collectWorkingTreeStatus(dir, branchDescriptors)
 
   return {
@@ -84,8 +38,7 @@ export async function buildRepoModel(
 
 async function collectBranchDescriptors(
   dir: string,
-  localBranches: string[],
-  loadRemotes: boolean
+  localBranches: string[]
 ): Promise<BranchDescriptor[]> {
   const branchDescriptors: BranchDescriptor[] = localBranches
     .filter((ref) => !isSymbolicBranch(ref))
@@ -94,12 +47,6 @@ async function collectBranchDescriptors(
       fullRef: `refs/heads/${ref}`,
       isRemote: false
     }))
-
-  // Skip remote loading if not requested
-  // Remote branches can be loaded separately using the load-remote-branches module
-  if (!loadRemotes) {
-    return branchDescriptors
-  }
 
   let remotes: { remote: string; url: string }[] = []
   try {
@@ -158,53 +105,21 @@ async function buildBranchesFromDescriptors(
 async function collectCommitsFromDescriptors(
   dir: string,
   branchDescriptors: BranchDescriptor[],
-  branches: Branch[],
-  trunkBranchName: string | null,
-  options: {
-    trunkDepth: number
-    maxCommitsPerBranch: number
-  }
+  branches: Branch[]
 ): Promise<Commit[]> {
   const commitsMap = new Map<string, Commit>()
-  const { trunkDepth, maxCommitsPerBranch } = options
 
-  // Step 1: Load trunk first with depth limit
-  // This is crucial for large repos - trunk can have thousands of commits
-  const trunkBranch = branches.find((b) => b.ref === trunkBranchName && !b.isRemote)
-
-  if (trunkBranch?.headSha) {
-    const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
-    if (trunkDescriptor) {
-      await collectCommitsForRef(dir, trunkDescriptor.fullRef, commitsMap, {
-        depth: trunkDepth,
-        maxCommits: maxCommitsPerBranch
-      })
-    }
-  }
-
-  // Step 2: Load all non-trunk branches WITHOUT depth limit
-  // Feature branches are typically small (1-20 commits), so we load them completely
-  // This ensures the full changeset is visible in the stacked diff UI
   for (let i = 0; i < branchDescriptors.length; i += 1) {
     const descriptor = branchDescriptors[i]
     if (!descriptor) {
       continue
     }
     const branch = branches[i]
-    if (!branch?.headSha) {
+    const headSha = branch?.headSha
+    if (!headSha) {
       continue
     }
-
-    // Skip trunk (already loaded with depth limit)
-    if (branch.isTrunk && !branch.isRemote) {
-      continue
-    }
-
-    // Load feature branch completely (no depth limit)
-    await collectCommitsForRef(dir, descriptor.fullRef, commitsMap, {
-      depth: undefined, // No depth limit for feature branches
-      maxCommits: maxCommitsPerBranch // Safety limit only
-    })
+    await collectCommitsForRef(dir, descriptor.fullRef, commitsMap)
   }
 
   return Array.from(commitsMap.values()).sort((a, b) => b.timeMs - a.timeMs)
@@ -225,35 +140,17 @@ async function resolveBranchHead(dir: string, ref: string): Promise<string> {
 async function collectCommitsForRef(
   dir: string,
   ref: string,
-  commitsMap: Map<string, Commit>,
-  options: {
-    depth?: number
-    maxCommits?: number
-  } = {}
+  commitsMap: Map<string, Commit>
 ): Promise<void> {
-  const { depth, maxCommits = 1000 } = options
-
   try {
     const logEntries = await git.log({
       fs,
       dir,
-      ref,
-      ...(depth !== undefined && { depth }) // Only pass depth if defined
+      ref
     })
 
-    // Safety: Cap at maxCommits even if git.log returns more
-    const entriesToProcess = logEntries.slice(0, maxCommits)
-
-    for (const entry of entriesToProcess) {
+    for (const entry of logEntries) {
       const sha = entry.oid
-
-      // Skip if already processed (happens when branches share history)
-      // But still update parent-child relationships
-      if (commitsMap.has(sha)) {
-        updateParentChildRelationships(commitsMap, entry)
-        continue
-      }
-
       const commit = ensureCommit(commitsMap, sha)
       commit.message = entry.commit.message.trim()
       commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
@@ -270,21 +167,6 @@ async function collectCommitsForRef(
     }
   } catch {
     // Ignore branches we cannot traverse (e.g. shallow clones)
-  }
-}
-
-function updateParentChildRelationships(
-  commitsMap: Map<string, Commit>,
-  entry: { oid: string; commit: { parent?: string[] } }
-): void {
-  const sha = entry.oid
-  const parentSha = entry.commit.parent?.[0]
-
-  if (parentSha && commitsMap.has(parentSha)) {
-    const parentCommit = commitsMap.get(parentSha)!
-    if (!parentCommit.childrenSha.includes(sha)) {
-      parentCommit.childrenSha.push(sha)
-    }
   }
 }
 

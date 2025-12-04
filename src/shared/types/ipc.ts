@@ -1,5 +1,39 @@
 import { IpcMainInvokeEvent } from 'electron'
 import type { UiState } from './ui'
+import type { RebaseState } from '../../node/core/rebase'
+
+/**
+ * Response type for rebase operations (continue, abort, skip)
+ */
+export type RebaseOperationResponse = {
+  success: boolean
+  /** Error message if success is false */
+  error?: string
+  /** Updated UI state after the operation */
+  uiState: UiState | null
+  /** Conflicts if the operation resulted in new conflicts */
+  conflicts?: string[]
+}
+
+/**
+ * Response type for rebase status queries
+ */
+export type RebaseStatusResponse = {
+  /** Whether a rebase is in progress (either our session or Git's) */
+  isRebasing: boolean
+  /** Whether we have an active session for this repo */
+  hasSession: boolean
+  /** Current rebase state if we have a session */
+  state?: RebaseState
+  /** Conflicted files if any */
+  conflicts: string[]
+  /** Progress info from Git if available */
+  progress?: {
+    currentStep: number
+    totalSteps: number
+    branch: string
+  }
+}
 
 /**
  * IPC Channel names - single source of truth for channel identifiers
@@ -9,6 +43,10 @@ export const IPC_CHANNELS = {
   submitRebaseIntent: 'submitRebaseIntent',
   confirmRebaseIntent: 'confirmRebaseIntent',
   cancelRebaseIntent: 'cancelRebaseIntent',
+  continueRebase: 'continueRebase',
+  abortRebase: 'abortRebase',
+  skipRebaseCommit: 'skipRebaseCommit',
+  getRebaseStatus: 'getRebaseStatus',
   discardStaged: 'discardStaged',
   amend: 'amend',
   commit: 'commit',
@@ -53,6 +91,22 @@ export interface IpcContract {
   [IPC_CHANNELS.cancelRebaseIntent]: {
     request: { repoPath: string }
     response: UiState | null
+  }
+  [IPC_CHANNELS.continueRebase]: {
+    request: { repoPath: string }
+    response: RebaseOperationResponse
+  }
+  [IPC_CHANNELS.abortRebase]: {
+    request: { repoPath: string }
+    response: RebaseOperationResponse
+  }
+  [IPC_CHANNELS.skipRebaseCommit]: {
+    request: { repoPath: string }
+    response: RebaseOperationResponse
+  }
+  [IPC_CHANNELS.getRebaseStatus]: {
+    request: { repoPath: string }
+    response: RebaseStatusResponse
   }
   [IPC_CHANNELS.discardStaged]: {
     request: { repoPath: string }

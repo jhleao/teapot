@@ -32,13 +32,13 @@ const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {
   GitWatcher.getInstance().stop()
 }
 
-const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath }) => {
+const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath, declutterTrunk = false }) => {
   const config: Configuration = { repoPath }
   const [repo, forgeState] = await Promise.all([
     buildRepoModel(config),
     gitForgeService.getState(repoPath)
   ])
-  const stack = buildUiStack(repo, forgeState)
+  const stack = buildUiStack(repo, forgeState, { declutterTrunk })
   const workingTree = buildUiWorkingTree(repo)
 
   if (!stack) return null

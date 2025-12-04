@@ -82,6 +82,60 @@ export async function buildRepoModel(
   }
 }
 
+/**
+ * Loads the remote trunk branch (origin/main or origin/master) if it exists.
+ * This ensures we always show the sync state with remote, even when loadRemotes is false.
+ * Returns null if no origin remote exists or no trunk branch is found.
+ */
+async function loadRemoteTrunkBranch(
+  dir: string,
+  localBranches: string[]
+): Promise<BranchDescriptor | null> {
+  // Step 1: Determine trunk name from local branches
+  const trunkCandidates = ['main', 'master', 'develop', 'trunk']
+  const trunkName = trunkCandidates.find((candidate) => localBranches.includes(candidate))
+
+  if (!trunkName) {
+    // No recognizable trunk branch locally
+    return null
+  }
+
+  // Step 2: Check if origin remote exists
+  let remotes: { remote: string; url: string }[] = []
+  try {
+    remotes = await git.listRemotes({ fs, dir })
+  } catch {
+    return null
+  }
+
+  const originRemote = remotes.find((remote) => remote.remote === 'origin')
+  if (!originRemote) {
+    // No origin remote configured
+    return null
+  }
+
+  // Step 3: Check if origin/{trunk} exists
+  try {
+    const remoteBranches = await git.listBranches({
+      fs,
+      dir,
+      remote: 'origin'
+    })
+
+    if (remoteBranches.includes(trunkName)) {
+      return {
+        ref: `origin/${trunkName}`,
+        fullRef: `refs/remotes/origin/${trunkName}`,
+        isRemote: true
+      }
+    }
+  } catch {
+    // Remote branch lookup failed
+  }
+
+  return null
+}
+
 async function collectBranchDescriptors(
   dir: string,
   localBranches: string[],
@@ -94,6 +148,12 @@ async function collectBranchDescriptors(
       fullRef: `refs/heads/${ref}`,
       isRemote: false
     }))
+
+  // Always load remote trunk to show sync state, even when loadRemotes is false
+  const remoteTrunkDescriptor = await loadRemoteTrunkBranch(dir, localBranches)
+  if (remoteTrunkDescriptor) {
+    branchDescriptors.push(remoteTrunkDescriptor)
+  }
 
   // Skip remote loading if not requested
   // Remote branches can be loaded separately using the load-remote-branches module
@@ -168,15 +228,28 @@ async function collectCommitsFromDescriptors(
   const commitsMap = new Map<string, Commit>()
   const { trunkDepth, maxCommitsPerBranch } = options
 
-  // Step 1: Load trunk first with depth limit
+  // Step 1: Load local trunk with depth limit
   // This is crucial for large repos - trunk can have thousands of commits
   const trunkBranch = branches.find((b) => b.ref === trunkBranchName && !b.isRemote)
+  const remoteTrunkBranch = branches.find((b) => b.isTrunk && b.isRemote)
 
   if (trunkBranch?.headSha) {
     const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
     if (trunkDescriptor) {
       await collectCommitsForRef(dir, trunkDescriptor.fullRef, commitsMap, {
         depth: trunkDepth,
+        maxCommits: maxCommitsPerBranch
+      })
+    }
+  }
+
+  // Step 1.5: Load remote trunk commits
+  // Load from remote trunk HEAD until we find a commit already in commitsMap
+  // This ensures we capture the gap between local and remote trunk
+  if (remoteTrunkBranch?.headSha) {
+    const remoteTrunkDescriptor = branchDescriptors.find((d) => d.ref === remoteTrunkBranch.ref)
+    if (remoteTrunkDescriptor) {
+      await collectCommitsUntilKnown(dir, remoteTrunkDescriptor.fullRef, commitsMap, {
         maxCommits: maxCommitsPerBranch
       })
     }
@@ -195,8 +268,8 @@ async function collectCommitsFromDescriptors(
       continue
     }
 
-    // Skip trunk (already loaded with depth limit)
-    if (branch.isTrunk && !branch.isRemote) {
+    // Skip trunks (already loaded in steps 1 and 1.5)
+    if (branch.isTrunk) {
       continue
     }
 
@@ -219,6 +292,66 @@ async function resolveBranchHead(dir: string, ref: string): Promise<string> {
     })
   } catch {
     return ''
+  }
+}
+
+/**
+ * Loads commits from a ref until we find a commit already in the map.
+ * This is used for remote trunk to fill the gap between local and remote.
+ */
+async function collectCommitsUntilKnown(
+  dir: string,
+  ref: string,
+  commitsMap: Map<string, Commit>,
+  options: {
+    maxCommits?: number
+  } = {}
+): Promise<void> {
+  const { maxCommits = 1000 } = options
+
+  try {
+    const logEntries = await git.log({
+      fs,
+      dir,
+      ref
+    })
+
+    let processedCount = 0
+    for (const entry of logEntries) {
+      if (processedCount >= maxCommits) {
+        break
+      }
+
+      const sha = entry.oid
+      const existingCommit = commitsMap.get(sha)
+
+      // If we've already seen this commit AND it's fully populated, stop loading
+      // A commit is fully populated if it has a message
+      // Commits created as placeholders by ensureCommit have empty messages
+      if (existingCommit && existingCommit.message) {
+        break
+      }
+
+      const commit = ensureCommit(commitsMap, sha)
+
+      // Populate commit metadata
+      commit.message = entry.commit.message.trim()
+      commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
+
+      const parentSha = entry.commit.parent?.[0] ?? ''
+      commit.parentSha = parentSha
+
+      if (parentSha) {
+        const parentCommit = ensureCommit(commitsMap, parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
+      }
+
+      processedCount++
+    }
+  } catch {
+    // Ignore branches we cannot traverse (e.g. shallow clones)
   }
 }
 

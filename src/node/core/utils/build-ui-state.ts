@@ -516,7 +516,68 @@ function deriveProjectedStack(
     ...repo,
     commits: projectedCommits
   }
-  return buildUiStack(projectedRepo, gitForgeState, { declutterTrunk })
+  const stack = buildUiStack(projectedRepo, gitForgeState, { declutterTrunk })
+
+  if (stack) {
+    // Apply rebase status to commits in the projected stack
+    applyRebaseStatusToStack(stack, intent)
+  }
+
+  return stack
+}
+
+/**
+ * Applies rebaseStatus to commits in the stack based on the rebase intent.
+ *
+ * - The head commit of each target gets 'prompting' status
+ * - All descendant commits of 'prompting' commits get 'idle' status
+ */
+function applyRebaseStatusToStack(stack: UiStack, intent: RebaseIntent): void {
+  // Build a set of "prompting" commit SHAs (the head of each target)
+  const promptingShas = new Set<string>()
+  // Build a set of all commits that are children of prompting commits
+  const idleShas = new Set<string>()
+
+  for (const target of intent.targets) {
+    promptingShas.add(target.node.headSha)
+    // Collect all children recursively
+    collectChildShas(target.node.children, idleShas)
+  }
+
+  // Walk the stack and apply statuses
+  applyStatusToStackRecursive(stack, promptingShas, idleShas)
+}
+
+/**
+ * Recursively collects all child commit SHAs from StackNodeState children.
+ */
+function collectChildShas(children: StackNodeState[], result: Set<string>): void {
+  for (const child of children) {
+    result.add(child.headSha)
+    collectChildShas(child.children, result)
+  }
+}
+
+/**
+ * Recursively walks the UiStack and applies rebaseStatus to commits.
+ */
+function applyStatusToStackRecursive(
+  stack: UiStack,
+  promptingShas: Set<string>,
+  idleShas: Set<string>
+): void {
+  for (const commit of stack.commits) {
+    if (promptingShas.has(commit.sha)) {
+      commit.rebaseStatus = 'prompting'
+    } else if (idleShas.has(commit.sha)) {
+      commit.rebaseStatus = 'idle'
+    }
+
+    // Recurse into spinoffs
+    for (const spinoff of commit.spinoffs) {
+      applyStatusToStackRecursive(spinoff, promptingShas, idleShas)
+    }
+  }
 }
 
 type SyntheticCommit = DomainCommit & { childrenSha: string[] }

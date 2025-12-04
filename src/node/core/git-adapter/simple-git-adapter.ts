@@ -79,7 +79,6 @@ export class SimpleGitAdapter implements GitAdapter {
       }
 
       const logOptions: any = {
-        from: ref,
         format
       }
 
@@ -87,7 +86,8 @@ export class SimpleGitAdapter implements GitAdapter {
         logOptions.maxCount = options.depth
       }
 
-      const result = await git.log(logOptions)
+      // Add the ref as an argument to git log
+      const result = await git.log([ref], logOptions)
 
       // Safety: Cap at maxCommits if specified
       const entriesToProcess = options?.maxCommits

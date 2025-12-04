@@ -34,8 +34,11 @@ type TrunkBuildResult = {
 
 export function buildUiStack(
   repo: Repo,
-  gitForgeState: GitForgeState | null = null
+  gitForgeState: GitForgeState | null = null,
+  options: { declutterTrunk?: boolean } = {}
 ): UiStack | null {
+  const { declutterTrunk = false } = options
+
   if (!repo.commits.length) {
     return null
   }
@@ -65,7 +68,12 @@ export function buildUiStack(
   if (!trunk) {
     return null
   }
-  const trunkResult = buildTrunkUiStack(trunk, state)
+
+  // Find remote trunk to extend lineage if it's ahead
+  const remoteTrunk = repo.branches.find((b) => b.isTrunk && b.isRemote)
+
+  // Build trunk stack from local trunk, extending to include remote trunk commits if ahead
+  const trunkResult = buildTrunkUiStack(trunk, state, remoteTrunk)
   if (!trunkResult) {
     return null
   }
@@ -78,7 +86,10 @@ export function buildUiStack(
     createSpinoffUiStacks(commit, state)
   })
 
-  const annotationBranches = [...UiStackBranches].sort((a, b) => {
+  // For annotations, include ALL branches (including remote trunk)
+  // Remote trunk should not build a stack, but should still annotate commits
+  const allBranchesForAnnotation = [...repo.branches]
+  const annotationBranches = allBranchesForAnnotation.sort((a, b) => {
     if (trunk) {
       if (a.ref === trunk.ref && b.ref !== trunk.ref) {
         return -1
@@ -100,7 +111,8 @@ export function buildUiStack(
 
   // Trim trunk commits that have no useful information (no spinoffs, no branches)
   // This removes "dead" history below the deepest point of interest
-  if (trunkStack) {
+  // Can be disabled via declutterTrunk option
+  if (trunkStack && declutterTrunk) {
     trimTrunkCommits(trunkStack)
   }
 
@@ -112,6 +124,11 @@ export type FullUiStateOptions = {
   rebaseSession?: RebaseState | null
   generateJobId?: () => RebaseJobId
   gitForgeState?: GitForgeState | null
+  /**
+   * Remove trunk commits that have no useful information (no spinoffs, no branches).
+   * Default: false
+   */
+  declutterTrunk?: boolean
 }
 
 export type FullUiState = {
@@ -126,9 +143,10 @@ export type FullUiState = {
  * or create a high level replacement that fn(repo, rebaseQueue) -> UiState
  */
 export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
-  const stack = buildUiStack(repo, options.gitForgeState)
+  const { declutterTrunk = false } = options
+  const stack = buildUiStack(repo, options.gitForgeState, { declutterTrunk })
   const rebase = deriveRebaseProjection(repo, options)
-  const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState)
+  const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState, declutterTrunk)
 
   return {
     stack,
@@ -142,9 +160,14 @@ function selectBranchesForUiStacks(branches: Branch[]): Branch[] {
   const canonicalRefs = new Set(
     branches.filter((branch) => isCanonicalTrunkBranch(branch)).map((branch) => branch.ref)
   )
-  const localOrTrunk = branches.filter(
-    (branch) => !branch.isRemote || branch.isTrunk || canonicalRefs.has(branch.ref)
-  )
+  const localOrTrunk = branches.filter((branch) => {
+    // Exclude remote trunk branches - they should only be used for annotations, not stack building
+    if (branch.isRemote && branch.isTrunk) {
+      return false
+    }
+    // Include local branches, local trunk, and canonical trunk branches
+    return !branch.isRemote || branch.isTrunk || canonicalRefs.has(branch.ref)
+  })
   return localOrTrunk.length > 0 ? localOrTrunk : branches
 }
 
@@ -162,14 +185,41 @@ function findTrunkBranch(branches: Branch[], workingTree: WorkingTreeStatus): Br
   )
 }
 
-function buildTrunkUiStack(branch: Branch, state: BuildState): TrunkBuildResult | null {
+function buildTrunkUiStack(
+  branch: Branch,
+  state: BuildState,
+  remoteTrunk?: Branch
+): TrunkBuildResult | null {
   if (!branch.headSha) {
     return null
   }
-  const lineage = collectBranchLineage(branch.headSha, state.commitMap)
+
+  // Collect lineage from local trunk
+  const localLineage = collectBranchLineage(branch.headSha, state.commitMap)
+
+  // If remote trunk exists and differs from local, merge both lineages
+  let lineage = localLineage
+  if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
+    const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
+
+    // Merge both lineages - use a Set to deduplicate, then sort by topological order
+    // The lineages are already in order (oldest to newest), so we can merge them
+    const allShas = new Set([...localLineage, ...remoteLineage])
+
+    // Convert back to array and maintain topological order by walking from all commits
+    lineage = Array.from(allShas).sort((a, b) => {
+      const commitA = state.commitMap.get(a)
+      const commitB = state.commitMap.get(b)
+      if (!commitA || !commitB) return 0
+      // Sort by time to maintain chronological order
+      return (commitA.timeMs ?? 0) - (commitB.timeMs ?? 0)
+    })
+  }
+
   if (lineage.length === 0) {
     return null
   }
+
   const commits: UiCommit[] = []
   lineage.forEach((sha) => {
     const node = getOrCreateUiCommit(sha, state)
@@ -177,9 +227,11 @@ function buildTrunkUiStack(branch: Branch, state: BuildState): TrunkBuildResult 
       commits.push(node)
     }
   })
+
   if (commits.length === 0) {
     return null
   }
+
   const stack: UiStack = { commits, isTrunk: true }
   return { UiStack: stack, trunkSet: new Set(lineage) }
 }
@@ -188,6 +240,7 @@ function collectBranchLineage(headSha: string, commitMap: Map<string, DomainComm
   const shas: string[] = []
   let currentSha: string | null = headSha
   const visited = new Set<string>()
+
   while (currentSha && !visited.has(currentSha)) {
     visited.add(currentSha)
     shas.push(currentSha)
@@ -197,6 +250,7 @@ function collectBranchLineage(headSha: string, commitMap: Map<string, DomainComm
     }
     currentSha = commit.parentSha
   }
+
   return shas.slice().reverse()
 }
 
@@ -299,6 +353,12 @@ function annotateBranchHeads(
     }
     const commitNode = state.commitNodes.get(branch.headSha)
     if (!commitNode) {
+      console.log('[DEBUG] Branch head not in commitNodes:', {
+        branch: branch.ref,
+        headSha: branch.headSha,
+        isRemote: branch.isRemote,
+        isTrunk: branch.isTrunk
+      })
       return
     }
     const alreadyAnnotated = commitNode.branches.some((existing) => existing.name === branch.ref)
@@ -441,7 +501,8 @@ function createDefaultPreviewJobIdGenerator(): () => RebaseJobId {
 function deriveProjectedStack(
   repo: Repo,
   projection: RebaseProjection,
-  gitForgeState: GitForgeState | null = null
+  gitForgeState: GitForgeState | null = null,
+  declutterTrunk = false
 ): UiStack | null {
   if (projection.kind !== 'planning') {
     return null
@@ -455,7 +516,7 @@ function deriveProjectedStack(
     ...repo,
     commits: projectedCommits
   }
-  return buildUiStack(projectedRepo, gitForgeState)
+  return buildUiStack(projectedRepo, gitForgeState, { declutterTrunk })
 }
 
 type SyntheticCommit = DomainCommit & { childrenSha: string[] }

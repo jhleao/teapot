@@ -26,7 +26,7 @@ import { GitWatcher } from '../core/git-watcher'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
-import { rebaseSessionStore } from '../core/rebase-session-store'
+import { rebaseSessionStore, createStoredSession } from '../core/rebase-session-store'
 import {
   executeRebasePlan,
   continueRebase as continueRebaseExec,
@@ -80,9 +80,11 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
   const workingTree = [] as UiWorkingTreeFile[]
 
   const config: Configuration = { repoPath }
-  const [repo, forgeState] = await Promise.all([
+  const gitAdapter = getGitAdapter()
+  const [repo, forgeState, currentBranch] = await Promise.all([
     buildRepoModel(config),
-    gitForgeService.getState(repoPath)
+    gitForgeService.getState(repoPath),
+    gitAdapter.currentBranch(repoPath)
   ])
 
   const rebaseIntent = buildRebaseIntent(repo, headSha, baseSha)
@@ -90,15 +92,26 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
     return null
   }
 
-  // Store the intent in session for later confirmation
+  // Create the rebase plan
   const plan = createRebasePlan({
     repo,
     intent: rebaseIntent,
     generateJobId: createJobIdGenerator()
   })
 
-  // We don't create a full session yet - just store the intent temporarily
-  // The session will be created when the user confirms
+  // Clear any existing session first (in case of stale state)
+  await rebaseSessionStore.clearSession(repoPath)
+
+  // Store the plan in the session store for later confirmation
+  const storedSession = createStoredSession(plan, currentBranch ?? 'HEAD')
+  const createResult = await rebaseSessionStore.createSession(repoPath, storedSession)
+
+  if (!createResult.success) {
+    // Session already exists - this shouldn't happen after clearSession, but handle gracefully
+    console.warn('Failed to create rebase session:', createResult.reason)
+  }
+
+  // Build the UI state with the rebase preview
   const fullUiState = buildFullUiState(repo, { rebaseIntent, gitForgeState: forgeState })
   const stack = fullUiState.projectedStack ?? fullUiState.stack
   if (!stack) {
@@ -114,33 +127,43 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
 }
 
 const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, { repoPath }) => {
-  // Get current repo state and rebuild the intent
-  const config: Configuration = { repoPath }
-  const repo = await buildRepoModel(config)
+  // Get the stored session from submitRebaseIntent
+  const session = await rebaseSessionStore.getSession(repoPath)
 
-  // Check if we have a pending intent in the UI (passed via the original submitRebaseIntent)
-  // For now, we need to get this from somewhere - the frontend should pass the intent details
-  // This is a limitation of the current design that we need to address
+  if (!session) {
+    // No pending rebase intent - nothing to confirm
+    console.warn('confirmRebaseIntent called but no session found for:', repoPath)
+    return getUiState(repoPath)
+  }
 
-  // TEMPORARY: Try to get any existing session
-  const existingSession = await rebaseSessionStore.getSession(repoPath)
-  if (existingSession) {
-    // Execute the existing plan
+  try {
+    // Execute the stored plan
     const result = await executeRebasePlan(
       repoPath,
-      { intent: existingSession.intent, state: existingSession.state },
+      { intent: session.intent, state: session.state },
       getGitAdapter()
     )
 
     if (result.status === 'error') {
+      // Clear session on error so user can retry
+      await rebaseSessionStore.clearSession(repoPath)
       throw new Error(result.message)
     }
 
-    return getUiState(repoPath)
-  }
+    if (result.status === 'conflict') {
+      // Keep session active for conflict resolution
+      // The UI will show conflicts and allow continue/abort
+      return getUiState(repoPath)
+    }
 
-  // No session - just return current state
-  return getUiState(repoPath)
+    // Success - clear the session
+    await rebaseSessionStore.clearSession(repoPath)
+    return getUiState(repoPath)
+  } catch (error) {
+    // Clear session on unexpected error
+    await rebaseSessionStore.clearSession(repoPath)
+    throw error
+  }
 }
 
 const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = async (_event, { repoPath }) => {

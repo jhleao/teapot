@@ -205,13 +205,14 @@ describe('updateSessionWithRetry', () => {
     const originalData = createSessionData({ originalBranch: 'feature-branch' })
     await store.createSession('/path/to/repo', originalData)
 
-    let receivedSession: StoredRebaseSession | null = null
+    let receivedSession: StoredRebaseSession | undefined
     await updateSessionWithRetry(store, '/path/to/repo', (current) => {
       receivedSession = current
       return { state: current.state }
     })
 
-    expect(receivedSession?.originalBranch).toBe('feature-branch')
+    expect(receivedSession).toBeDefined()
+    expect(receivedSession!.originalBranch).toBe('feature-branch')
   })
 })
 

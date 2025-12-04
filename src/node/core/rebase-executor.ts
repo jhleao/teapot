@@ -14,7 +14,7 @@
 
 import type { GitAdapter } from './git-adapter/interface'
 import { supportsRebase, supportsRebaseAbort, supportsRebaseContinue, supportsRebaseSkip } from './git-adapter/interface'
-import type { Commit, CommitRewrite, RebaseJob, RebasePlan, RebaseState, StackNodeState } from '@shared/types'
+import type { Commit, CommitRewrite, RebaseJob, RebasePlan, RebaseState } from '@shared/types'
 import { completeJob, enqueueDescendants, nextJob, recordConflict } from '@shared/types'
 import {
   rebaseSessionStore,
@@ -187,7 +187,7 @@ export async function continueRebase(
   if (result.success) {
     // Job completed, mark it and continue with next jobs
     const newHeadSha = result.currentCommit ?? await gitAdapter.resolveRef(repoPath, 'HEAD')
-    await completeCurrentJob(repoPath, session, newHeadSha, gitAdapter)
+    await completeCurrentJob(repoPath, session, newHeadSha)
 
     // Continue executing remaining jobs
     return executeJobs(repoPath, gitAdapter, session.intent, options)
@@ -447,8 +447,7 @@ async function executeJob(
 async function completeCurrentJob(
   repoPath: string,
   session: StoredRebaseSession,
-  newHeadSha: string,
-  gitAdapter: GitAdapter
+  newHeadSha: string
 ): Promise<void> {
   const activeJobId = session.state.queue.activeJobId
   if (!activeJobId) return

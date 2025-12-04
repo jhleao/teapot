@@ -1,8 +1,7 @@
 import { exec } from 'child_process'
-import fs from 'fs'
-import git from 'isomorphic-git'
 import { promisify } from 'util'
 import { log } from '@shared/logger'
+import { getGitAdapter } from '../git-adapter'
 
 const execAsync = promisify(exec)
 
@@ -13,20 +12,12 @@ export interface AuthorIdentity {
 
 export async function getAuthorIdentity(dir: string): Promise<AuthorIdentity> {
   try {
-    const name = await git.getConfig({
-      fs,
-      dir,
-      path: 'user.name'
-    })
-
-    const email = await git.getConfig({
-      fs,
-      dir,
-      path: 'user.email'
-    })
+    const git = getGitAdapter()
+    const name = await git.getConfig(dir, 'user.name')
+    const email = await git.getConfig(dir, 'user.email')
 
     if (name && email) {
-      return { name: name as string, email: email as string }
+      return { name, email }
     }
 
     const systemName = name || (await getSystemGitConfig('user.name'))

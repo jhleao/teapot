@@ -847,6 +847,61 @@ describe('buildUiState', () => {
     expect(trunkStack.commits.map((commit) => commit.sha)).toEqual([root.sha, trunkTip.sha])
   })
 
+  it('shows both local and remote trunk labels when at the same commit', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip],
+      branches: [
+        createBranch({
+          ref: 'main',
+          isTrunk: true,
+          isRemote: false,
+          headSha: trunkTip.sha
+        }),
+        createBranch({
+          ref: 'origin/main',
+          isTrunk: true,
+          isRemote: true,
+          headSha: trunkTip.sha // Same commit as local main
+        })
+      ],
+      workingTreeStatus: createWorkingTreeStatus({
+        currentBranch: 'main',
+        currentCommitSha: trunkTip.sha
+      })
+    })
+
+    const trunkStack = expectTrunkStack(repo)
+    const tipCommit = trunkStack.commits.at(-1)
+    if (!tipCommit) {
+      throw new Error('expected tip commit')
+    }
+
+    // Both main and origin/main should be shown
+    expect(tipCommit.branches).toContainEqual({
+      name: 'main',
+      isCurrent: true
+    })
+    expect(tipCommit.branches).toContainEqual({
+      name: 'origin/main',
+      isCurrent: false
+    })
+  })
+
   it('handles linear trunk-only histories with no spinoffs', () => {
     const commits = [
       createCommit({

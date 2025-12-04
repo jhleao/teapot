@@ -1,6 +1,4 @@
 import type { Configuration } from '@shared/types'
-import fs from 'fs'
-import git from 'isomorphic-git'
 import { log } from '@shared/logger'
 
 export async function getTrunkBranchRef(
@@ -24,18 +22,25 @@ export async function getTrunkBranchRef(
 
 async function resolveBranchFromRef(dir: string, ref: string): Promise<string | null> {
   try {
-    const resolvedRef = await git.resolveRef({
-      fs,
-      dir,
-      ref,
-      depth: 2
-    })
-    const headMatch = resolvedRef.match(/refs\/heads\/(.+)/)
-    if (headMatch && headMatch[1]) {
-      return headMatch[1]
+    // Try to extract branch name from symbolic ref
+    // For symbolic refs, we use raw git command
+    const { execSync } = await import('child_process')
+    try {
+      const symbolicRef = execSync(`git symbolic-ref ${ref}`, {
+        cwd: dir,
+        encoding: 'utf-8'
+      }).trim()
+
+      const headMatch = symbolicRef.match(/refs\/heads\/(.+)/)
+      if (headMatch && headMatch[1]) {
+        return headMatch[1]
+      }
+      const remoteMatch = symbolicRef.match(/refs\/remotes\/[^/]+\/(.+)/)
+      return remoteMatch && remoteMatch[1] ? remoteMatch[1] : null
+    } catch {
+      // If symbolic-ref fails, ref is not symbolic
+      return null
     }
-    const remoteMatch = resolvedRef.match(/refs\/remotes\/[^/]+\/(.+)/)
-    return remoteMatch && remoteMatch[1] ? remoteMatch[1] : null
   } catch {
     return null
   }

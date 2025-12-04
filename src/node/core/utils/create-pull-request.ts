@@ -1,8 +1,6 @@
 import { log } from '@shared/logger'
-import fs from 'fs'
-import git from 'isomorphic-git'
-import http from 'isomorphic-git/http/node'
 import { configStore } from '../../store'
+import { getGitAdapter } from '../git-adapter'
 import { gitForgeService } from '../forge/service'
 import { buildRepoModel } from './build-repo'
 import { findBaseBranch } from './find-base-branch'
@@ -11,6 +9,8 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
   log.debug(
     `[createPullRequest] Starting PR creation for branch: ${headBranch} in repo: ${repoPath}`
   )
+
+  const git = getGitAdapter()
 
   // We need the repo model to find the base branch and commit message
   log.debug(`[createPullRequest] Building repo model...`)
@@ -46,26 +46,18 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
   const baseBranch = findBaseBranch(repo, headCommit.sha)
   log.debug(`[createPullRequest] Base branch determined: ${baseBranch}`)
 
-  // Get configured remote URL to check if we need to transform SSH to HTTPS
+  // Get configured remote URL
   log.debug(`[createPullRequest] Listing remotes...`)
-  const remotes = await git.listRemotes({ fs, dir: repoPath })
+  const remotes = await git.listRemotes(repoPath)
   log.debug(
     `[createPullRequest] Found ${remotes.length} remotes:`,
-    remotes.map((r) => `${r.remote}=${r.url}`)
+    remotes.map((r) => `${r.name}=${r.url}`)
   )
-  const origin = remotes.find((r) => r.remote === 'origin')
+  const origin = remotes.find((r) => r.name === 'origin')
 
-  let remoteUrl = origin?.url
-  if (remoteUrl && remoteUrl.startsWith('git@')) {
-    // Convert SSH URL to HTTPS for isomorphic-git compatibility with PAT
-    // git@github.com:owner/repo.git -> https://github.com/owner/repo.git
-    log.debug(`[createPullRequest] Converting SSH URL to HTTPS: ${remoteUrl}`)
-    remoteUrl = remoteUrl.replace(/^git@([^:]+):/, 'https://$1/')
-    log.debug(`[createPullRequest] Converted URL: ${remoteUrl}`)
-  } else if (remoteUrl) {
-    log.debug(`[createPullRequest] Using remote URL: ${remoteUrl}`)
-  } else {
+  if (!origin) {
     log.warn(`[createPullRequest] No origin remote found`)
+    throw new Error('No origin remote configured')
   }
 
   // Retrieve PAT for authentication
@@ -75,14 +67,18 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
   // Ensure the head branch is pushed to origin before creating PR
   log.debug(`[createPullRequest] Pushing branch ${headBranch} to origin...`)
   try {
-    await git.push({
-      fs,
-      http,
-      dir: repoPath,
+    // simple-git uses system Git credentials automatically
+    // If PAT is needed, user should configure it in Git credential helper
+    await git.push(repoPath, {
       remote: 'origin',
       ref: headBranch,
-      url: remoteUrl, // Use explicit URL which might be force-converted to HTTPS
-      onAuth: () => ({ username: pat || '' })
+      setUpstream: true,
+      credentials: pat
+        ? {
+            username: pat,
+            password: '' // PAT as username for HTTPS auth
+          }
+        : undefined
     })
     log.debug(`[createPullRequest] Successfully pushed branch ${headBranch}`)
   } catch (error) {

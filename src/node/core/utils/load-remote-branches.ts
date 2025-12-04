@@ -1,6 +1,5 @@
 import type { Branch } from '@shared/types'
-import fs from 'fs'
-import git from 'isomorphic-git'
+import { getGitAdapter } from '../git-adapter'
 
 type BranchDescriptor = {
   ref: string
@@ -17,11 +16,12 @@ type BranchDescriptor = {
  * @returns Array of remote branch descriptors
  */
 export async function loadRemoteBranches(dir: string): Promise<BranchDescriptor[]> {
+  const git = getGitAdapter()
   const remoteBranches: BranchDescriptor[] = []
 
-  let remotes: { remote: string; url: string }[] = []
+  let remotes: { name: string; url: string }[] = []
   try {
-    remotes = await git.listRemotes({ fs, dir })
+    remotes = await git.listRemotes(dir)
   } catch {
     // No remotes configured or unable to read
     return []
@@ -29,19 +29,15 @@ export async function loadRemoteBranches(dir: string): Promise<BranchDescriptor[
 
   for (const remote of remotes) {
     try {
-      const branches = await git.listBranches({
-        fs,
-        dir,
-        remote: remote.remote
-      })
+      const branches = await git.listBranches(dir, { remote: remote.name })
 
       branches.forEach((remoteBranch) => {
         if (isSymbolicBranch(remoteBranch)) {
           return
         }
         remoteBranches.push({
-          ref: `${remote.remote}/${remoteBranch}`,
-          fullRef: `refs/remotes/${remote.remote}/${remoteBranch}`,
+          ref: `${remote.name}/${remoteBranch}`,
+          fullRef: `refs/remotes/${remote.name}/${remoteBranch}`,
           isRemote: true
         })
       })
@@ -66,10 +62,11 @@ export async function buildBranchesFromRemoteDescriptors(
   descriptors: BranchDescriptor[],
   trunkBranch: string | null
 ): Promise<Branch[]> {
+  const git = getGitAdapter()
   const branches: Branch[] = []
 
   for (const descriptor of descriptors) {
-    const headSha = await resolveBranchHead(dir, descriptor.fullRef)
+    const headSha = await git.resolveRef(dir, descriptor.fullRef)
     const normalizedRef = getBranchName(descriptor)
 
     branches.push({
@@ -81,18 +78,6 @@ export async function buildBranchesFromRemoteDescriptors(
   }
 
   return branches
-}
-
-async function resolveBranchHead(dir: string, ref: string): Promise<string> {
-  try {
-    return await git.resolveRef({
-      fs,
-      dir,
-      ref
-    })
-  } catch {
-    return ''
-  }
 }
 
 function getBranchName(descriptor: BranchDescriptor): string {

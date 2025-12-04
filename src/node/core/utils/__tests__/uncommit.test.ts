@@ -1,5 +1,5 @@
 import fs from 'fs'
-import git from 'isomorphic-git'
+import { execSync } from 'child_process'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,10 +10,9 @@ describe('uncommit', () => {
 
   beforeEach(async () => {
     repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-uncommit-'))
-    await git.init({ fs, dir: repoPath, defaultBranch: 'main' })
-    // Config is needed for commits
-    await git.setConfig({ fs, dir: repoPath, path: 'user.name', value: 'Test User' })
-    await git.setConfig({ fs, dir: repoPath, path: 'user.email', value: 'test@example.com' })
+    execSync('git init', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
   })
 
   afterEach(async () => {
@@ -24,74 +23,82 @@ describe('uncommit', () => {
     // Setup: main -> commit1
     const file1 = path.join(repoPath, 'file1.txt')
     await fs.promises.writeFile(file1, 'initial')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
-    const commit1 = await git.commit({ fs, dir: repoPath, message: 'commit 1' })
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+    const commit1 = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
 
     // Create feature branch
-    await git.branch({ fs, dir: repoPath, ref: 'feature' })
-    await git.checkout({ fs, dir: repoPath, ref: 'feature' })
+    execSync('git branch feature', { cwd: repoPath })
+    execSync('git checkout feature', { cwd: repoPath })
 
     // Commit 2 on feature
     await fs.promises.writeFile(file1, 'modified')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
-    const commit2 = await git.commit({ fs, dir: repoPath, message: 'commit 2' })
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 2"', { cwd: repoPath })
+    const commit2 = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
 
     // Uncommit commit2
     await uncommit(repoPath, commit2)
 
     // Assertions
     // 1. HEAD should be at commit1
-    const currentHead = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    const currentHead = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
     expect(currentHead).toBe(commit1)
 
     // 2. Branch 'feature' should be gone
-    const branches = await git.listBranches({ fs, dir: repoPath })
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
     expect(branches).not.toContain('feature')
 
     // 3. Should be on 'main' (since main points to commit1)
-    const currentBranch = await git.currentBranch({ fs, dir: repoPath })
+    const currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
     expect(currentBranch).toBe('main')
 
     // 4. Changes should be in Index (staged)
-    const matrix = await git.statusMatrix({ fs, dir: repoPath, filepaths: ['file1.txt'] })
-    const [, head, workdir, stage] = matrix[0]
-
-    // HEAD: 1 (exists and matches HEAD commit)
-    // STAGE: 2 (exists but differs from HEAD - matches modified content)
-    // WORKDIR: 2 (matches STAGE)
-    expect(head).toBe(1)
-    expect(stage).toBe(2)
-    expect(workdir).toBe(2)
+    const status = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' })
+    // 'M  file1.txt' means modified and staged
+    expect(status).toContain('M  file1.txt')
   })
 
   it('should detach if no parent branch exists', async () => {
     // Setup: main -> commit1
     const file1 = path.join(repoPath, 'file1.txt')
     await fs.promises.writeFile(file1, 'initial')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
-    const commit1 = await git.commit({ fs, dir: repoPath, message: 'commit 1' })
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+    const commit1 = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
 
     // Move main to commit 2
     await fs.promises.writeFile(file1, 'modified')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
-    const commit2 = await git.commit({ fs, dir: repoPath, message: 'commit 2' })
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 2"', { cwd: repoPath })
+    const commit2 = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
 
     // Uncommit commit2 (main will be deleted)
     await uncommit(repoPath, commit2)
 
-    const currentHead = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    const currentHead = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
     expect(currentHead).toBe(commit1)
 
-    const branches = await git.listBranches({ fs, dir: repoPath })
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
     expect(branches).not.toContain('main')
 
-    const currentBranch = await git.currentBranch({ fs, dir: repoPath })
-    expect(currentBranch).toBeUndefined() // Detached
+    const currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(currentBranch).toBe('') // Detached (empty string)
 
-    const matrix = await git.statusMatrix({ fs, dir: repoPath, filepaths: ['file1.txt'] })
-    const [, head, workdir, stage] = matrix[0]
-    expect(head).toBe(1)
-    expect(stage).toBe(2)
-    expect(workdir).toBe(2)
+    const status = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' })
+    // 'M  file1.txt' means modified and staged
+    expect(status).toContain('M  file1.txt')
   })
 })

@@ -1,5 +1,5 @@
 import fs from 'fs'
-import git from 'isomorphic-git'
+import { execSync } from 'child_process'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -10,21 +10,9 @@ describe('discardChanges', () => {
 
   beforeEach(async () => {
     repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-'))
-    await git.init({ fs, dir: repoPath, defaultBranch: 'main' })
-
-    // Config is needed for commits
-    await git.setConfig({
-      fs,
-      dir: repoPath,
-      path: 'user.name',
-      value: 'Test User'
-    })
-    await git.setConfig({
-      fs,
-      dir: repoPath,
-      path: 'user.email',
-      value: 'test@example.com'
-    })
+    execSync('git init', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
   })
 
   afterEach(async () => {
@@ -34,12 +22,12 @@ describe('discardChanges', () => {
   it('should discard staged changes', async () => {
     const filePath = path.join(repoPath, 'file.txt')
     await fs.promises.writeFile(filePath, 'initial content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
-    await git.commit({ fs, dir: repoPath, message: 'initial commit' })
+    execSync('git add file.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
 
     // Modify and stage
     await fs.promises.writeFile(filePath, 'modified content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
+    execSync('git add file.txt', { cwd: repoPath })
 
     await discardChanges(repoPath)
 
@@ -50,8 +38,8 @@ describe('discardChanges', () => {
   it('should discard unstaged changes', async () => {
     const filePath = path.join(repoPath, 'file.txt')
     await fs.promises.writeFile(filePath, 'initial content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
-    await git.commit({ fs, dir: repoPath, message: 'initial commit' })
+    execSync('git add file.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
 
     // Modify but do not stage
     await fs.promises.writeFile(filePath, 'modified content')
@@ -70,12 +58,12 @@ describe('discardChanges', () => {
 
     const filePath = path.join(repoPath, 'file.txt')
     await fs.promises.writeFile(filePath, 'initial content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
-    await git.commit({ fs, dir: repoPath, message: 'initial commit' })
+    execSync('git add file.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
 
     // Modify and stage
     await fs.promises.writeFile(filePath, 'staged content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
+    execSync('git add file.txt', { cwd: repoPath })
 
     // Modify again (unstaged)
     await fs.promises.writeFile(filePath, 'unstaged content')
@@ -92,13 +80,12 @@ describe('discardChanges', () => {
 
     await fs.promises.writeFile(file1, 'initial 1')
     await fs.promises.writeFile(file2, 'initial 2')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
-    await git.add({ fs, dir: repoPath, filepath: 'file2.txt' })
-    await git.commit({ fs, dir: repoPath, message: 'initial' })
+    execSync('git add file1.txt file2.txt', { cwd: repoPath })
+    execSync('git commit -m "initial"', { cwd: repoPath })
 
     // file1: modify and stage
     await fs.promises.writeFile(file1, 'modified 1')
-    await git.add({ fs, dir: repoPath, filepath: 'file1.txt' })
+    execSync('git add file1.txt', { cwd: repoPath })
 
     // file2: modify (unstaged)
     await fs.promises.writeFile(file2, 'modified 2')
@@ -110,6 +97,12 @@ describe('discardChanges', () => {
   })
 
   it('should delete untracked files', async () => {
+    // Create initial commit first
+    const initialFile = path.join(repoPath, 'initial.txt')
+    await fs.promises.writeFile(initialFile, 'initial')
+    execSync('git add initial.txt', { cwd: repoPath })
+    execSync('git commit -m "initial"', { cwd: repoPath })
+
     const filePath = path.join(repoPath, 'untracked.txt')
     await fs.promises.writeFile(filePath, 'new file')
 
@@ -120,9 +113,15 @@ describe('discardChanges', () => {
   })
 
   it('should discard staged new file', async () => {
+    // Create initial commit first
+    const initialFile = path.join(repoPath, 'initial.txt')
+    await fs.promises.writeFile(initialFile, 'initial')
+    execSync('git add initial.txt', { cwd: repoPath })
+    execSync('git commit -m "initial"', { cwd: repoPath })
+
     const file2 = path.join(repoPath, 'new-staged.txt')
     await fs.promises.writeFile(file2, 'new file')
-    await git.add({ fs, dir: repoPath, filepath: 'new-staged.txt' })
+    execSync('git add new-staged.txt', { cwd: repoPath })
 
     await discardChanges(repoPath)
 
@@ -132,15 +131,18 @@ describe('discardChanges', () => {
   it('should remain on the same branch after discarding changes', async () => {
     const filePath = path.join(repoPath, 'file.txt')
     await fs.promises.writeFile(filePath, 'initial content')
-    await git.add({ fs, dir: repoPath, filepath: 'file.txt' })
-    await git.commit({ fs, dir: repoPath, message: 'initial commit' })
+    execSync('git add file.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
 
     // Create and switch to a new branch
-    await git.branch({ fs, dir: repoPath, ref: 'feature-branch' })
-    await git.checkout({ fs, dir: repoPath, ref: 'feature-branch' })
+    execSync('git branch feature-branch', { cwd: repoPath })
+    execSync('git checkout feature-branch', { cwd: repoPath })
 
     // Verify we are on feature-branch
-    let currentBranch = await git.currentBranch({ fs, dir: repoPath })
+    let currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
     expect(currentBranch).toBe('feature-branch')
 
     // Modify file
@@ -150,7 +152,10 @@ describe('discardChanges', () => {
     await discardChanges(repoPath)
 
     // Verify we are still on feature-branch
-    currentBranch = await git.currentBranch({ fs, dir: repoPath })
+    currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
     expect(currentBranch).toBe('feature-branch')
   })
 })

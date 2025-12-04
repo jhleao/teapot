@@ -23,7 +23,13 @@ import {
   type StoredRebaseSession
 } from './rebase-session-store'
 import { findNodeByBranch } from './utils/stack-traversal'
-import { validateRebaseIntent, validateCanContinueRebase, validateCanAbortRebase } from './rebase-validation'
+import {
+  validateRebaseIntent,
+  validateCanContinueRebase,
+  validateCanAbortRebase,
+  validateCleanWorkingTree,
+  validateNoRebaseInProgress
+} from './rebase-validation'
 
 // ============================================================================
 // Types
@@ -83,7 +89,31 @@ export async function executeRebasePlan(
   gitAdapter: GitAdapter,
   options: ExecutorOptions = {}
 ): Promise<RebaseExecutionResult> {
-  // Validate we can proceed
+  // Check if we already have a session (created by submitRebaseIntent)
+  const existingSession = await rebaseSessionStore.getSession(repoPath)
+
+  if (existingSession) {
+    // Session already exists - validate only working tree and rebase state
+    const workingTreeCheck = await validateCleanWorkingTree(repoPath, gitAdapter)
+    if (!workingTreeCheck.valid) {
+      return { status: 'error', message: workingTreeCheck.message }
+    }
+
+    const rebaseCheck = await validateNoRebaseInProgress(repoPath, gitAdapter)
+    if (!rebaseCheck.valid) {
+      return { status: 'error', message: rebaseCheck.message }
+    }
+
+    // Check adapter supports rebase
+    if (!supportsRebase(gitAdapter)) {
+      return { status: 'error', message: 'Git adapter does not support rebase operations' }
+    }
+
+    // Execute jobs using existing session
+    return executeJobs(repoPath, gitAdapter, existingSession.intent, options)
+  }
+
+  // No existing session - do full validation and create one
   const validation = await validateRebaseIntent(repoPath, plan.intent, gitAdapter)
   if (!validation.valid) {
     return { status: 'error', message: validation.message }

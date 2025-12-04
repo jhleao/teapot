@@ -187,7 +187,9 @@ export async function continueRebase(
   }
 
   // Continue Git's rebase
+  console.log('[Rebase] Continuing rebase for session:', session.state.queue.activeJobId)
   const result = await gitAdapter.rebaseContinue(repoPath)
+  console.log('[Rebase] Continue result:', result)
 
   if (!result.success && result.conflicts.length > 0) {
     // Still have conflicts
@@ -436,11 +438,21 @@ async function executeJob(
     await gitAdapter.checkout(repoPath, job.branch)
 
     // Execute rebase
+    console.log('[Rebase] Executing rebase:', {
+      branch: job.branch,
+      onto: job.targetBaseSha,
+      from: job.originalBaseSha,
+      to: job.branch,
+      command: `git rebase --onto ${job.targetBaseSha} ${job.originalBaseSha} ${job.branch}`
+    })
+
     const result = await gitAdapter.rebase(repoPath, {
       onto: job.targetBaseSha,
       from: job.originalBaseSha,
       to: job.branch
     })
+
+    console.log('[Rebase] Result:', result)
 
     if (!result.success) {
       if (result.conflicts.length > 0) {

@@ -195,24 +195,25 @@ function buildTrunkUiStack(
   }
 
   // Collect lineage from local trunk
-  let lineage = collectBranchLineage(branch.headSha, state.commitMap)
+  const localLineage = collectBranchLineage(branch.headSha, state.commitMap)
 
-  // If remote trunk exists and is ahead, extend lineage to include those commits
+  // If remote trunk exists and differs from local, merge both lineages
+  let lineage = localLineage
   if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
-    const remoteTrunkCommit = state.commitMap.get(remoteTrunk.headSha)
-    const localTrunkCommit = state.commitMap.get(branch.headSha)
+    const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
 
-    if (remoteTrunkCommit && localTrunkCommit && remoteTrunkCommit.timeMs > localTrunkCommit.timeMs) {
-      // Remote is ahead - collect its lineage and merge
-      const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
-      // Combine lineages (remote lineage will include commits ahead of local)
-      const lineageSet = new Set([...remoteLineage, ...lineage])
-      lineage = Array.from(lineageSet).sort((a, b) => {
-        const aTime = state.commitMap.get(a)?.timeMs ?? 0
-        const bTime = state.commitMap.get(b)?.timeMs ?? 0
-        return aTime - bTime // oldest first
-      })
-    }
+    // Merge both lineages - use a Set to deduplicate, then sort by topological order
+    // The lineages are already in order (oldest to newest), so we can merge them
+    const allShas = new Set([...localLineage, ...remoteLineage])
+
+    // Convert back to array and maintain topological order by walking from all commits
+    lineage = Array.from(allShas).sort((a, b) => {
+      const commitA = state.commitMap.get(a)
+      const commitB = state.commitMap.get(b)
+      if (!commitA || !commitB) return 0
+      // Sort by time to maintain chronological order
+      return (commitA.timeMs ?? 0) - (commitB.timeMs ?? 0)
+    })
   }
 
   if (lineage.length === 0) {
@@ -239,6 +240,7 @@ function collectBranchLineage(headSha: string, commitMap: Map<string, DomainComm
   const shas: string[] = []
   let currentSha: string | null = headSha
   const visited = new Set<string>()
+
   while (currentSha && !visited.has(currentSha)) {
     visited.add(currentSha)
     shas.push(currentSha)
@@ -248,6 +250,7 @@ function collectBranchLineage(headSha: string, commitMap: Map<string, DomainComm
     }
     currentSha = commit.parentSha
   }
+
   return shas.slice().reverse()
 }
 

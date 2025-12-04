@@ -19,7 +19,15 @@ export type { GitAdapterConfig, GitAdapterType } from './factory'
 
 // Interface and types
 export type { GitAdapter } from './interface'
-export { supportsCherryPick, supportsMergeBase, supportsRebase } from './interface'
+export {
+  supportsCherryPick,
+  supportsMergeBase,
+  supportsRebase,
+  supportsRebaseAbort,
+  supportsRebaseContinue,
+  supportsRebaseSkip,
+  supportsGetRebaseState
+} from './interface'
 
 // All type definitions
 export type {

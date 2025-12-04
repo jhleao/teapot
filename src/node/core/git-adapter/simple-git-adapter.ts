@@ -213,6 +213,10 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       const status: StatusResult = await git.status()
 
+      // Debug: log status for conflict detection
+      console.log('[GitAdapter] status.conflicted:', status.conflicted)
+      console.log('[GitAdapter] status.files:', status.files.map(f => ({ path: f.path, index: f.index, working_dir: f.working_dir })))
+
       // Parse file statuses
       const staged = new Set<string>()
       const modified = new Set<string>()
@@ -220,10 +224,16 @@ export class SimpleGitAdapter implements GitAdapter {
       const deleted = new Set<string>()
       const renamed: string[] = []
       const notAdded = new Set<string>()
-      const conflicted = new Set<string>()
+      // Use simple-git's built-in conflicted array which handles all conflict status codes
+      const conflicted = new Set<string>(status.conflicted)
 
       for (const file of status.files) {
         const { path: filepath, index, working_dir } = file
+
+        // Skip conflicted files - they're handled by status.conflicted
+        if (conflicted.has(filepath)) {
+          continue
+        }
 
         // Index changes (staged)
         if (index === 'A') {
@@ -250,8 +260,6 @@ export class SimpleGitAdapter implements GitAdapter {
           deleted.add(filepath)
         } else if (working_dir === '?') {
           notAdded.add(filepath)
-        } else if (working_dir === 'U' || index === 'U') {
-          conflicted.add(filepath)
         }
       }
 

@@ -112,7 +112,8 @@ async function loadRemoteTrunkBranch(
   try {
     const remoteBranches = await git.listBranches(dir, { remote: 'origin' })
 
-    if (remoteBranches.includes(trunkName)) {
+    // Note: listBranches with remote option returns full refs like 'origin/main'
+    if (remoteBranches.includes(`origin/${trunkName}`)) {
       return {
         ref: `origin/${trunkName}`,
         fullRef: `refs/remotes/origin/${trunkName}`,
@@ -153,25 +154,24 @@ async function collectBranchDescriptors(
     return branchDescriptors
   }
 
-  const remotes = await git.listRemotes(dir)
+  // listBranches with remote option returns ALL remote branches with prefix (e.g., 'origin/main')
+  // so we only need to call it once, not once per remote
+  try {
+    const remoteBranches = await git.listBranches(dir, { remote: 'all' })
 
-  for (const remote of remotes) {
-    try {
-      const remoteBranches = await git.listBranches(dir, { remote: remote.name })
-
-      remoteBranches.forEach((remoteBranch) => {
-        if (isSymbolicBranch(remoteBranch)) {
-          return
-        }
-        branchDescriptors.push({
-          ref: `${remote.name}/${remoteBranch}`,
-          fullRef: `refs/remotes/${remote.name}/${remoteBranch}`,
-          isRemote: true
-        })
+    remoteBranches.forEach((remoteBranch) => {
+      if (isSymbolicBranch(remoteBranch)) {
+        return
+      }
+      // remoteBranch already includes remote prefix (e.g., 'origin/main')
+      branchDescriptors.push({
+        ref: remoteBranch,
+        fullRef: `refs/remotes/${remoteBranch}`,
+        isRemote: true
       })
-    } catch {
-      // Ignore remotes we cannot read
-    }
+    })
+  } catch {
+    // Ignore if we cannot read remote branches
   }
 
   return branchDescriptors

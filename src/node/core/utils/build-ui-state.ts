@@ -353,12 +353,6 @@ function annotateBranchHeads(
     }
     const commitNode = state.commitNodes.get(branch.headSha)
     if (!commitNode) {
-      console.log('[DEBUG] Branch head not in commitNodes:', {
-        branch: branch.ref,
-        headSha: branch.headSha,
-        isRemote: branch.isRemote,
-        isTrunk: branch.isTrunk
-      })
       return
     }
     const alreadyAnnotated = commitNode.branches.some((existing) => existing.name === branch.ref)

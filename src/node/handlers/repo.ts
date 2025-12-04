@@ -70,8 +70,7 @@ async function getUiState(repoPath: string, declutterTrunk = false): Promise<UiS
       }
     } else {
       // Git is no longer rebasing but we have a session - external tool completed the rebase
-      // Clean up the stale session synchronously before returning state
-      console.log('[getUiState] Rebase completed externally, clearing stale session')
+      // Clean up the stale session
       await rebaseSessionStore.clearSession(repoPath)
     }
   }

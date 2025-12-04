@@ -50,42 +50,21 @@ async function getUiState(repoPath: string, declutterTrunk = false): Promise<UiS
     gitAdapter.getWorkingTreeStatus(repoPath)
   ])
 
-  // Debug: log repo state
-  console.log('[getUiState] Repo state:', {
-    commitsCount: repo.commits.length,
-    branchesCount: repo.branches.length,
-    branches: repo.branches.map(b => ({ ref: b.ref, isTrunk: b.isTrunk, isRemote: b.isRemote })),
-    currentBranch: repo.workingTreeStatus.currentBranch,
-    isRebasing: repo.workingTreeStatus.isRebasing,
-    detached: repo.workingTreeStatus.detached
-  })
-
   const stack = buildUiStack(repo, forgeState, { declutterTrunk })
   const workingTree = buildUiWorkingTree(repo)
 
   if (!stack) {
-    console.log('[getUiState] buildUiStack returned null')
     return null
   }
 
-  // Debug: log conflict detection state
-  console.log('[getUiState] Conflict check:', {
-    hasSession: !!session,
-    isRebasing: workingTreeStatus.isRebasing,
-    conflictedFiles: workingTreeStatus.conflicted,
-    activeJobId: session?.state.queue.activeJobId,
-    activeJob: session?.state.queue.activeJobId ? session?.state.jobsById[session.state.queue.activeJobId] : null
-  })
-
-  // If we're in a rebase with conflicts, mark the appropriate commit
-  if (session && workingTreeStatus.isRebasing && workingTreeStatus.conflicted.length > 0) {
+  // If we're in a rebase, mark the appropriate commit with the right status
+  if (session && workingTreeStatus.isRebasing) {
     const activeJobId = session.state.queue.activeJobId
     const activeJob = activeJobId ? session.state.jobsById[activeJobId] : null
 
     if (activeJob) {
-      // Find the commit in the stack and mark it as conflicted
-      console.log('[getUiState] Applying conflict status to branch:', activeJob.branch)
-      applyConflictStatusToStack(stack, activeJob.branch)
+      const hasConflicts = workingTreeStatus.conflicted.length > 0
+      applyRebaseStatusToStack(stack, activeJob.branch, hasConflicts ? 'conflicted' : 'resolved')
     }
   }
 
@@ -93,18 +72,22 @@ async function getUiState(repoPath: string, declutterTrunk = false): Promise<UiS
 }
 
 /**
- * Recursively finds commits belonging to a branch and marks them as conflicted
+ * Recursively finds commits belonging to a branch and marks them with the given rebase status
  */
-function applyConflictStatusToStack(stack: UiStack, branchName: string): void {
+function applyRebaseStatusToStack(
+  stack: UiStack,
+  branchName: string,
+  status: 'conflicted' | 'resolved'
+): void {
   for (const commit of stack.commits) {
-    // Check if this commit belongs to the conflicted branch
+    // Check if this commit belongs to the branch being rebased
     if (commit.branches.some((b) => b.name === branchName)) {
-      commit.rebaseStatus = 'conflicted'
+      commit.rebaseStatus = status
     }
 
     // Recurse into spinoffs
     for (const spinoff of commit.spinoffs) {
-      applyConflictStatusToStack(spinoff, branchName)
+      applyRebaseStatusToStack(spinoff, branchName, status)
     }
   }
 }

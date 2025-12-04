@@ -5,7 +5,7 @@ import {
   UiWorkingTreeFile,
   type Configuration
 } from '@shared/types'
-import { ipcMain, IpcMainEvent } from 'electron'
+import { dialog, ipcMain, IpcMainEvent } from 'electron'
 import {
   amend as amendCommit,
   buildRepoModel,
@@ -132,8 +132,24 @@ const createPullRequest: IpcHandlerOf<'createPullRequest'> = async (
   _event,
   { repoPath, headBranch }
 ) => {
-  await createPullRequestCore(repoPath, headBranch)
-  return getRepo({} as IpcMainEvent, { repoPath })
+  try {
+    await createPullRequestCore(repoPath, headBranch)
+    return getRepo({} as IpcMainEvent, { repoPath })
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    // Show user-friendly error dialog
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Failed to Create Pull Request',
+      message: 'Unable to create pull request',
+      detail: errorMessage,
+      buttons: ['OK']
+    })
+
+    // Re-throw so the frontend can also handle it if needed
+    throw error
+  }
 }
 
 const uncommit: IpcHandlerOf<'uncommit'> = async (_event, { repoPath, commitSha }) => {

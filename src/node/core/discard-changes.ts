@@ -1,13 +1,14 @@
-import fs from 'fs'
-import git from 'isomorphic-git'
-import path from 'path'
 import { log } from '@shared/logger'
+import fs from 'fs'
+import path from 'path'
+import { getGitAdapter } from './git-adapter'
 
 export async function discardChanges(repoPath: string): Promise<void> {
+  const git = getGitAdapter()
   let hasHead = false
 
   try {
-    await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
+    await git.resolveRef(repoPath, 'HEAD')
     hasHead = true
   } catch {
     // No HEAD (empty repo)
@@ -17,37 +18,29 @@ export async function discardChanges(repoPath: string): Promise<void> {
   if (hasHead) {
     // If we are on a branch, check out that branch to preserve it.
     // If we are in detached HEAD state, 'HEAD' will resolve to the commit SHA and keep us detached.
-    const currentBranch = await git.currentBranch({ fs, dir: repoPath })
+    const currentBranch = await git.currentBranch(repoPath)
     const ref = currentBranch || 'HEAD'
 
-    await git.checkout({
-      fs,
-      dir: repoPath,
-      ref,
-      force: true
-    })
+    await git.checkout(repoPath, ref, { force: true })
   }
 
   // Clean up files not in HEAD (untracked or staged-new)
   try {
-    const matrix = await git.statusMatrix({ fs, dir: repoPath })
+    const status = await git.getWorkingTreeStatus(repoPath)
 
-    for (const row of matrix) {
-      const [filepath, headStatus, workdirStatus] = row
+    // Remove untracked files (not_added) and newly created files
+    const filesToRemove = [...status.not_added, ...status.created]
 
-      // headStatus === 0 means file is not in HEAD
-      // workdirStatus !== 0 means file is present in working directory
-      if (headStatus === 0 && workdirStatus !== 0) {
-        const fullPath = path.join(repoPath, filepath)
-        try {
-          await fs.promises.rm(fullPath, { force: true, recursive: true })
-        } catch (e) {
-          // Ignore errors
-          log.error(`Failed to remove ${fullPath}:`, e)
-        }
+    for (const filepath of filesToRemove) {
+      const fullPath = path.join(repoPath, filepath)
+      try {
+        await fs.promises.rm(fullPath, { force: true, recursive: true })
+      } catch (e) {
+        // Ignore errors
+        log.error(`Failed to remove ${fullPath}:`, e)
       }
     }
   } catch {
-    // Ignore errors if statusMatrix fails
+    // Ignore errors if status fails
   }
 }

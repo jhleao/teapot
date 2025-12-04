@@ -1,6 +1,7 @@
-import type { Branch, Commit, Configuration, Repo } from '@shared/types'
-import { getGitAdapter } from '../git-adapter'
-import type { LogOptions } from '../git-adapter'
+import type { Branch, Commit, Configuration, Repo, WorkingTreeStatus } from '@shared/types'
+import fs from 'fs'
+import git from 'isomorphic-git'
+import path from 'path'
 import { getTrunkBranchRef } from './get-trunk.js'
 
 type BranchDescriptor = {
@@ -48,9 +49,11 @@ export async function buildRepoModel(
   }
 
   const dir = config.repoPath
-  const git = getGitAdapter()
 
-  const localBranches = await git.listBranches(dir)
+  const localBranches = await git.listBranches({
+    fs,
+    dir
+  })
 
   const branchDescriptors = await collectBranchDescriptors(dir, localBranches, loadRemotes!)
   const branchNameSet = new Set<string>(localBranches)
@@ -69,7 +72,7 @@ export async function buildRepoModel(
       maxCommitsPerBranch: maxCommitsPerBranch!
     }
   )
-  const workingTreeStatus = await git.getWorkingTreeStatus(dir)
+  const workingTreeStatus = await collectWorkingTreeStatus(dir, branchDescriptors)
 
   return {
     path: dir,
@@ -88,8 +91,6 @@ async function loadRemoteTrunkBranch(
   dir: string,
   localBranches: string[]
 ): Promise<BranchDescriptor | null> {
-  const git = getGitAdapter()
-
   // Step 1: Determine trunk name from local branches
   const trunkCandidates = ['main', 'master', 'develop', 'trunk']
   const trunkName = trunkCandidates.find((candidate) => localBranches.includes(candidate))
@@ -100,9 +101,14 @@ async function loadRemoteTrunkBranch(
   }
 
   // Step 2: Check if origin remote exists
-  let remotes = await git.listRemotes(dir)
+  let remotes: { remote: string; url: string }[] = []
+  try {
+    remotes = await git.listRemotes({ fs, dir })
+  } catch {
+    return null
+  }
 
-  const originRemote = remotes.find((remote) => remote.name === 'origin')
+  const originRemote = remotes.find((remote) => remote.remote === 'origin')
   if (!originRemote) {
     // No origin remote configured
     return null
@@ -110,7 +116,11 @@ async function loadRemoteTrunkBranch(
 
   // Step 3: Check if origin/{trunk} exists
   try {
-    const remoteBranches = await git.listBranches(dir, { remote: 'origin' })
+    const remoteBranches = await git.listBranches({
+      fs,
+      dir,
+      remote: 'origin'
+    })
 
     if (remoteBranches.includes(trunkName)) {
       return {
@@ -131,8 +141,6 @@ async function collectBranchDescriptors(
   localBranches: string[],
   loadRemotes: boolean
 ): Promise<BranchDescriptor[]> {
-  const git = getGitAdapter()
-
   const branchDescriptors: BranchDescriptor[] = localBranches
     .filter((ref) => !isSymbolicBranch(ref))
     .map((ref) => ({
@@ -153,19 +161,28 @@ async function collectBranchDescriptors(
     return branchDescriptors
   }
 
-  const remotes = await git.listRemotes(dir)
+  let remotes: { remote: string; url: string }[] = []
+  try {
+    remotes = await git.listRemotes({ fs, dir })
+  } catch {
+    remotes = []
+  }
 
   for (const remote of remotes) {
     try {
-      const remoteBranches = await git.listBranches(dir, { remote: remote.name })
+      const remoteBranches = await git.listBranches({
+        fs,
+        dir,
+        remote: remote.remote
+      })
 
       remoteBranches.forEach((remoteBranch) => {
         if (isSymbolicBranch(remoteBranch)) {
           return
         }
         branchDescriptors.push({
-          ref: `${remote.name}/${remoteBranch}`,
-          fullRef: `refs/remotes/${remote.name}/${remoteBranch}`,
+          ref: `${remote.remote}/${remoteBranch}`,
+          fullRef: `refs/remotes/${remote.remote}/${remoteBranch}`,
           isRemote: true
         })
       })
@@ -182,11 +199,10 @@ async function buildBranchesFromDescriptors(
   branchDescriptors: BranchDescriptor[],
   trunkBranch: string | null
 ): Promise<Branch[]> {
-  const git = getGitAdapter()
   const branches: Branch[] = []
 
   for (const descriptor of branchDescriptors) {
-    const headSha = await git.resolveRef(dir, descriptor.fullRef)
+    const headSha = await resolveBranchHead(dir, descriptor.fullRef)
     const normalizedRef = getBranchName(descriptor)
     branches.push({
       ref: descriptor.ref,
@@ -267,6 +283,18 @@ async function collectCommitsFromDescriptors(
   return Array.from(commitsMap.values()).sort((a, b) => b.timeMs - a.timeMs)
 }
 
+async function resolveBranchHead(dir: string, ref: string): Promise<string> {
+  try {
+    return await git.resolveRef({
+      fs,
+      dir,
+      ref
+    })
+  } catch {
+    return ''
+  }
+}
+
 /**
  * Loads commits from a ref until we find a commit already in the map.
  * This is used for remote trunk to fill the gap between local and remote.
@@ -279,44 +307,51 @@ async function collectCommitsUntilKnown(
     maxCommits?: number
   } = {}
 ): Promise<void> {
-  const git = getGitAdapter()
   const { maxCommits = 1000 } = options
 
-  const logEntries = await git.log(dir, ref)
+  try {
+    const logEntries = await git.log({
+      fs,
+      dir,
+      ref
+    })
 
-  let processedCount = 0
-  for (const entry of logEntries) {
-    if (processedCount >= maxCommits) {
-      break
-    }
-
-    const sha = entry.sha
-    const existingCommit = commitsMap.get(sha)
-
-    // If we've already seen this commit AND it's fully populated, stop loading
-    // A commit is fully populated if it has a message
-    // Commits created as placeholders by ensureCommit have empty messages
-    if (existingCommit && existingCommit.message) {
-      break
-    }
-
-    const commit = ensureCommit(commitsMap, sha)
-
-    // Populate commit metadata
-    commit.message = entry.message
-    commit.timeMs = entry.timeMs
-
-    const parentSha = entry.parentSha
-    commit.parentSha = parentSha
-
-    if (parentSha) {
-      const parentCommit = ensureCommit(commitsMap, parentSha)
-      if (!parentCommit.childrenSha.includes(sha)) {
-        parentCommit.childrenSha.push(sha)
+    let processedCount = 0
+    for (const entry of logEntries) {
+      if (processedCount >= maxCommits) {
+        break
       }
-    }
 
-    processedCount++
+      const sha = entry.oid
+      const existingCommit = commitsMap.get(sha)
+
+      // If we've already seen this commit AND it's fully populated, stop loading
+      // A commit is fully populated if it has a message
+      // Commits created as placeholders by ensureCommit have empty messages
+      if (existingCommit && existingCommit.message) {
+        break
+      }
+
+      const commit = ensureCommit(commitsMap, sha)
+
+      // Populate commit metadata
+      commit.message = entry.commit.message.trim()
+      commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
+
+      const parentSha = entry.commit.parent?.[0] ?? ''
+      commit.parentSha = parentSha
+
+      if (parentSha) {
+        const parentCommit = ensureCommit(commitsMap, parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
+      }
+
+      processedCount++
+    }
+  } catch {
+    // Ignore branches we cannot traverse (e.g. shallow clones)
   }
 }
 
@@ -324,30 +359,45 @@ async function collectCommitsForRef(
   dir: string,
   ref: string,
   commitsMap: Map<string, Commit>,
-  options: LogOptions = {}
+  options: {
+    depth?: number
+    maxCommits?: number
+  } = {}
 ): Promise<void> {
-  const git = getGitAdapter()
+  const { depth, maxCommits = 1000 } = options
 
-  const logEntries = await git.log(dir, ref, options)
+  try {
+    const logEntries = await git.log({
+      fs,
+      dir,
+      ref,
+      ...(depth !== undefined && { depth }) // Only pass depth if defined
+    })
 
-  for (const entry of logEntries) {
-    const sha = entry.sha
-    const commit = ensureCommit(commitsMap, sha)
+    // Safety: Cap at maxCommits even if git.log returns more
+    const entriesToProcess = logEntries.slice(0, maxCommits)
 
-    // Always populate commit metadata (message, time, parent)
-    // This ensures commits created by ensureCommit() or from other branches get full data
-    commit.message = entry.message
-    commit.timeMs = entry.timeMs
+    for (const entry of entriesToProcess) {
+      const sha = entry.oid
+      const commit = ensureCommit(commitsMap, sha)
 
-    const parentSha = entry.parentSha
-    commit.parentSha = parentSha
+      // Always populate commit metadata (message, time, parent)
+      // This ensures commits created by ensureCommit() or from other branches get full data
+      commit.message = entry.commit.message.trim()
+      commit.timeMs = (entry.commit.author?.timestamp ?? 0) * 1000
 
-    if (parentSha) {
-      const parentCommit = ensureCommit(commitsMap, parentSha)
-      if (!parentCommit.childrenSha.includes(sha)) {
-        parentCommit.childrenSha.push(sha)
+      const parentSha = entry.commit.parent?.[0] ?? ''
+      commit.parentSha = parentSha
+
+      if (parentSha) {
+        const parentCommit = ensureCommit(commitsMap, parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
       }
     }
+  } catch {
+    // Ignore branches we cannot traverse (e.g. shallow clones)
   }
 }
 
@@ -377,4 +427,144 @@ function getBranchName(descriptor: BranchDescriptor): string {
 
 function isSymbolicBranch(ref: string): boolean {
   return ref === 'HEAD' || ref.endsWith('/HEAD')
+}
+
+async function collectWorkingTreeStatus(
+  dir: string,
+  branchDescriptors: BranchDescriptor[]
+): Promise<WorkingTreeStatus> {
+  const headSha = await resolveBranchHead(dir, 'HEAD')
+  let branchName: string | null = null
+  try {
+    const resolvedBranch = await git.currentBranch({ fs, dir, fullname: false })
+    branchName = resolvedBranch ?? null
+  } catch {
+    branchName = null
+  }
+
+  const detached = !branchName
+  const currentBranch = branchName ?? 'HEAD'
+  let tracking = branchName ? await resolveTrackingBranch(dir, branchName) : null
+  if (!tracking && branchName) {
+    const matchingRemote = branchDescriptors.find(
+      (descriptor) => descriptor.isRemote && getBranchName(descriptor) === branchName
+    )
+    if (matchingRemote) {
+      tracking = matchingRemote.ref
+    }
+  }
+  const isRebasing = await detectRebase(dir)
+
+  let matrix: Array<[string, number, number, number]> = []
+  try {
+    matrix = await git.statusMatrix({ fs, dir })
+  } catch {
+    matrix = []
+  }
+
+  const staged = new Set<string>()
+  const modified = new Set<string>()
+  const created = new Set<string>()
+  const deleted = new Set<string>()
+  const renamed = new Set<string>()
+  const notAdded = new Set<string>()
+  const conflicted = new Set<string>()
+
+  const FILE = 0
+  const HEAD = 1
+  const WORKDIR = 2
+  const STAGE = 3
+
+  for (const row of matrix) {
+    const filepath = row[FILE]
+    const headStatus = row[HEAD]
+    const workdirStatus = row[WORKDIR]
+    const stageStatus = row[STAGE]
+
+    if (headStatus !== stageStatus) {
+      staged.add(filepath)
+    }
+
+    const isTracked = headStatus !== 0 || stageStatus !== 0
+    if (stageStatus !== workdirStatus && isTracked) {
+      modified.add(filepath)
+    }
+
+    if (headStatus === 0) {
+      if (stageStatus === 0 && workdirStatus === 2) {
+        notAdded.add(filepath)
+      } else if (stageStatus > 0) {
+        created.add(filepath)
+      }
+    }
+
+    if (headStatus === 1 && (stageStatus === 0 || workdirStatus === 0)) {
+      deleted.add(filepath)
+    }
+  }
+
+  const allChangedFilesSet = new Set<string>()
+  const addAll = (values: Set<string>): void => {
+    values.forEach((value) => allChangedFilesSet.add(value))
+  }
+  ;[staged, modified, created, deleted, renamed, notAdded, conflicted].forEach(addAll)
+
+  return {
+    currentBranch,
+    currentCommitSha: headSha,
+    tracking,
+    detached,
+    isRebasing,
+    staged: toSortedArray(staged),
+    modified: toSortedArray(modified),
+    created: toSortedArray(created),
+    deleted: toSortedArray(deleted),
+    renamed: toSortedArray(renamed),
+    not_added: toSortedArray(notAdded),
+    conflicted: toSortedArray(conflicted),
+    allChangedFiles: toSortedArray(allChangedFilesSet)
+  }
+}
+
+function toSortedArray(values: Set<string>): string[] {
+  return Array.from(values).sort((a, b) => a.localeCompare(b))
+}
+
+async function resolveTrackingBranch(dir: string, branchName: string): Promise<string | null> {
+  try {
+    const remoteName = await git.getConfig({
+      fs,
+      dir,
+      path: `branch.${branchName}.remote`
+    })
+    const mergeRef = await git.getConfig({
+      fs,
+      dir,
+      path: `branch.${branchName}.merge`
+    })
+    if (!remoteName || !mergeRef) {
+      return null
+    }
+    const normalized = mergeRef.replace(/^refs\/heads\//, '')
+    return `${remoteName}/${normalized}`
+  } catch {
+    return null
+  }
+}
+
+async function detectRebase(dir: string): Promise<boolean> {
+  const gitDir = path.join(dir, '.git')
+  return (
+    (await pathExists(path.join(gitDir, 'rebase-merge'))) ||
+    (await pathExists(path.join(gitDir, 'rebase-apply')))
+  )
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.promises.access(filePath)
+    return true
+  } catch {
+    return false
+  }
 }

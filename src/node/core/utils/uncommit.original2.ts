@@ -1,27 +1,27 @@
 import { log } from '@shared/logger'
-import { getGitAdapter } from '../git-adapter'
+import fs from 'fs'
+import git from 'isomorphic-git'
+import path from 'path'
 import { gitForgeService } from '../forge/service'
 import { deleteBranch } from './delete-branch'
 
 export async function uncommit(repoPath: string, commitSha: string): Promise<void> {
   log.debug(`[uncommit] Starting uncommit for ${commitSha}`)
 
-  const git = getGitAdapter()
-
   // 1. Get commit and parent
-  const commit = await git.readCommit(repoPath, commitSha)
-  const parentSha = commit.parentSha
+  const commit = await git.readCommit({ fs, dir: repoPath, oid: commitSha })
+  const parentSha = commit.commit.parent[0]
 
   if (!parentSha) {
     throw new Error('Cannot uncommit a root commit')
   }
 
   // 2. Find branches pointing to this commit
-  const branches = await git.listBranches(repoPath)
+  const branches = await git.listBranches({ fs, dir: repoPath })
   const branchesToDelete: string[] = []
 
   for (const branch of branches) {
-    const branchSha = await git.resolveRef(repoPath, branch)
+    const branchSha = await git.resolveRef({ fs, dir: repoPath, ref: branch })
     if (branchSha === commitSha) {
       branchesToDelete.push(branch)
     }
@@ -43,13 +43,15 @@ export async function uncommit(repoPath: string, commitSha: string): Promise<voi
   }
 
   // 3. Identify current state
-  const currentBranch = await git.currentBranch(repoPath)
+  const currentBranch = await git.currentBranch({ fs, dir: repoPath }) // string or undefined
   const isDetached = !currentBranch
 
   // 4. Determine target state (Parent)
+  let targetRef = parentSha // Default to detached at parent
+
   const branchesAtParent: string[] = []
   for (const branch of branches) {
-    const branchSha = await git.resolveRef(repoPath, branch)
+    const branchSha = await git.resolveRef({ fs, dir: repoPath, ref: branch })
     if (branchSha === parentSha) {
       branchesAtParent.push(branch)
     }
@@ -60,10 +62,16 @@ export async function uncommit(repoPath: string, commitSha: string): Promise<voi
   const bestParentBranch =
     branchesAtParent.find((b) => trunkCandidates.includes(b)) || branchesAtParent[0]
 
-  // 5. Perform soft reset to parent
+  if (bestParentBranch) {
+    targetRef = `ref: refs/heads/${bestParentBranch}`
+  }
+
+  // 5. Move HEAD (Soft Reset equivalent)
+  const gitDir = path.join(repoPath, '.git')
+
   let shouldUpdateHead = false
   if (isDetached) {
-    const currentHead = await git.resolveRef(repoPath, 'HEAD')
+    const currentHead = await git.resolveRef({ fs, dir: repoPath, ref: 'HEAD' })
     if (currentHead === commitSha) {
       shouldUpdateHead = true
     }
@@ -72,12 +80,11 @@ export async function uncommit(repoPath: string, commitSha: string): Promise<voi
   }
 
   if (shouldUpdateHead) {
-    // Use native git reset --soft (cleaner and safer)
-    await git.reset(repoPath, { mode: 'soft', ref: parentSha })
-
-    // If we have a target branch, checkout to it
-    if (bestParentBranch) {
-      await git.checkout(repoPath, bestParentBranch)
+    if (targetRef.startsWith('ref: ')) {
+      const refContent = targetRef + '\n'
+      await fs.promises.writeFile(path.join(gitDir, 'HEAD'), refContent)
+    } else {
+      await fs.promises.writeFile(path.join(gitDir, 'HEAD'), targetRef + '\n')
     }
   }
 

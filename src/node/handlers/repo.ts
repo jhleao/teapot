@@ -41,9 +41,10 @@ import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
 // Helper to get fresh UI state
 // ============================================================================
 
-async function getUiState(repoPath: string, declutterTrunk = false): Promise<UiState | null> {
+async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<UiState | null> {
   const config: Configuration = { repoPath }
   const gitAdapter = getGitAdapter()
+
   const [repo, forgeState, session, workingTreeStatus] = await Promise.all([
     buildRepoModel(config),
     gitForgeService.getState(repoPath),
@@ -112,7 +113,7 @@ const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {
   GitWatcher.getInstance().stop()
 }
 
-const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath, declutterTrunk = false }) => {
+const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath, declutterTrunk = true }) => {
   return getUiState(repoPath, declutterTrunk)
 }
 

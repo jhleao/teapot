@@ -37,7 +37,7 @@ export function buildUiStack(
   gitForgeState: GitForgeState | null = null,
   options: { declutterTrunk?: boolean } = {}
 ): UiStack | null {
-  const { declutterTrunk = false } = options
+  const { declutterTrunk = true } = options
 
   if (!repo.commits.length) {
     return null
@@ -124,10 +124,6 @@ export type FullUiStateOptions = {
   rebaseSession?: RebaseState | null
   generateJobId?: () => RebaseJobId
   gitForgeState?: GitForgeState | null
-  /**
-   * Remove trunk commits that have no useful information (no spinoffs, no branches).
-   * Default: false
-   */
   declutterTrunk?: boolean
 }
 
@@ -143,7 +139,7 @@ export type FullUiState = {
  * or create a high level replacement that fn(repo, rebaseQueue) -> UiState
  */
 export function buildFullUiState(repo: Repo, options: FullUiStateOptions = {}): FullUiState {
-  const { declutterTrunk = false } = options
+  const { declutterTrunk } = options
   const stack = buildUiStack(repo, options.gitForgeState, { declutterTrunk })
   const rebase = deriveRebaseProjection(repo, options)
   const projectedStack = deriveProjectedStack(repo, rebase, options.gitForgeState, declutterTrunk)
@@ -496,7 +492,7 @@ function deriveProjectedStack(
   repo: Repo,
   projection: RebaseProjection,
   gitForgeState: GitForgeState | null = null,
-  declutterTrunk = false
+  declutterTrunk?: boolean
 ): UiStack | null {
   if (projection.kind !== 'planning') {
     return null

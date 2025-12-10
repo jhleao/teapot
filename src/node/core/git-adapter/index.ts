@@ -14,27 +14,33 @@
  */
 
 // Main exports
-export { createGitAdapter, getGitAdapter, getAdapterInfo, resetGitAdapter, supportsFeature } from './factory'
+export {
+  createGitAdapter,
+  getAdapterInfo,
+  getGitAdapter,
+  resetGitAdapter,
+  supportsFeature
+} from './factory'
 export type { GitAdapterConfig, GitAdapterType } from './factory'
 
 // Interface and types
-export type { GitAdapter } from './interface'
 export {
   supportsCherryPick,
+  supportsGetRebaseState,
   supportsMergeBase,
   supportsRebase,
   supportsRebaseAbort,
   supportsRebaseContinue,
-  supportsRebaseSkip,
-  supportsGetRebaseState
+  supportsRebaseSkip
 } from './interface'
+export type { GitAdapter } from './interface'
 
 // All type definitions
 export type {
   Branch,
   BranchOptions,
-  CherryPickResult,
   CheckoutOptions,
+  CherryPickResult,
   Commit,
   CommitDetail,
   CommitOptions,

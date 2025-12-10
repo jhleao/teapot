@@ -112,7 +112,7 @@ export function GitForgeSection({
         {isLoading ? 'Creating PR...' : error ? 'Failed - Retry' : 'Create PR'}
       </button>
       {error && (
-        <span className="text-red-500 text-[10px] max-w-[200px] break-words" title={error}>
+        <span className="max-w-[200px] text-[10px] break-words text-red-500" title={error}>
           {error.length > 50 ? `${error.substring(0, 50)}...` : error}
         </span>
       )}

@@ -28,10 +28,7 @@ export function walkStackNodes(
  * Finds a node by branch name within a RebaseIntent's target trees.
  * Returns null if not found.
  */
-export function findNodeByBranch(
-  intent: RebaseIntent,
-  branchName: string
-): StackNodeState | null {
+export function findNodeByBranch(intent: RebaseIntent, branchName: string): StackNodeState | null {
   for (const target of intent.targets) {
     const found = findNodeInTree(target.node, branchName)
     if (found) {
@@ -44,10 +41,7 @@ export function findNodeByBranch(
 /**
  * Finds a node by branch name within a single StackNodeState tree.
  */
-export function findNodeInTree(
-  root: StackNodeState,
-  branchName: string
-): StackNodeState | null {
+export function findNodeInTree(root: StackNodeState, branchName: string): StackNodeState | null {
   if (root.branch === branchName) {
     return root
   }

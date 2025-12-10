@@ -6,8 +6,8 @@
  * data loss or repository corruption.
  */
 
-import type { GitAdapter } from './git-adapter/interface'
 import type { RebaseIntent } from '@shared/types'
+import type { GitAdapter } from './git-adapter/interface'
 import { rebaseSessionStore } from './rebase-session-store'
 
 /**
@@ -189,7 +189,8 @@ export async function validateNoExistingSession(repoPath: string): Promise<Valid
     return {
       valid: false,
       code: 'SESSION_EXISTS',
-      message: 'A rebase session is already active for this repository. Please complete or cancel it first.'
+      message:
+        'A rebase session is already active for this repository. Please complete or cancel it first.'
     }
   }
 

@@ -1,6 +1,6 @@
 import type { Branch, Commit, Configuration, Repo } from '@shared/types'
-import { getGitAdapter } from '../git-adapter'
 import type { LogOptions } from '../git-adapter'
+import { getGitAdapter } from '../git-adapter'
 import { getTrunkBranchRef } from './get-trunk.js'
 
 type BranchDescriptor = {

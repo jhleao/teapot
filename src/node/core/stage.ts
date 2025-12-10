@@ -8,7 +8,7 @@ export async function updateFileStageStatus(
   const git = getGitAdapter()
 
   if (staged) {
-    await Promise.all(files.map((filepath) => git.add(repoPath, filepath)))
+    await git.add(repoPath, files)
   } else {
     let hasHead = false
     try {
@@ -19,10 +19,10 @@ export async function updateFileStageStatus(
     }
 
     if (hasHead) {
-      await Promise.all(files.map((filepath) => git.resetIndex(repoPath, filepath)))
+      await git.resetIndex(repoPath, files)
     } else {
       // No HEAD (initial commit), use remove to unstage
-      await Promise.all(files.map((filepath) => git.remove(repoPath, filepath)))
+      await git.remove(repoPath, files)
     }
   }
 }

@@ -1,6 +1,7 @@
+import { log } from '@shared/logger'
 import type { LocalRepo } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
-import { log } from '@shared/logger'
+import { toast } from 'sonner'
 
 interface LocalStateContextValue {
   repos: LocalRepo[]
@@ -20,48 +21,76 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
   // Compute the currently selected repo
   const selectedRepo = repos.find((repo) => repo.isSelected) ?? null
 
+  // Helper for consistent error handling
+  const safeApiCall = useCallback(
+    async <T,>(
+      promise: Promise<T>,
+      errorMessage: string,
+      onSuccess?: (result: T) => void
+    ): Promise<void> => {
+      try {
+        const result = await promise
+        if (onSuccess) onSuccess(result)
+      } catch (error) {
+        log.error(`${errorMessage}:`, error)
+        toast.error(errorMessage, {
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    },
+    []
+  )
+
   // Load repos on mount
   useEffect(() => {
     async function loadRepos() {
-      try {
-        const loadedRepos = await window.api.getLocalRepos()
-        setRepos(loadedRepos)
-      } catch (error) {
-        log.error('Failed to load repos:', error)
-      } finally {
-        setIsLoading(false)
-      }
+      await safeApiCall(
+        window.api.getLocalRepos(),
+        'Failed to load repositories',
+        (loadedRepos) => {
+          setRepos(loadedRepos)
+        }
+      )
+      setIsLoading(false)
     }
     loadRepos()
-  }, [])
+  }, [safeApiCall])
 
-  const selectRepo = useCallback(async (path: string) => {
-    try {
-      const updatedRepos = await window.api.selectLocalRepo({ path })
-      setRepos(updatedRepos)
-    } catch (error) {
-      log.error('Failed to select repo:', error)
-    }
-  }, [])
+  const selectRepo = useCallback(
+    async (path: string) => {
+      await safeApiCall(
+        window.api.selectLocalRepo({ path }),
+        'Failed to select repository',
+        setRepos
+      )
+    },
+    [safeApiCall]
+  )
 
-  const addRepo = useCallback(async (path: string) => {
-    try {
-      await window.api.addLocalRepo({ path })
-      const updatedRepos = await window.api.selectLocalRepo({ path })
-      setRepos(updatedRepos)
-    } catch (error) {
-      log.error('Failed to add repo:', error)
-    }
-  }, [])
+  const addRepo = useCallback(
+    async (path: string) => {
+      await safeApiCall(
+        (async () => {
+          await window.api.addLocalRepo({ path })
+          return window.api.selectLocalRepo({ path })
+        })(),
+        'Failed to add repository',
+        setRepos
+      )
+    },
+    [safeApiCall]
+  )
 
-  const removeRepo = useCallback(async (path: string) => {
-    try {
-      const updatedRepos = await window.api.removeLocalRepo({ path })
-      setRepos(updatedRepos)
-    } catch (error) {
-      log.error('Failed to remove repo:', error)
-    }
-  }, [])
+  const removeRepo = useCallback(
+    async (path: string) => {
+      await safeApiCall(
+        window.api.removeLocalRepo({ path }),
+        'Failed to remove repository',
+        setRepos
+      )
+    },
+    [safeApiCall]
+  )
 
   return (
     <LocalStateContext.Provider

@@ -1,7 +1,8 @@
+import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { useGitWatcher } from '../hooks/use-git-watcher'
-import { log } from '@shared/logger'
 
 interface UiStateContextValue {
   toggleTheme: () => void
@@ -21,6 +22,7 @@ interface UiStateContextValue {
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
+  updatePullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
@@ -90,8 +92,17 @@ export function UiStateProvider({
 
   // Helper to call API and update state
   const callApi = useCallback(async (apiCall: Promise<UiState | null>) => {
-    const newUiState = await apiCall
-    if (newUiState) setUiState(newUiState)
+    try {
+      const newUiState = await apiCall
+      if (newUiState) setUiState(newUiState)
+    } catch (error) {
+      log.error('API call failed:', error)
+      toast.error('Operation failed', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+      // Re-throw so callers can handle loading states etc if needed
+      throw error
+    }
   }, [])
 
   const setFilesStageStatus = useCallback(
@@ -192,6 +203,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const updatePullRequest = useCallback(
+    async (params: { headBranch: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.updatePullRequest({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const uncommit = useCallback(
     async (params: { commitSha: string }) => {
       if (!repoPath) return
@@ -203,9 +222,7 @@ export function UiStateProvider({
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
   // Check if any commit in the stack has 'conflicted' or 'resolved' status
-  const isRebasingWithConflicts = uiState?.stack
-    ? hasRebaseConflictStatus(uiState.stack)
-    : false
+  const isRebasingWithConflicts = uiState?.stack ? hasRebaseConflictStatus(uiState.stack) : false
 
   return (
     <UiStateContext.Provider
@@ -227,6 +244,7 @@ export function UiStateProvider({
         checkout,
         deleteBranch,
         createPullRequest,
+        updatePullRequest,
         uncommit,
         isWorkingTreeDirty,
         isRebasingWithConflicts

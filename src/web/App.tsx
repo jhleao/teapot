@@ -3,6 +3,7 @@ import React, { useState } from 'react'
 import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
+import { Toaster } from './components/Toaster'
 import { Topbar } from './components/Topbar'
 import { useLocalStateContext } from './contexts/LocalStateContext'
 import { useUiStateContext } from './contexts/UiStateContext'
@@ -109,6 +110,7 @@ function App(): React.JSX.Element {
       </button>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      <Toaster />
     </div>
   )
 }

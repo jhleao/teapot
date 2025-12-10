@@ -25,6 +25,11 @@
   /* Card colors */
   --card: var(--color-white);
   --card-foreground: var(--color-gray-950);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-gray-950);
+
+  /* Shared */
+  --radius: 0.5rem;
 
   /* Status colors */
   --success: var(--color-green-600);
@@ -55,6 +60,8 @@
   /* Card colors */
   --card: var(--color-gray-900);
   --card-foreground: var(--color-gray-50);
+  --popover: var(--color-gray-900);
+  --popover-foreground: var(--color-gray-50);
 
   /* Status colors */
   --success: var(--color-green-500);

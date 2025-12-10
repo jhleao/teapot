@@ -119,28 +119,28 @@ export interface GitAdapter {
   // ============================================================================
 
   /**
-   * Stage a file for commit
+   * Stage a file or files for commit
    *
    * @param dir - Repository directory path
-   * @param filepath - Relative path to file (or "." for all)
+   * @param filepath - Relative path to file(s) (or "." for all)
    */
-  add(dir: string, filepath: string): Promise<void>
+  add(dir: string, filepath: string | string[]): Promise<void>
 
   /**
-   * Unstage a file (remove from index, keep working tree changes)
+   * Unstage a file or files (remove from index, keep working tree changes)
    *
    * @param dir - Repository directory path
-   * @param filepath - Relative path to file
+   * @param filepath - Relative path to file(s)
    */
-  resetIndex(dir: string, filepath: string): Promise<void>
+  resetIndex(dir: string, filepath: string | string[]): Promise<void>
 
   /**
-   * Remove a file from the index and working tree
+   * Remove a file or files from the index and working tree
    *
    * @param dir - Repository directory path
-   * @param filepath - Relative path to file
+   * @param filepath - Relative path to file(s)
    */
-  remove(dir: string, filepath: string): Promise<void>
+  remove(dir: string, filepath: string | string[]): Promise<void>
 
   /**
    * Create a commit with staged changes

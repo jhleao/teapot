@@ -1,15 +1,15 @@
 import {
+  createRebasePlan,
   IPC_CHANNELS,
   IpcHandlerOf,
-  UiState,
   UiStack,
+  UiState,
   UiWorkingTreeFile,
-  createRebasePlan,
   type Configuration,
   type RebaseOperationResponse,
   type RebaseStatusResponse
 } from '@shared/types'
-import { dialog, ipcMain } from 'electron'
+import { dialog, ipcMain, IpcMainEvent } from 'electron'
 import {
   amend as amendCommit,
   buildRepoModel,
@@ -20,21 +20,22 @@ import {
   deleteBranch,
   discardChanges,
   uncommit as uncommitCore,
-  updateFileStageStatus
+  updateFileStageStatus,
+  updatePullRequest as updatePullRequestCore
 } from '../core'
 import { gitForgeService } from '../core/forge/service'
+import { getGitAdapter, supportsGetRebaseState } from '../core/git-adapter'
 import { GitWatcher } from '../core/git-watcher'
+import {
+  abortRebase as abortRebaseExec,
+  continueRebase as continueRebaseExec,
+  executeRebasePlan,
+  skipRebaseCommit as skipRebaseCommitExec
+} from '../core/rebase-executor'
+import { createStoredSession, rebaseSessionStore } from '../core/rebase-session-store'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
-import { rebaseSessionStore, createStoredSession } from '../core/rebase-session-store'
-import {
-  executeRebasePlan,
-  continueRebase as continueRebaseExec,
-  abortRebase as abortRebaseExec,
-  skipRebaseCommit as skipRebaseCommitExec
-} from '../core/rebase-executor'
-import { getGitAdapter, supportsGetRebaseState } from '../core/git-adapter'
 
 // ============================================================================
 // Helper to get fresh UI state
@@ -438,6 +439,14 @@ const uncommit: IpcHandlerOf<'uncommit'> = async (_event, { repoPath, commitSha 
   return getUiState(repoPath)
 }
 
+const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
+  _event,
+  { repoPath, headBranch }
+) => {
+  await updatePullRequestCore(repoPath, headBranch)
+  return getRepo({} as IpcMainEvent, { repoPath })
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
@@ -486,4 +495,5 @@ export function registerRepoHandlers(): void {
 
   // History
   ipcMain.handle(IPC_CHANNELS.uncommit, uncommit)
+  ipcMain.handle(IPC_CHANNELS.updatePullRequest, updatePullRequest)
 }

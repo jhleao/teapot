@@ -1,7 +1,7 @@
 import { log } from '@shared/logger'
 import { configStore } from '../../store'
-import { getGitAdapter } from '../git-adapter'
 import { gitForgeService } from '../forge/service'
+import { getGitAdapter } from '../git-adapter'
 import { buildRepoModel } from './build-repo'
 import { findBaseBranch } from './find-base-branch'
 

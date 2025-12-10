@@ -145,6 +145,13 @@ export class GitForgeService {
     }
   }
 
+  async refresh(repoPath: string): Promise<void> {
+    const client = await this.getClient(repoPath)
+    if (client) {
+      await client.refresh()
+    }
+  }
+
   invalidateCache(repoPath: string) {
     this.clients.delete(repoPath)
   }

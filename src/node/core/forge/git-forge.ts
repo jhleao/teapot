@@ -1,5 +1,5 @@
-import { GitForgeAdapter, GitForgeState } from '../../../shared/types/git-forge'
 import { log } from '@shared/logger'
+import { GitForgeAdapter, GitForgeState } from '../../../shared/types/git-forge'
 
 // Re-exporting shared types here for convenience if needed by consumers in node/
 export type { GitForgeAdapter, GitForgeState }

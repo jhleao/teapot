@@ -1,8 +1,8 @@
+import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
 import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
-import { log } from '@shared/logger'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
@@ -16,7 +16,7 @@ export function GitForgeSection({
   branches,
   isTrunk
 }: GitForgeSectionProps): React.JSX.Element | null {
-  const { createPullRequest } = useUiStateContext()
+  const { createPullRequest, updatePullRequest } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,21 +29,47 @@ export function GitForgeSection({
   const branchWithPr = branches.find((b) => b.pullRequest)
   const pr = branchWithPr?.pullRequest
 
+  const handleUpdatePr = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || !branchWithPr) return
+
+    setIsLoading(true)
+    try {
+      await updatePullRequest({ headBranch: branchWithPr.name })
+    } catch (error) {
+      log.error('Failed to update PR:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (pr) {
     return (
-      <a
-        href={pr.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={cn(
-          'cursor-pointer text-sm hover:underline',
-          pr.isInSync ? 'text-accent' : 'text-warning'
+      <div className="flex items-center gap-2">
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(
+            'cursor-pointer text-sm hover:underline',
+            pr.isInSync ? 'text-accent' : 'text-warning'
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
+          #{pr.number}
+          {!pr.isInSync && ' (Out of sync)'}
+        </a>
+        {!pr.isInSync && (
+          <button
+            onClick={handleUpdatePr}
+            disabled={isLoading}
+            className="border-warning/50 bg-warning/20 text-warning hover:bg-warning/10 inline-flex cursor-pointer items-center rounded-lg border px-2 py-1 text-xs font-medium transition-colors select-none disabled:opacity-50"
+            title="Local branch is ahead/behind remote. Click to force push."
+          >
+            {isLoading ? 'Updating...' : 'Update PR'}
+          </button>
         )}
-        onClick={(e) => e.stopPropagation()}
-      >
-        #{pr.number}
-        {!pr.isInSync && ' (Out of sync)'}
-      </a>
+      </div>
     )
   }
 

@@ -1,6 +1,6 @@
+import { log } from '@shared/logger'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { log } from '@shared/logger'
 import { getGitAdapter } from '../git-adapter'
 
 const execAsync = promisify(exec)

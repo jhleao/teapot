@@ -83,7 +83,6 @@ export function resetGitAdapter(): void {
   cachedAdapter = null
 }
 
-
 /**
  * Check if the current adapter supports a specific feature
  *

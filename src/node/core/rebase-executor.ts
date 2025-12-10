@@ -12,24 +12,30 @@
  * - Manage session state throughout the process
  */
 
-import type { GitAdapter } from './git-adapter/interface'
-import { supportsRebase, supportsRebaseAbort, supportsRebaseContinue, supportsRebaseSkip } from './git-adapter/interface'
 import type { Commit, CommitRewrite, RebaseJob, RebasePlan, RebaseState } from '@shared/types'
 import { completeJob, enqueueDescendants, nextJob, recordConflict } from '@shared/types'
+import type { GitAdapter } from './git-adapter/interface'
+import {
+  supportsRebase,
+  supportsRebaseAbort,
+  supportsRebaseContinue,
+  supportsRebaseSkip
+} from './git-adapter/interface'
 import {
   rebaseSessionStore,
-  updateSessionWithRetry,
   SessionNotFoundError,
+  updateSessionWithRetry,
   type StoredRebaseSession
 } from './rebase-session-store'
-import { findNodeByBranch } from './utils/stack-traversal'
 import {
-  validateRebaseIntent,
-  validateCanContinueRebase,
   validateCanAbortRebase,
+  validateCanContinueRebase,
   validateCleanWorkingTree,
-  validateNoRebaseInProgress
+  validateNoRebaseInProgress,
+  validateRebaseIntent
 } from './rebase-validation'
+import { createJobIdGenerator } from './utils/job-id-generator'
+import { findNodeByBranch } from './utils/stack-traversal'
 
 // ============================================================================
 // Types
@@ -211,12 +217,17 @@ export async function continueRebase(
       return { status: 'conflict', job: updatedJob, conflicts: result.conflicts, state: newState }
     }
 
-    return { status: 'conflict', job: createRecoveryJob(), conflicts: result.conflicts, state: session.state }
+    return {
+      status: 'conflict',
+      job: createRecoveryJob(),
+      conflicts: result.conflicts,
+      state: session.state
+    }
   }
 
   if (result.success) {
     // Job completed, mark it and continue with next jobs
-    const newHeadSha = result.currentCommit ?? await gitAdapter.resolveRef(repoPath, 'HEAD')
+    const newHeadSha = result.currentCommit ?? (await gitAdapter.resolveRef(repoPath, 'HEAD'))
 
     // Check if Git is still rebasing - if not, the entire rebase is complete
     const workingTreeStatus = await gitAdapter.getWorkingTreeStatus(repoPath)
@@ -298,7 +309,7 @@ export async function skipRebaseCommit(
     return {
       status: 'conflict',
       job: session?.state.queue.activeJobId
-        ? session.state.jobsById[session.state.queue.activeJobId] ?? createRecoveryJob()
+        ? (session.state.jobsById[session.state.queue.activeJobId] ?? createRecoveryJob())
         : createRecoveryJob(),
       conflicts: result.conflicts,
       state: session?.state ?? createMinimalState()
@@ -375,7 +386,12 @@ async function executeJobs(
 
       options.onJobConflict?.(updatedJob, result.conflicts)
 
-      return { status: 'conflict', job: updatedJob, conflicts: result.conflicts, state: conflictState }
+      return {
+        status: 'conflict',
+        job: updatedJob,
+        conflicts: result.conflicts,
+        state: conflictState
+      }
     }
 
     if (result.status === 'error') {
@@ -582,11 +598,7 @@ async function getCommitsInRange(
  * Builds commit rewrite mappings by matching commits before and after rebase.
  * Assumes commits maintain their order during rebase.
  */
-function buildCommitRewrites(
-  branch: string,
-  before: Commit[],
-  after: Commit[]
-): CommitRewrite[] {
+function buildCommitRewrites(branch: string, before: Commit[], after: Commit[]): CommitRewrite[] {
   const rewrites: CommitRewrite[] = []
 
   // Match by position (rebased commits maintain order)
@@ -604,17 +616,6 @@ function buildCommitRewrites(
   }
 
   return rewrites
-}
-
-/**
- * Creates a job ID generator.
- */
-function createJobIdGenerator(): () => string {
-  let counter = 0
-  return () => {
-    counter++
-    return `job-${Date.now()}-${counter}`
-  }
 }
 
 /**

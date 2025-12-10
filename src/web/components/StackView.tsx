@@ -43,7 +43,8 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit } = useUiStateContext()
+  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit } =
+    useUiStateContext()
 
   const commitRef = useRef<HTMLDivElement>(null!)
 

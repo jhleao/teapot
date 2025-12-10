@@ -36,6 +36,7 @@ import { createStoredSession, rebaseSessionStore } from '../core/rebase-session-
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
+import { createJobIdGenerator } from '../core/utils/job-id-generator'
 
 // ============================================================================
 // Helper to get fresh UI state
@@ -362,7 +363,7 @@ const getRebaseStatus: IpcHandlerOf<'getRebaseStatus'> = async (
       conflicts: workingTreeStatus.conflicted,
       progress
     }
-  } catch (error) {
+  } catch {
     return {
       isRebasing: false,
       hasSession: false,
@@ -451,14 +452,6 @@ const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
 // ============================================================================
 // Utilities
 // ============================================================================
-
-function createJobIdGenerator(): () => string {
-  let counter = 0
-  return () => {
-    counter++
-    return `job-${Date.now()}-${counter}`
-  }
-}
 
 // ============================================================================
 // Registration

@@ -155,11 +155,7 @@ describe('buildRebaseIntent', () => {
   })
 
   it('prefers local branches over remote branches', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A'),
-      createCommit('C', 'B')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A'), createCommit('C', 'B')]
     const branches = [
       createBranch('main', 'B', { isTrunk: true }),
       createBranch('origin/feature', 'C', { isRemote: true }),
@@ -188,14 +184,8 @@ describe('buildRebaseIntent', () => {
   })
 
   it('generates intent ID with correct format', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A')
-    ]
-    const branches = [
-      createBranch('main', 'A', { isTrunk: true }),
-      createBranch('feature', 'B')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A')]
+    const branches = [createBranch('main', 'A', { isTrunk: true }), createBranch('feature', 'B')]
     const repo = createRepo({ commits, branches })
 
     const intent = buildRebaseIntent(repo, 'B', 'A')
@@ -208,14 +198,8 @@ describe('buildRebaseIntent', () => {
   })
 
   it('sets createdAtMs timestamp', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A')
-    ]
-    const branches = [
-      createBranch('main', 'A', { isTrunk: true }),
-      createBranch('feature', 'B')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A')]
+    const branches = [createBranch('main', 'A', { isTrunk: true }), createBranch('feature', 'B')]
     const repo = createRepo({ commits, branches })
 
     const before = Date.now()
@@ -227,10 +211,7 @@ describe('buildRebaseIntent', () => {
   })
 
   it('handles multiple branches at same commit (selects first non-trunk non-remote)', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A')]
     const branches = [
       createBranch('main', 'A', { isTrunk: true }),
       createBranch('origin/feature-1', 'B', { isRemote: true }),

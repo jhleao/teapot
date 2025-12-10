@@ -1,6 +1,6 @@
 import { log } from '@shared/logger'
-import { getGitAdapter } from '../git-adapter'
 import { gitForgeService } from '../forge/service'
+import { getGitAdapter } from '../git-adapter'
 import { deleteBranch } from './delete-branch'
 
 export async function uncommit(repoPath: string, commitSha: string): Promise<void> {

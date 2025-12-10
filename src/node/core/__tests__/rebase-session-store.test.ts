@@ -1,10 +1,10 @@
 import type { RebaseIntent, RebaseState } from '@shared/types'
-import { describe, expect, it, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   InMemoryRebaseSessionStore,
-  updateSessionWithRetry,
   SessionConcurrencyError,
   SessionNotFoundError,
+  updateSessionWithRetry,
   type StoredRebaseSession
 } from '../rebase-session-store'
 
@@ -261,7 +261,9 @@ function createIntent(): RebaseIntent {
   }
 }
 
-function createState(overrides: Partial<{ status: RebaseState['session']['status'] }> = {}): RebaseState {
+function createState(
+  overrides: Partial<{ status: RebaseState['session']['status'] }> = {}
+): RebaseState {
   return {
     session: {
       id: 'test-session',

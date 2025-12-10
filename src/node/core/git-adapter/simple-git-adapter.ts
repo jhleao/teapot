@@ -718,8 +718,7 @@ export class SimpleGitAdapter implements GitAdapter {
   }
 
   private createError(operation: string, originalError: unknown): GitError {
-    const message =
-      originalError instanceof Error ? originalError.message : String(originalError)
+    const message = originalError instanceof Error ? originalError.message : String(originalError)
     return new (class extends Error implements GitError {
       name = 'GitError'
       operation: string

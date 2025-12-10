@@ -1,6 +1,6 @@
 import { IpcMainInvokeEvent } from 'electron'
-import type { UiState } from './ui'
 import type { RebaseState } from '../../node/core/rebase'
+import type { UiState } from './ui'
 
 /**
  * Response type for rebase operations (continue, abort, skip)

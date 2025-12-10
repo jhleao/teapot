@@ -13,8 +13,8 @@
 
 import type {
   BranchOptions,
-  CherryPickResult,
   CheckoutOptions,
+  CherryPickResult,
   Commit,
   CommitDetail,
   CommitOptions,

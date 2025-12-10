@@ -324,9 +324,11 @@ function createStackNode(branch: string, children: StackNodeState[]): StackNodeS
   }
 }
 
-function createIntent(
-  targets: Array<{ node: StackNodeState; targetBaseSha: string }>
-): { id: string; createdAtMs: number; targets: typeof targets } {
+function createIntent(targets: Array<{ node: StackNodeState; targetBaseSha: string }>): {
+  id: string
+  createdAtMs: number
+  targets: typeof targets
+} {
   return {
     id: 'test-intent',
     createdAtMs: Date.now(),

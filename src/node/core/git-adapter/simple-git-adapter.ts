@@ -296,7 +296,7 @@ export class SimpleGitAdapter implements GitAdapter {
   // Repository Mutation
   // ============================================================================
 
-  async add(dir: string, filepath: string): Promise<void> {
+  async add(dir: string, filepath: string | string[]): Promise<void> {
     try {
       const git = this.createGit(dir)
       await git.add(filepath)
@@ -305,20 +305,22 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
-  async resetIndex(dir: string, filepath: string): Promise<void> {
+  async resetIndex(dir: string, filepath: string | string[]): Promise<void> {
     try {
       const git = this.createGit(dir)
       // Unstage file (reset index only, keep working tree)
-      await git.reset(['--', filepath])
+      const files = Array.isArray(filepath) ? filepath : [filepath]
+      await git.reset(['--', ...files])
     } catch (error) {
       throw this.createError('resetIndex', error)
     }
   }
 
-  async remove(dir: string, filepath: string): Promise<void> {
+  async remove(dir: string, filepath: string | string[]): Promise<void> {
     try {
       const git = this.createGit(dir)
-      await git.rm([filepath])
+      const files = Array.isArray(filepath) ? filepath : [filepath]
+      await git.rm(files)
     } catch (error) {
       throw this.createError('remove', error)
     }

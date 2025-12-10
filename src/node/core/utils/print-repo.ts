@@ -1,6 +1,6 @@
+import { log } from '@shared/logger'
 import type { Repo, UiStack } from '@shared/types'
 import { buildUiStack } from './build-ui-state.js'
-import { log } from '@shared/logger'
 
 export function printRepo(repo: Repo): void {
   printWorkingTree(repo)

@@ -1,3 +1,4 @@
+import { log } from '@shared/logger'
 import type {
   RebaseJob,
   RebasePlan,
@@ -8,7 +9,6 @@ import type {
 } from '@shared/types'
 import type { FullUiStateOptions } from './build-ui-state.js'
 import { buildFullUiState } from './build-ui-state.js'
-import { log } from '@shared/logger'
 
 export function printUiState(repo: Repo, options: FullUiStateOptions = {}): void {
   const uiState = buildFullUiState(repo, options)

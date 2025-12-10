@@ -1,8 +1,8 @@
+import { log } from '@shared/logger'
 import { Moon, Sun } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog'
-import { log } from '@shared/logger'
 
 interface SettingsDialogProps {
   open: boolean

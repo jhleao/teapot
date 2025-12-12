@@ -7,8 +7,11 @@
  */
 
 import { log } from '@shared/logger'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
 import fs from 'fs'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
 import type { GitAdapter } from './interface'
@@ -468,7 +471,7 @@ export class SimpleGitAdapter implements GitAdapter {
    * - 1 if possibleAncestor is NOT an ancestor of descendant
    * - 128 (or other) if refs don't exist or other error
    *
-   * Note: We use execSync here instead of simple-git because simple-git's raw()
+   * Note: We use execAsync here instead of simple-git because simple-git's raw()
    * method doesn't properly handle exit codes for commands like --is-ancestor
    * that use exit codes to communicate boolean results.
    *
@@ -479,11 +482,11 @@ export class SimpleGitAdapter implements GitAdapter {
    */
   async isAncestor(dir: string, possibleAncestor: string, descendant: string): Promise<boolean> {
     try {
-      // Use execSync because simple-git doesn't properly handle exit code 1
+      // Use execAsync because simple-git doesn't properly handle exit code 1
       // which git merge-base --is-ancestor uses to indicate "not an ancestor"
-      execSync(`git merge-base --is-ancestor ${possibleAncestor} ${descendant}`, {
-        cwd: dir,
-        stdio: 'pipe' // Suppress output
+      // Using async exec prevents blocking the event loop during concurrent operations
+      await execAsync(`git merge-base --is-ancestor ${possibleAncestor} ${descendant}`, {
+        cwd: dir
       })
       return true
     } catch {

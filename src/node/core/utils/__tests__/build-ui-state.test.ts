@@ -948,8 +948,8 @@ describe('buildUiState', () => {
   })
 })
 
-function expectTrunkStack(repo: Repo) {
-  const stack = buildUiStack(repo)
+function expectTrunkStack(repo: Repo, options: { declutterTrunk?: boolean } = {}) {
+  const stack = buildUiStack(repo, null, { declutterTrunk: options.declutterTrunk ?? false })
   if (!stack) {
     throw new Error('expected trunk stack')
   }

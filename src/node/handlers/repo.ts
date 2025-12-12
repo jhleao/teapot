@@ -76,6 +76,17 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
       // Clean up the stale session
       await rebaseSessionStore.clearSession(repoPath)
     }
+  } else if (workingTreeStatus.isRebasing) {
+    // Git is rebasing but we have no session - this is an orphaned rebase
+    // (e.g., the app was restarted mid-rebase, or rebase started externally)
+    // Try to recover the branch name from Git's rebase state
+    if (supportsGetRebaseState(gitAdapter)) {
+      const gitRebaseState = await gitAdapter.getRebaseState(repoPath)
+      if (gitRebaseState?.branch) {
+        const hasConflicts = workingTreeStatus.conflicted.length > 0
+        applyRebaseStatusToStack(stack, gitRebaseState.branch, hasConflicts ? 'conflicted' : 'resolved')
+      }
+    }
   }
 
   return { stack, workingTree }

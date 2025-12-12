@@ -77,7 +77,7 @@ export function GitForgeSection({
     const prIsMerged = pr.state === 'merged'
     return (
       <div className="flex items-center gap-2">
-        {showRebaseButton && (
+        {showRebaseButton && !prIsMerged && (
           <button
             type="button"
             onClick={handleRebase}

@@ -8,8 +8,12 @@ import { cn } from '../utils/cn'
 interface GitForgeSectionProps {
   branches: UiBranch[]
   isTrunk: boolean
+  /** The SHA of the commit being displayed (used for rebase headSha) */
   commitSha: string
+  /** The SHA of the current trunk head commit */
   trunkHeadSha: string
+  /** The SHA of the trunk commit this spinoff branches off from. Used to determine if rebase is needed. */
+  baseSha: string
 }
 
 /**
@@ -19,7 +23,8 @@ export function GitForgeSection({
   branches,
   isTrunk,
   commitSha,
-  trunkHeadSha
+  trunkHeadSha,
+  baseSha
 }: GitForgeSectionProps): React.JSX.Element | null {
   const { createPullRequest, updatePullRequest, submitRebaseIntent, isWorkingTreeDirty } =
     useUiStateContext()
@@ -131,7 +136,7 @@ export function GitForgeSection({
     }
   }
 
-  const showRebaseButton = canRebase({ commitSha, trunkHeadSha, isWorkingTreeDirty })
+  const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
 
   return (
     <div className="flex items-center gap-2">

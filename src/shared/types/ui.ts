@@ -35,6 +35,13 @@ export type UiBranch = {
    */
   isCurrent: boolean
   pullRequest?: UiPullRequest
+  /**
+   * True if this branch has been merged into trunk.
+   * Detected via:
+   * 1. GitHub PR state === 'merged'
+   * 2. Local detection: branch head is ancestor of trunk (fallback)
+   */
+  isMerged?: boolean
 }
 
 export type UiPullRequest = {

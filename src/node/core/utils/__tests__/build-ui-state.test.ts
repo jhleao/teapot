@@ -1,4 +1,5 @@
 import type { Branch, Commit, Repo, WorkingTreeStatus } from '@shared/types'
+import type { GitForgeState } from '@shared/types/git-forge'
 import { describe, expect, it } from 'vitest'
 import { buildUiStack } from '../build-ui-state.js'
 
@@ -1011,3 +1012,372 @@ function createWorkingTreeStatus(overrides: Partial<WorkingTreeStatus> = {}): Wo
     ...overrides
   }
 }
+
+function createGitForgeState(overrides: Partial<GitForgeState> = {}): GitForgeState {
+  return {
+    pullRequests: [],
+    ...overrides
+  }
+}
+
+describe('buildUiStack with merged branch detection', () => {
+  it('sets isMerged=true when PR state is merged', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/merged', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const gitForgeState = createGitForgeState({
+      pullRequests: [
+        {
+          number: 123,
+          title: 'Feature PR',
+          url: 'https://github.com/test/repo/pull/123',
+          state: 'merged',
+          headRefName: 'feature/merged',
+          headSha: featureTip.sha,
+          baseRefName: 'main',
+          createdAt: '2024-01-01T00:00:00Z'
+        }
+      ]
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    // Find the feature branch in spinoffs
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/merged')
+    expect(featureBranch).toBeDefined()
+    expect(featureBranch?.isMerged).toBe(true)
+    expect(featureBranch?.pullRequest?.state).toBe('merged')
+  })
+
+  it('sets isMerged=false for open PRs', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/open', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const gitForgeState = createGitForgeState({
+      pullRequests: [
+        {
+          number: 456,
+          title: 'Open PR',
+          url: 'https://github.com/test/repo/pull/456',
+          state: 'open',
+          headRefName: 'feature/open',
+          headSha: featureTip.sha,
+          baseRefName: 'main',
+          createdAt: '2024-01-01T00:00:00Z'
+        }
+      ]
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/open')
+    expect(featureBranch).toBeDefined()
+    expect(featureBranch?.isMerged).toBeFalsy()
+    expect(featureBranch?.pullRequest?.state).toBe('open')
+  })
+
+  it('sets isMerged=true when branch is in mergedBranchNames (local detection fallback)', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/local-merged', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    // No PR, but branch detected as merged locally
+    const gitForgeState = createGitForgeState({
+      pullRequests: [],
+      mergedBranchNames: ['feature/local-merged']
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/local-merged')
+    expect(featureBranch).toBeDefined()
+    expect(featureBranch?.isMerged).toBe(true)
+    // No PR attached since none was found
+    expect(featureBranch?.pullRequest).toBeUndefined()
+  })
+
+  it('sets isMerged=false for branches without PR and not in mergedBranchNames', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/unmerged', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const gitForgeState = createGitForgeState({
+      pullRequests: [],
+      mergedBranchNames: [] // Not in merged list
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/unmerged')
+    expect(featureBranch).toBeDefined()
+    expect(featureBranch?.isMerged).toBeFalsy()
+  })
+
+  it('PR state takes precedence over local detection for merged status', () => {
+    // Edge case: PR says open but local detection says merged
+    // This could happen if someone manually cherry-picked commits
+    // PR state should take precedence since it's more authoritative
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/conflict', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const gitForgeState = createGitForgeState({
+      pullRequests: [
+        {
+          number: 789,
+          title: 'Conflicting PR',
+          url: 'https://github.com/test/repo/pull/789',
+          state: 'open', // PR says open
+          headRefName: 'feature/conflict',
+          headSha: featureTip.sha,
+          baseRefName: 'main',
+          createdAt: '2024-01-01T00:00:00Z'
+        }
+      ],
+      mergedBranchNames: ['feature/conflict'] // Local detection says merged
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/conflict')
+    expect(featureBranch).toBeDefined()
+    // PR says open, so not merged (PR takes precedence)
+    expect(featureBranch?.isMerged).toBeFalsy()
+    expect(featureBranch?.pullRequest?.state).toBe('open')
+  })
+
+  it('handles closed (not merged) PRs correctly', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['main-tip', 'feature-tip']
+    })
+    const trunkTip = createCommit({
+      sha: 'main-tip',
+      message: 'main tip',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkTip, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkTip.sha }),
+        createBranch({ ref: 'feature/closed', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const gitForgeState = createGitForgeState({
+      pullRequests: [
+        {
+          number: 999,
+          title: 'Closed PR',
+          url: 'https://github.com/test/repo/pull/999',
+          state: 'closed', // Closed without merge
+          headRefName: 'feature/closed',
+          headSha: featureTip.sha,
+          baseRefName: 'main',
+          createdAt: '2024-01-01T00:00:00Z'
+        }
+      ]
+    })
+
+    const stack = buildUiStack(repo, gitForgeState, { declutterTrunk: false })
+    if (!stack) throw new Error('expected stack')
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+    const featureTipCommit = featureStack.commits.at(-1)
+    if (!featureTipCommit) throw new Error('expected feature tip commit')
+
+    const featureBranch = featureTipCommit.branches.find((b) => b.name === 'feature/closed')
+    expect(featureBranch).toBeDefined()
+    // Closed is not the same as merged
+    expect(featureBranch?.isMerged).toBeFalsy()
+    expect(featureBranch?.pullRequest?.state).toBe('closed')
+  })
+})

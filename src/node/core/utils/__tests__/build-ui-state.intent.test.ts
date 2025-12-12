@@ -38,7 +38,7 @@ const COMMITS = {
 describe('buildUiState (stack projection scenarios)', () => {
   it('builds the baseline stack layout for the sample repo', () => {
     const repo = createSampleRepo()
-    const stack = buildUiStack(repo)
+    const stack = buildUiStack(repo, null, { declutterTrunk: false })
     expect(stack).not.toBeNull()
     if (!stack) {
       throw new Error('expected trunk stack')

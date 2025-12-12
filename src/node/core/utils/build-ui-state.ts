@@ -432,10 +432,10 @@ function trimTrunkCommits(trunkStack: UiStack): void {
   }
 
   // Find the index of the deepest (oldest, earliest in array) commit that has useful info
-  let deepestUsefulIndex = trunkStack.commits.length - 1 // Start from tip (most recent)
+  let deepestUsefulIndex = trunkStack.commits.length - 1 // Default to tip (most recent)
 
-  // Walk backwards (from tip to oldest) to find the last commit with spinoffs or branches
-  for (let i = trunkStack.commits.length - 1; i >= 0; i--) {
+  // Walk from oldest to newest to find the oldest commit with spinoffs or branches
+  for (let i = 0; i < trunkStack.commits.length; i++) {
     const commit = trunkStack.commits[i]
     if (!commit) continue
 
@@ -443,7 +443,7 @@ function trimTrunkCommits(trunkStack: UiStack): void {
     const hasBranches = commit.branches.length > 0
 
     if (hasSpinoffs || hasBranches) {
-      // This commit has useful info, keep everything from here to the tip
+      // Found the oldest commit with useful info, keep everything from here to the tip
       deepestUsefulIndex = i
       break
     }

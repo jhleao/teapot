@@ -251,4 +251,132 @@ describe('SimpleGitAdapter', () => {
       expect(mergeBase).toBe(base)
     })
   })
+
+  describe('isAncestor', () => {
+    it('returns true when commit is a strict ancestor of ref', async () => {
+      // Create linear history: A -> B -> C
+      const commitA = await createCommit(repoPath, { 'a.txt': 'a' }, 'commit A')
+      const commitB = await createCommit(repoPath, { 'b.txt': 'b' }, 'commit B')
+      const commitC = await createCommit(repoPath, { 'c.txt': 'c' }, 'commit C')
+
+      // A is ancestor of C
+      expect(await adapter.isAncestor(repoPath, commitA, commitC)).toBe(true)
+      // A is ancestor of B
+      expect(await adapter.isAncestor(repoPath, commitA, commitB)).toBe(true)
+      // B is ancestor of C
+      expect(await adapter.isAncestor(repoPath, commitB, commitC)).toBe(true)
+    })
+
+    it('returns true when commit equals ref (same commit is considered ancestor of itself)', async () => {
+      const commitA = await createCommit(repoPath, { 'a.txt': 'a' }, 'commit A')
+
+      // Git considers a commit to be an ancestor of itself
+      expect(await adapter.isAncestor(repoPath, commitA, commitA)).toBe(true)
+    })
+
+    it('returns false when commit is not an ancestor of ref', async () => {
+      // Create base commit
+      const base = await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch with its own commit
+      await createBranch(repoPath, 'feature', true)
+      const featureCommit = await createCommit(
+        repoPath,
+        { 'feature.txt': 'feature' },
+        'feature commit'
+      )
+
+      // Go back to main and add commit
+      await adapter.checkout(repoPath, 'main')
+      const mainCommit = await createCommit(repoPath, { 'main.txt': 'main' }, 'main commit')
+
+      // featureCommit is NOT an ancestor of mainCommit (they diverged)
+      expect(await adapter.isAncestor(repoPath, featureCommit, mainCommit)).toBe(false)
+      // mainCommit is NOT an ancestor of featureCommit
+      expect(await adapter.isAncestor(repoPath, mainCommit, featureCommit)).toBe(false)
+      // But base is ancestor of both
+      expect(await adapter.isAncestor(repoPath, base, mainCommit)).toBe(true)
+      expect(await adapter.isAncestor(repoPath, base, featureCommit)).toBe(true)
+    })
+
+    it('returns false when descendant ref is checked against ancestor (wrong direction)', async () => {
+      const commitA = await createCommit(repoPath, { 'a.txt': 'a' }, 'commit A')
+      const commitB = await createCommit(repoPath, { 'b.txt': 'b' }, 'commit B')
+
+      // B is NOT an ancestor of A (B came after A)
+      expect(await adapter.isAncestor(repoPath, commitB, commitA)).toBe(false)
+    })
+
+    it('handles branch refs correctly', async () => {
+      // Create main with one commit
+      const mainBase = await createCommit(repoPath, { 'main.txt': 'main' }, 'main commit')
+
+      // Create feature branch from main
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'feature.txt': 'feature' }, 'feature commit')
+
+      // mainBase should be ancestor of feature branch
+      expect(await adapter.isAncestor(repoPath, mainBase, 'feature')).toBe(true)
+      // main branch should be ancestor of feature (since feature branched from main)
+      expect(await adapter.isAncestor(repoPath, 'main', 'feature')).toBe(true)
+    })
+
+    it('returns false for non-existent refs without throwing', async () => {
+      await createCommit(repoPath, { 'a.txt': 'a' }, 'commit A')
+
+      // Non-existent commit should return false, not throw
+      expect(await adapter.isAncestor(repoPath, 'nonexistent123', 'HEAD')).toBe(false)
+      expect(await adapter.isAncestor(repoPath, 'HEAD', 'nonexistent456')).toBe(false)
+    })
+
+    it('works with HEAD ref', async () => {
+      const commitA = await createCommit(repoPath, { 'a.txt': 'a' }, 'commit A')
+      await createCommit(repoPath, { 'b.txt': 'b' }, 'commit B')
+
+      // A should be ancestor of HEAD (which points to B)
+      expect(await adapter.isAncestor(repoPath, commitA, 'HEAD')).toBe(true)
+      // HEAD should NOT be ancestor of A
+      expect(await adapter.isAncestor(repoPath, 'HEAD', commitA)).toBe(false)
+    })
+
+    it('detects merged branch scenario correctly', async () => {
+      // Simulate: feature branch was merged into main via fast-forward
+      // This is the core use case for detecting merged branches
+
+      // Create feature branch
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+      await createBranch(repoPath, 'feature', true)
+      const featureTip = await createCommit(
+        repoPath,
+        { 'feature.txt': 'feature' },
+        'feature work'
+      )
+
+      // "Merge" by fast-forwarding main to feature tip
+      await adapter.checkout(repoPath, 'main')
+      await adapter.reset(repoPath, { mode: 'hard', ref: featureTip })
+
+      // Now main and feature point to the same commit
+      // feature's tip should be ancestor of (or equal to) main
+      expect(await adapter.isAncestor(repoPath, 'feature', 'main')).toBe(true)
+      expect(await adapter.isAncestor(repoPath, featureTip, 'main')).toBe(true)
+    })
+
+    it('detects non-merged branch scenario correctly', async () => {
+      // Feature branch has commits that are NOT on main
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch with work
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'feature.txt': 'feature' }, 'feature work')
+
+      // Go back to main (which is behind feature)
+      await adapter.checkout(repoPath, 'main')
+
+      // feature is NOT an ancestor of main (feature is ahead)
+      expect(await adapter.isAncestor(repoPath, 'feature', 'main')).toBe(false)
+      // But main IS an ancestor of feature
+      expect(await adapter.isAncestor(repoPath, 'main', 'feature')).toBe(true)
+    })
+  })
 })

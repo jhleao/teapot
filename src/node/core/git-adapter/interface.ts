@@ -216,6 +216,23 @@ export interface GitAdapter {
   mergeBase?(dir: string, ref1: string, ref2: string): Promise<string>
 
   /**
+   * Check if a commit is an ancestor of another commit.
+   *
+   * Uses `git merge-base --is-ancestor` under the hood.
+   * Returns true if `possibleAncestor` is reachable from `descendant` by following parent links.
+   * Note: A commit is considered an ancestor of itself (returns true when both refs point to same commit).
+   *
+   * Primary use case: detecting if a branch has been merged into trunk.
+   * If branch head is an ancestor of trunk head, the branch is merged.
+   *
+   * @param dir - Repository directory path
+   * @param possibleAncestor - The commit/ref that might be an ancestor
+   * @param descendant - The commit/ref to check ancestry against
+   * @returns true if possibleAncestor is an ancestor of (or equal to) descendant, false otherwise
+   */
+  isAncestor(dir: string, possibleAncestor: string, descendant: string): Promise<boolean>
+
+  /**
    * Rebase a range of commits onto a new base
    *
    * @param dir - Repository directory path

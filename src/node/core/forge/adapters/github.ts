@@ -13,11 +13,13 @@ export class GitHubAdapter implements GitForgeAdapter {
   ) {}
 
   async fetchState(): Promise<GitForgeState> {
-    // Fetch open PRs
-    // We want 'open' state. GitHub API returns both PRs and Issues in /issues endpoint,
-    // but /pulls gives us strictly PRs.
+    // Fetch PRs with all states (open, closed, merged)
+    // This allows us to detect merged PRs and show appropriate UI
     // Docs: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=open&per_page=100`
+    //
+    // Note: GitHub API returns state='closed' for both closed and merged PRs.
+    // We distinguish merged PRs by checking the `merged_at` field (non-null = merged).
+    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`
 
     const { body, statusCode } = await request(url, {
       headers: {
@@ -38,7 +40,7 @@ export class GitHubAdapter implements GitForgeAdapter {
       number: pr.number,
       title: pr.title,
       url: pr.html_url,
-      state: pr.draft ? 'draft' : pr.state,
+      state: this.mapPrState(pr),
       headRefName: pr.head.ref,
       headSha: pr.head.sha,
       baseRefName: pr.base.ref,
@@ -46,6 +48,22 @@ export class GitHubAdapter implements GitForgeAdapter {
     }))
 
     return { pullRequests }
+  }
+
+  /**
+   * Maps GitHub PR state to our internal state.
+   *
+   * GitHub API returns state='closed' for both closed and merged PRs.
+   * We distinguish merged PRs by checking `merged_at` field.
+   */
+  private mapPrState(pr: GitHubPullRequest): ForgePullRequest['state'] {
+    if (pr.draft) {
+      return 'draft'
+    }
+    if (pr.state === 'closed' && pr.merged_at !== null) {
+      return 'merged'
+    }
+    return pr.state
   }
 
   async createPullRequest(
@@ -202,6 +220,8 @@ type GitHubPullRequest = {
   html_url: string
   state: 'open' | 'closed'
   draft: boolean
+  /** ISO 8601 timestamp when the PR was merged, or null if not merged */
+  merged_at: string | null
   head: {
     ref: string
     sha: string

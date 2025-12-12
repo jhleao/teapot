@@ -29,6 +29,9 @@ export function GitForgeSection({
   const branchWithPr = branches.find((b) => b.pullRequest)
   const pr = branchWithPr?.pullRequest
 
+  // Check if any branch on this commit is merged (either via PR state or local detection)
+  const isMerged = branches.some((b) => b.isMerged)
+
   const handleUpdatePr = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()
     if (isLoading || !branchWithPr) return
@@ -44,6 +47,7 @@ export function GitForgeSection({
   }
 
   if (pr) {
+    const prIsMerged = pr.state === 'merged'
     return (
       <div className="flex items-center gap-2">
         <a
@@ -52,14 +56,19 @@ export function GitForgeSection({
           rel="noopener noreferrer"
           className={cn(
             'cursor-pointer text-sm hover:underline',
-            pr.isInSync ? 'text-accent' : 'text-warning'
+            prIsMerged
+              ? 'text-muted-foreground'
+              : pr.isInSync
+                ? 'text-accent'
+                : 'text-warning'
           )}
           onClick={(e) => e.stopPropagation()}
         >
           #{pr.number}
-          {!pr.isInSync && ' (Out of sync)'}
+          {prIsMerged && ' (Merged)'}
+          {!prIsMerged && !pr.isInSync && ' (Out of sync)'}
         </a>
-        {!pr.isInSync && (
+        {!prIsMerged && !pr.isInSync && (
           <button
             onClick={handleUpdatePr}
             disabled={isLoading}
@@ -70,6 +79,13 @@ export function GitForgeSection({
           </button>
         )}
       </div>
+    )
+  }
+
+  // If any branch is merged (locally detected) but has no PR, show merged indicator
+  if (isMerged) {
+    return (
+      <span className="text-muted-foreground text-sm">(Merged)</span>
     )
   }
 

@@ -343,6 +343,9 @@ function annotateBranchHeads(
   state: BuildState,
   gitForgeState: GitForgeState | null
 ): void {
+  // Pre-compute set of merged branch names for efficient lookup
+  const mergedBranchNames = new Set(gitForgeState?.mergedBranchNames ?? [])
+
   branches.forEach((branch) => {
     if (!branch.headSha) {
       return
@@ -357,6 +360,8 @@ function annotateBranchHeads(
     }
 
     let pullRequest: UiPullRequest | undefined
+    let isMerged: boolean | undefined
+
     if (gitForgeState) {
       const normalizedRef = normalizeBranchRef(branch)
       const pr = gitForgeState.pullRequests.find((pr) => pr.headRefName === normalizedRef)
@@ -368,13 +373,19 @@ function annotateBranchHeads(
           state: pr.state,
           isInSync: pr.headSha === branch.headSha
         }
+        // PR state is authoritative for merged status
+        isMerged = pr.state === 'merged'
+      } else {
+        // No PR found - check local detection fallback
+        isMerged = mergedBranchNames.has(branch.ref)
       }
     }
 
     commitNode.branches.push({
       name: branch.ref,
       isCurrent: branch.ref === state.currentBranch,
-      pullRequest
+      pullRequest,
+      isMerged
     })
   })
 }

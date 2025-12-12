@@ -7,6 +7,7 @@
  */
 
 import { log } from '@shared/logger'
+import { execSync } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
@@ -456,6 +457,41 @@ export class SimpleGitAdapter implements GitAdapter {
       return result.trim()
     } catch (error) {
       throw this.createError('mergeBase', error)
+    }
+  }
+
+  /**
+   * Check if a commit is an ancestor of another commit.
+   *
+   * Uses `git merge-base --is-ancestor` which exits with:
+   * - 0 if possibleAncestor is an ancestor of descendant (or they're the same commit)
+   * - 1 if possibleAncestor is NOT an ancestor of descendant
+   * - 128 (or other) if refs don't exist or other error
+   *
+   * Note: We use execSync here instead of simple-git because simple-git's raw()
+   * method doesn't properly handle exit codes for commands like --is-ancestor
+   * that use exit codes to communicate boolean results.
+   *
+   * @param dir - Repository directory path
+   * @param possibleAncestor - The commit/ref that might be an ancestor
+   * @param descendant - The commit/ref to check ancestry against
+   * @returns true if possibleAncestor is an ancestor of (or equal to) descendant
+   */
+  async isAncestor(dir: string, possibleAncestor: string, descendant: string): Promise<boolean> {
+    try {
+      // Use execSync because simple-git doesn't properly handle exit code 1
+      // which git merge-base --is-ancestor uses to indicate "not an ancestor"
+      execSync(`git merge-base --is-ancestor ${possibleAncestor} ${descendant}`, {
+        cwd: dir,
+        stdio: 'pipe' // Suppress output
+      })
+      return true
+    } catch {
+      // Non-zero exit code means either:
+      // 1. Not an ancestor (exit code 1) - return false
+      // 2. Invalid ref (exit code 128) - return false (graceful handling)
+      // We don't distinguish between these cases - both mean "not an ancestor"
+      return false
     }
   }
 

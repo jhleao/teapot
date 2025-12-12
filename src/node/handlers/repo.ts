@@ -482,6 +482,42 @@ const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
+const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) => {
+  try {
+    // 1. Get forge state to find PR number
+    const forgeState = await gitForgeService.getState(repoPath)
+    const pr = forgeState.pullRequests.find(
+      (p) => p.headRefName === branchName && p.state === 'open'
+    )
+
+    if (!pr) {
+      throw new Error(`No open PR found for branch "${branchName}"`)
+    }
+
+    // 2. Merge via GitHub API (squash merge)
+    await gitForgeService.mergePullRequest(repoPath, pr.number)
+
+    // 3. Fetch to update remote refs
+    const gitAdapter = getGitAdapter()
+    await gitAdapter.fetch(repoPath)
+
+    // 4. Return updated UI state
+    return getUiState(repoPath)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Ship It Failed',
+      message: 'Unable to merge pull request',
+      detail: errorMessage,
+      buttons: ['OK']
+    })
+
+    throw error
+  }
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
@@ -520,6 +556,7 @@ export function registerRepoHandlers(): void {
 
   // GitHub
   ipcMain.handle(IPC_CHANNELS.createPullRequest, createPullRequest)
+  ipcMain.handle(IPC_CHANNELS.shipIt, shipIt)
 
   // History
   ipcMain.handle(IPC_CHANNELS.uncommit, uncommit)

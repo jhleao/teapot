@@ -55,6 +55,11 @@ export type UiPullRequest = {
    * True if the local branch tip matches the PR head SHA.
    */
   isInSync: boolean
+  /**
+   * True if the PR can be merged (no conflicts, checks passed, not blocked by branch policies).
+   * Only true when GitHub returns mergeable=true AND mergeable_state='clean'.
+   */
+  isMergeable: boolean
 }
 
 export type UiWorkingTreeFile = {

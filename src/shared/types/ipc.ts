@@ -65,7 +65,8 @@ export const IPC_CHANNELS = {
   setGithubPat: 'setGithubPat',
   createPullRequest: 'createPullRequest',
   uncommit: 'uncommit',
-  updatePullRequest: 'updatePullRequest'
+  updatePullRequest: 'updatePullRequest',
+  shipIt: 'shipIt'
 } as const
 
 export const IPC_EVENTS = {
@@ -189,6 +190,13 @@ export interface IpcContract {
     request: {
       repoPath: string
       headBranch: string
+    }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.shipIt]: {
+    request: {
+      repoPath: string
+      branchName: string
     }
     response: UiState | null
   }

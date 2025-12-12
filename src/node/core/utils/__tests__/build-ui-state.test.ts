@@ -1062,7 +1062,8 @@ describe('buildUiStack with merged branch detection', () => {
           headRefName: 'feature/merged',
           headSha: featureTip.sha,
           baseRefName: 'main',
-          createdAt: '2024-01-01T00:00:00Z'
+          createdAt: '2024-01-01T00:00:00Z',
+          isMergeable: false
         }
       ]
     })
@@ -1125,7 +1126,8 @@ describe('buildUiStack with merged branch detection', () => {
           headRefName: 'feature/open',
           headSha: featureTip.sha,
           baseRefName: 'main',
-          createdAt: '2024-01-01T00:00:00Z'
+          createdAt: '2024-01-01T00:00:00Z',
+          isMergeable: true
         }
       ]
     })
@@ -1295,7 +1297,8 @@ describe('buildUiStack with merged branch detection', () => {
           headRefName: 'feature/conflict',
           headSha: featureTip.sha,
           baseRefName: 'main',
-          createdAt: '2024-01-01T00:00:00Z'
+          createdAt: '2024-01-01T00:00:00Z',
+          isMergeable: false
         }
       ],
       mergedBranchNames: ['feature/conflict'] // Local detection says merged
@@ -1359,7 +1362,8 @@ describe('buildUiStack with merged branch detection', () => {
           headRefName: 'feature/closed',
           headSha: featureTip.sha,
           baseRefName: 'main',
-          createdAt: '2024-01-01T00:00:00Z'
+          createdAt: '2024-01-01T00:00:00Z',
+          isMergeable: false
         }
       ]
     })

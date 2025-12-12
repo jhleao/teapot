@@ -14,15 +14,19 @@ interface StackProps {
   data: UiStack
   className?: string
   workingTree: UiWorkingTreeFile[]
+  /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
+  baseSha?: string
 }
 
 interface CommitProps {
   data: UiCommit
   stack: UiStack
   workingTree: UiWorkingTreeFile[]
+  /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
+  baseSha?: string
 }
 
-export function StackView({ data, className, workingTree }: StackProps): React.JSX.Element {
+export function StackView({ data, className, workingTree, baseSha = '' }: StackProps): React.JSX.Element {
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
 
@@ -34,13 +38,14 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
           data={commit}
           stack={data}
           workingTree={workingTree}
+          baseSha={baseSha}
         />
       ))}
     </div>
   )
 }
 
-export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
+export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
   const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit, uiState } =
@@ -97,7 +102,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
           <div className="ml-[-2px] w-full">
             {data.spinoffs.map((spinoff, index) => (
               <div key={`spinoff-${data.name}-${index}`}>
-                <StackView className="ml-[12px]" data={spinoff} workingTree={workingTree} />
+                <StackView className="ml-[12px]" data={spinoff} workingTree={workingTree} baseSha={data.sha} />
                 <SineCurve />
               </div>
             ))}
@@ -165,6 +170,7 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
           isTrunk={stack.isTrunk}
           commitSha={data.sha}
           trunkHeadSha={trunkHeadSha}
+          baseSha={baseSha}
         />
         {!stack.isTrunk && isCurrent && (
           <button

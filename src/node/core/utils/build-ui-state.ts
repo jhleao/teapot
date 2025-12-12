@@ -193,23 +193,37 @@ function buildTrunkUiStack(
   // Collect lineage from local trunk
   const localLineage = collectBranchLineage(branch.headSha, state.commitMap)
 
-  // If remote trunk exists and differs from local, merge both lineages
+  // If remote trunk exists and differs from local, determine which lineage to use
   let lineage = localLineage
   if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
     const remoteLineage = collectBranchLineage(remoteTrunk.headSha, state.commitMap)
+    const localSet = new Set(localLineage)
+    const remoteSet = new Set(remoteLineage)
 
-    // Merge both lineages - use a Set to deduplicate, then sort by topological order
-    // The lineages are already in order (oldest to newest), so we can merge them
-    const allShas = new Set([...localLineage, ...remoteLineage])
+    // Check if remote is ahead of local (remote contains local head as ancestor)
+    const remoteIsAhead = remoteSet.has(branch.headSha)
+    // Check if local is ahead of remote (local contains remote head as ancestor)
+    const localIsAhead = localSet.has(remoteTrunk.headSha)
 
-    // Convert back to array and maintain topological order by walking from all commits
-    lineage = Array.from(allShas).sort((a, b) => {
-      const commitA = state.commitMap.get(a)
-      const commitB = state.commitMap.get(b)
-      if (!commitA || !commitB) return 0
-      // Sort by time to maintain chronological order
-      return (commitA.timeMs ?? 0) - (commitB.timeMs ?? 0)
-    })
+    if (remoteIsAhead && !localIsAhead) {
+      // Remote is strictly ahead - use remote lineage only
+      // This happens after Ship it: origin/main moved forward, local main is behind
+      // Don't show orphaned commits that only exist on local path
+      lineage = remoteLineage
+    } else if (localIsAhead && !remoteIsAhead) {
+      // Local is strictly ahead - use local lineage only
+      // This happens when user has unpushed commits on main
+      lineage = localLineage
+    } else {
+      // Diverged or same - merge both lineages (original behavior)
+      const allShas = new Set([...localLineage, ...remoteLineage])
+      lineage = Array.from(allShas).sort((a, b) => {
+        const commitA = state.commitMap.get(a)
+        const commitB = state.commitMap.get(b)
+        if (!commitA || !commitB) return 0
+        return (commitA.timeMs ?? 0) - (commitB.timeMs ?? 0)
+      })
+    }
   }
 
   if (lineage.length === 0) {

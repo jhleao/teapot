@@ -106,7 +106,7 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
     }
   }
 
-  const trunkHeadSha = getTrunkHeadSha(repo.branches)
+  const trunkHeadSha = getTrunkHeadSha(repo.branches, repo.commits)
   return { stack, workingTree, trunkHeadSha }
 }
 
@@ -196,7 +196,7 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
     return null
   }
 
-  const trunkHeadSha = getTrunkHeadSha(repo.branches)
+  const trunkHeadSha = getTrunkHeadSha(repo.branches, repo.commits)
   return { stack, workingTree, trunkHeadSha }
 }
 

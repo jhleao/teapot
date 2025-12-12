@@ -60,6 +60,7 @@ export const IPC_CHANNELS = {
   unwatchRepo: 'unwatchRepo',
   checkout: 'checkout',
   deleteBranch: 'deleteBranch',
+  cleanupBranch: 'cleanupBranch',
   getGithubPat: 'getGithubPat',
   setGithubPat: 'setGithubPat',
   createPullRequest: 'createPullRequest',
@@ -158,6 +159,10 @@ export interface IpcContract {
     response: UiState | null
   }
   [IPC_CHANNELS.deleteBranch]: {
+    request: { repoPath: string; branchName: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.cleanupBranch]: {
     request: { repoPath: string; branchName: string }
     response: UiState | null
   }

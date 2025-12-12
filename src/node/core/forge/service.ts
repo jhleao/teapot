@@ -152,6 +152,20 @@ export class GitForgeService {
     }
   }
 
+  /**
+   * Deletes a branch from the remote repository.
+   *
+   * Gracefully handles the case where no forge client is available (no PAT configured,
+   * no remote, etc.) - in that case, this is a no-op and returns without error.
+   */
+  async deleteRemoteBranch(repoPath: string, branchName: string): Promise<void> {
+    const client = await this.getClient(repoPath)
+    if (client) {
+      await client.deleteRemoteBranch(branchName)
+    }
+    // If no client (no PAT, no remote), silently skip remote deletion
+  }
+
   invalidateCache(repoPath: string) {
     this.clients.delete(repoPath)
   }

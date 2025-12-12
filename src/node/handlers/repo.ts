@@ -23,6 +23,7 @@ import {
   updateFileStageStatus,
   updatePullRequest as updatePullRequestCore
 } from '../core'
+import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { gitForgeService } from '../core/forge/service'
 import { getGitAdapter, supportsGetRebaseState } from '../core/git-adapter'
 import { GitWatcher } from '../core/git-watcher'
@@ -436,6 +437,14 @@ const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (
   return getUiState(repoPath)
 }
 
+const cleanupBranchHandler: IpcHandlerOf<'cleanupBranch'> = async (
+  _event,
+  { repoPath, branchName }
+) => {
+  await cleanupBranch(repoPath, branchName)
+  return getUiState(repoPath)
+}
+
 const createPullRequest: IpcHandlerOf<'createPullRequest'> = async (
   _event,
   { repoPath, headBranch }
@@ -507,6 +516,7 @@ export function registerRepoHandlers(): void {
   // Branches
   ipcMain.handle(IPC_CHANNELS.checkout, checkoutHandler)
   ipcMain.handle(IPC_CHANNELS.deleteBranch, deleteBranchHandler)
+  ipcMain.handle(IPC_CHANNELS.cleanupBranch, cleanupBranchHandler)
 
   // GitHub
   ipcMain.handle(IPC_CHANNELS.createPullRequest, createPullRequest)

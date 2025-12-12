@@ -132,6 +132,35 @@ export class GitHubAdapter implements GitForgeAdapter {
     }
   }
 
+  /**
+   * Deletes a branch from the remote repository.
+   *
+   * Uses GitHub API: DELETE /repos/{owner}/{repo}/git/refs/heads/{branch}
+   * Docs: https://docs.github.com/en/rest/git/refs?apiVersion=2022-11-28#delete-a-reference
+   *
+   * Treats 404/422 as success (branch already deleted or doesn't exist).
+   */
+  async deleteRemoteBranch(branchName: string): Promise<void> {
+    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/git/refs/heads/${encodeURIComponent(branchName)}`
+
+    const { body, statusCode } = await request(url, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${this.pat}`,
+        'User-Agent': 'Teapot-Git-Client',
+        Accept: 'application/vnd.github.v3+json'
+      }
+    })
+
+    // 204 = success, 404/422 = branch doesn't exist (treat as success)
+    if (statusCode === 204 || statusCode === 404 || statusCode === 422) {
+      return
+    }
+
+    const text = await body.text()
+    throw new Error(`GitHub API failed with status ${statusCode}: ${text}`)
+  }
+
   private parseGitHubError(statusCode: number, responseText: string): string {
     // Try to parse GitHub API error response
     let errorMessage = ''

@@ -26,7 +26,7 @@ export function GitForgeSection({
   trunkHeadSha,
   baseSha
 }: GitForgeSectionProps): React.JSX.Element | null {
-  const { createPullRequest, updatePullRequest, submitRebaseIntent, isWorkingTreeDirty } =
+  const { createPullRequest, updatePullRequest, submitRebaseIntent, cleanupBranch, isWorkingTreeDirty } =
     useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +73,23 @@ export function GitForgeSection({
 
   const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
 
+  // Find the first merged branch that isn't currently checked out (for cleanup)
+  const mergedBranchToCleanup = branches.find((b) => b.isMerged && !b.isCurrent)
+
+  const handleCleanup = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || !mergedBranchToCleanup) return
+
+    setIsLoading(true)
+    try {
+      await cleanupBranch({ branchName: mergedBranchToCleanup.name })
+    } catch (error) {
+      log.error('Failed to cleanup branch:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (pr) {
     const prIsMerged = pr.state === 'merged'
     return (
@@ -115,14 +132,36 @@ export function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
+        {prIsMerged && mergedBranchToCleanup && (
+          <button
+            type="button"
+            onClick={handleCleanup}
+            disabled={isLoading}
+            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+          >
+            {isLoading ? 'Cleaning...' : 'Clean up'}
+          </button>
+        )}
       </div>
     )
   }
 
-  // If any branch is merged (locally detected) but has no PR, show merged indicator
+  // If any branch is merged (locally detected) but has no PR, show merged indicator and cleanup button
   if (isMerged) {
     return (
-      <span className="text-muted-foreground text-sm">(Merged)</span>
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground text-sm">(Merged)</span>
+        {mergedBranchToCleanup && (
+          <button
+            type="button"
+            onClick={handleCleanup}
+            disabled={isLoading}
+            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+          >
+            {isLoading ? 'Cleaning...' : 'Clean up'}
+          </button>
+        )}
+      </div>
     )
   }
 

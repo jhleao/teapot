@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
+import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
@@ -31,8 +32,40 @@ export function GitForgeSection({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  if (isTrunk) return null
   if (branches.length === 0) return null
+
+  // Find merged branch that can be cleaned up (not currently checked out)
+  const mergedBranchToCleanup = getMergedBranchToCleanup(branches)
+
+  const handleCleanup = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || !mergedBranchToCleanup) return
+
+    setIsLoading(true)
+    try {
+      await cleanupBranch({ branchName: mergedBranchToCleanup.name })
+    } catch (error) {
+      log.error('Failed to cleanup branch:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // For trunk commits, only show cleanup button for merged branches
+  if (isTrunk) {
+    if (!mergedBranchToCleanup) return null
+
+    return (
+      <button
+        type="button"
+        onClick={handleCleanup}
+        disabled={isLoading}
+        className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+      >
+        {isLoading ? 'Cleaning...' : 'Clean up'}
+      </button>
+    )
+  }
 
   // Pick the first PR associated with any branch associated with that commit.
   // If there's more than one branch with a PR, ignore the other one.
@@ -72,23 +105,6 @@ export function GitForgeSection({
   }
 
   const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
-
-  // Find the first merged branch that isn't currently checked out (for cleanup)
-  const mergedBranchToCleanup = branches.find((b) => b.isMerged && !b.isCurrent)
-
-  const handleCleanup = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || !mergedBranchToCleanup) return
-
-    setIsLoading(true)
-    try {
-      await cleanupBranch({ branchName: mergedBranchToCleanup.name })
-    } catch (error) {
-      log.error('Failed to cleanup branch:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleShipIt = async (e: React.MouseEvent): Promise<void> => {
     e.stopPropagation()

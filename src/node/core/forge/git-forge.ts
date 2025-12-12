@@ -50,4 +50,8 @@ export class GitForgeClient {
     await this.adapter.closePullRequest(number)
     return this.refresh()
   }
+
+  async deleteRemoteBranch(branchName: string): Promise<void> {
+    await this.adapter.deleteRemoteBranch(branchName)
+  }
 }

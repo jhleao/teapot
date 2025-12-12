@@ -21,6 +21,7 @@ interface UiStateContextValue {
   skipRebaseCommit: () => Promise<void>
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
+  cleanupBranch: (params: { branchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
@@ -195,6 +196,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const cleanupBranch = useCallback(
+    async (params: { branchName: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.cleanupBranch({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const createPullRequest = useCallback(
     async (params: { headBranch: string }) => {
       if (!repoPath) return
@@ -243,6 +252,7 @@ export function UiStateProvider({
         skipRebaseCommit,
         checkout,
         deleteBranch,
+        cleanupBranch,
         createPullRequest,
         updatePullRequest,
         uncommit,

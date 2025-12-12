@@ -52,4 +52,10 @@ export interface GitForgeAdapter {
   ): Promise<ForgePullRequest>
 
   closePullRequest(number: number): Promise<void>
+
+  /**
+   * Deletes a branch from the remote repository.
+   * Should treat "branch doesn't exist" as success (idempotent).
+   */
+  deleteRemoteBranch(branchName: string): Promise<void>
 }

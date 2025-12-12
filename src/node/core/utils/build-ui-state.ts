@@ -388,8 +388,17 @@ function annotateBranchHeads(
           isInSync: pr.headSha === branch.headSha,
           isMergeable: pr.isMergeable
         }
-        // PR state is authoritative for merged status
-        isMerged = pr.state === 'merged'
+        // PR 'merged' state is authoritative
+        // For 'closed' PRs, also check local detection since commits may have been
+        // merged via rebase/squash (PR closed but commits are on trunk)
+        if (pr.state === 'merged') {
+          isMerged = true
+        } else if (pr.state === 'closed') {
+          // Closed PR - check if commits are actually on trunk
+          isMerged = mergedBranchNames.has(branch.ref)
+        } else {
+          isMerged = false
+        }
       } else {
         // No PR found - check local detection fallback
         isMerged = mergedBranchNames.has(branch.ref)

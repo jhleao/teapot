@@ -1,25 +1,27 @@
 interface CanRebaseParams {
-  commitSha: string
+  /** The SHA of the trunk commit that the spinoff is based on */
+  baseSha: string
+  /** The SHA of the current trunk head commit */
   trunkHeadSha: string
   isWorkingTreeDirty: boolean
 }
 
 /**
- * Determines if a commit can be rebased onto trunk.
+ * Determines if a spinoff can be rebased onto trunk head.
  * Returns true when:
- * - commitSha is not empty
+ * - baseSha is not empty
  * - trunkHeadSha is not empty
- * - commit is not already on trunk head
+ * - spinoff's base is not already the trunk head (needs rebasing)
  * - working tree is clean
  */
 export function canRebase({
-  commitSha,
+  baseSha,
   trunkHeadSha,
   isWorkingTreeDirty
 }: CanRebaseParams): boolean {
-  if (!commitSha || !trunkHeadSha) {
+  if (!baseSha || !trunkHeadSha) {
     return false
   }
 
-  return commitSha !== trunkHeadSha && !isWorkingTreeDirty
+  return baseSha !== trunkHeadSha && !isWorkingTreeDirty
 }

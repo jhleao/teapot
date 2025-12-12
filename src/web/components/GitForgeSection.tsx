@@ -57,10 +57,36 @@ export function GitForgeSection({
     }
   }
 
+  const handleRebase = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || isWorkingTreeDirty) return
+
+    setIsLoading(true)
+    try {
+      await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
+    } catch (error) {
+      log.error('Failed to initiate rebase:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
+
   if (pr) {
     const prIsMerged = pr.state === 'merged'
     return (
       <div className="flex items-center gap-2">
+        {showRebaseButton && (
+          <button
+            type="button"
+            onClick={handleRebase}
+            disabled={isLoading}
+            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+          >
+            Rebase
+          </button>
+        )}
         <a
           href={pr.url}
           target="_blank"
@@ -121,22 +147,6 @@ export function GitForgeSection({
       setIsLoading(false)
     }
   }
-
-  const handleRebase = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || isWorkingTreeDirty) return
-
-    setIsLoading(true)
-    try {
-      await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
-    } catch (error) {
-      log.error('Failed to initiate rebase:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
 
   return (
     <div className="flex items-center gap-2">

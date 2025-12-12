@@ -1,5 +1,11 @@
 export type GitForgeState = {
   pullRequests: ForgePullRequest[]
+  /**
+   * Branch names that have been detected as merged into trunk via local Git detection.
+   * This is a fallback when GitHub API is unavailable or doesn't have PR data.
+   * Used to set `isMerged` on branches even without PR information.
+   */
+  mergedBranchNames?: string[]
 }
 
 export type ForgePullRequest = {

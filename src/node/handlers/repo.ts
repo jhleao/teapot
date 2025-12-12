@@ -36,6 +36,7 @@ import { createStoredSession, rebaseSessionStore } from '../core/rebase-session-
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
+import { detectMergedBranches } from '../core/utils/detect-merged-branches'
 import { createJobIdGenerator } from '../core/utils/job-id-generator'
 
 // ============================================================================
@@ -53,7 +54,21 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
     gitAdapter.getWorkingTreeStatus(repoPath)
   ])
 
-  const stack = buildUiStack(repo, forgeState, { declutterTrunk })
+  // Enhance forge state with local merged branch detection (fallback for when API doesn't have PR data)
+  // Find trunk ref for ancestor checking
+  const trunkBranch = repo.branches.find((b) => b.isTrunk && !b.isRemote) ??
+    repo.branches.find((b) => b.isTrunk)
+  const trunkRef = trunkBranch?.ref ?? 'main'
+
+  // Detect locally merged branches (branches whose head is ancestor of trunk)
+  const mergedBranchNames = await detectMergedBranches(repoPath, repo.branches, trunkRef, gitAdapter)
+
+  // Merge local detection with forge state
+  const enhancedForgeState = forgeState
+    ? { ...forgeState, mergedBranchNames }
+    : { pullRequests: [], mergedBranchNames }
+
+  const stack = buildUiStack(repo, enhancedForgeState, { declutterTrunk })
   const workingTree = buildUiWorkingTree(repo)
 
   if (!stack) {

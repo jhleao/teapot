@@ -106,7 +106,7 @@ describe('detectMergedBranches', () => {
     expect(result).toEqual([])
   })
 
-  it('excludes remote branches from merged detection', async () => {
+  it('includes remote branches in merged detection', async () => {
     const mainSha = await createCommit(repoPath, { 'file.txt': 'content' }, 'main commit')
 
     const branches: Branch[] = [
@@ -115,8 +115,8 @@ describe('detectMergedBranches', () => {
 
     const result = await detectMergedBranches(repoPath, branches, 'main', adapter)
 
-    // Remote branches should not be checked for merged status
-    expect(result).toEqual([])
+    // Remote branches should be checked for merged status so they can be cleaned up
+    expect(result).toEqual(['origin/feature'])
   })
 
   it('handles multiple branches with mixed merged/unmerged states', async () => {

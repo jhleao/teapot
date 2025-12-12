@@ -38,10 +38,10 @@ export async function detectMergedBranches(
 
   // Filter out branches that shouldn't be checked:
   // - Trunk branches (main/master shouldn't be marked as "merged into itself")
-  // - Remote branches (we only care about local branches for cleanup)
   // - Branches with empty headSha (invalid/ghost branches)
+  // Note: We include remote branches so they can be cleaned up too
   const candidateBranches = branches.filter(
-    (branch) => !branch.isTrunk && !branch.isRemote && branch.headSha
+    (branch) => !branch.isTrunk && branch.headSha
   )
 
   if (candidateBranches.length === 0) {

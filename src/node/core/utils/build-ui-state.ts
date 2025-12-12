@@ -371,7 +371,8 @@ function annotateBranchHeads(
           title: pr.title,
           url: pr.url,
           state: pr.state,
-          isInSync: pr.headSha === branch.headSha
+          isInSync: pr.headSha === branch.headSha,
+          isMergeable: pr.isMergeable
         }
         // PR state is authoritative for merged status
         isMerged = pr.state === 'merged'

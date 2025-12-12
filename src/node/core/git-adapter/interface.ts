@@ -201,6 +201,14 @@ export interface GitAdapter {
    */
   push(dir: string, options: PushOptions): Promise<void>
 
+  /**
+   * Fetch updates from a remote repository
+   *
+   * @param dir - Repository directory path
+   * @param remote - Remote name (defaults to 'origin')
+   */
+  fetch(dir: string, remote?: string): Promise<void>
+
   // ============================================================================
   // Advanced Operations (Future)
   // ============================================================================

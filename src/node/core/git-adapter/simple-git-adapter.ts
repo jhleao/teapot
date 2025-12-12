@@ -449,6 +449,15 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  async fetch(dir: string, remote = 'origin'): Promise<void> {
+    try {
+      const git = this.createGit(dir)
+      await git.fetch(remote)
+    } catch (error) {
+      throw this.createError('fetch', error)
+    }
+  }
+
   // ============================================================================
   // Advanced Operations
   // ============================================================================

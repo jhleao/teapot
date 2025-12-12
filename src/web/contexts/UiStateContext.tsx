@@ -25,6 +25,7 @@ interface UiStateContextValue {
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
+  shipIt: (params: { branchName: string }) => Promise<void>
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
@@ -228,6 +229,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const shipIt = useCallback(
+    async (params: { branchName: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.shipIt({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
   // Check if any commit in the stack has 'conflicted' or 'resolved' status
@@ -256,6 +265,7 @@ export function UiStateProvider({
         createPullRequest,
         updatePullRequest,
         uncommit,
+        shipIt,
         isWorkingTreeDirty,
         isRebasingWithConflicts
       }}

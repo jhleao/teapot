@@ -166,6 +166,21 @@ export class GitForgeService {
     // If no client (no PAT, no remote), silently skip remote deletion
   }
 
+  /**
+   * Merges a pull request using squash merge.
+   *
+   * @throws Error if no PAT configured or merge fails
+   */
+  async mergePullRequest(repoPath: string, number: number): Promise<void> {
+    const client = await this.getClient(repoPath)
+    if (!client) {
+      throw new Error(
+        'No GitHub client available. Please configure your GitHub PAT in settings.'
+      )
+    }
+    await client.mergePullRequest(number, 'squash')
+  }
+
   invalidateCache(repoPath: string) {
     this.clients.delete(repoPath)
   }

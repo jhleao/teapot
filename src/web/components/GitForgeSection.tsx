@@ -26,7 +26,7 @@ export function GitForgeSection({
   trunkHeadSha,
   baseSha
 }: GitForgeSectionProps): React.JSX.Element | null {
-  const { createPullRequest, updatePullRequest, submitRebaseIntent, cleanupBranch, isWorkingTreeDirty } =
+  const { createPullRequest, updatePullRequest, submitRebaseIntent, cleanupBranch, shipIt, isWorkingTreeDirty } =
     useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -90,6 +90,20 @@ export function GitForgeSection({
     }
   }
 
+  const handleShipIt = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || !branchWithPr) return
+
+    setIsLoading(true)
+    try {
+      await shipIt({ branchName: branchWithPr.name })
+    } catch (error) {
+      log.error('Failed to ship it:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   if (pr) {
     const prIsMerged = pr.state === 'merged'
     return (
@@ -130,6 +144,16 @@ export function GitForgeSection({
             title="Local branch is ahead/behind remote. Click to force push."
           >
             {isLoading ? 'Updating...' : 'Update PR'}
+          </button>
+        )}
+        {!prIsMerged && pr.isInSync && pr.isMergeable && !isWorkingTreeDirty && (
+          <button
+            type="button"
+            onClick={handleShipIt}
+            disabled={isLoading}
+            className="bg-green-600 hover:bg-green-700 text-white cursor-pointer rounded-md border border-green-700 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+          >
+            {isLoading ? 'Shipping...' : 'Ship it!'}
           </button>
         )}
         {prIsMerged && mergedBranchToCleanup && (

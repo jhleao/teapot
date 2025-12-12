@@ -54,4 +54,16 @@ export class GitForgeClient {
   async deleteRemoteBranch(branchName: string): Promise<void> {
     await this.adapter.deleteRemoteBranch(branchName)
   }
+
+  /**
+   * Merges a pull request using the specified merge method.
+   * After merging, refreshes the state to reflect the merged status.
+   */
+  async mergePullRequest(
+    number: number,
+    mergeMethod: 'squash' | 'merge' | 'rebase'
+  ): Promise<GitForgeState> {
+    await this.adapter.mergePullRequest(number, mergeMethod)
+    return this.refresh()
+  }
 }

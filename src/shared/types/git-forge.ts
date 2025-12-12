@@ -32,6 +32,13 @@ export type ForgePullRequest = {
   baseRefName: string
 
   createdAt: string
+
+  /**
+   * Whether the PR can be merged (no conflicts, checks passed, not blocked by branch policies).
+   * Only true when GitHub returns mergeable=true AND mergeable_state='clean'.
+   * False for draft PRs, closed PRs, or when branch protection blocks the merge.
+   */
+  isMergeable: boolean
 }
 
 export interface GitForgeAdapter {
@@ -58,4 +65,18 @@ export interface GitForgeAdapter {
    * Should treat "branch doesn't exist" as success (idempotent).
    */
   deleteRemoteBranch(branchName: string): Promise<void>
+
+  /**
+   * Merges a pull request using the specified merge method.
+   * @param number - PR number
+   * @param mergeMethod - 'squash' | 'merge' | 'rebase'
+   * @throws Error if merge fails (conflicts, branch protection, etc.)
+   */
+  mergePullRequest(number: number, mergeMethod: 'squash' | 'merge' | 'rebase'): Promise<void>
+
+  /**
+   * Fetches detailed information about a specific pull request.
+   * Used to get mergeable state which is not included in the list endpoint.
+   */
+  fetchPrDetails(number: number): Promise<{ mergeable: boolean | null; mergeable_state: string }>
 }

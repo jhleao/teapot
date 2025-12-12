@@ -52,41 +52,49 @@ export function buildRebaseIntent(
  * IMPORTANT: The baseSha is computed by walking backwards through commits
  * until we find a commit that has another branch pointing to it (fork point).
  * This correctly handles multi-commit branches.
+ *
+ * @param specificBranchName - Optional branch name to use instead of selecting one.
+ *   Used when building nodes for sibling branches at the same commit.
  */
 function buildStackNodeState(
   repo: Repo,
   commitMap: Map<string, Commit>,
   branchHeadIndex: Map<string, string[]>,
   headSha: string,
-  visited: Set<string>
+  visited: Set<string>,
+  specificBranchName?: string
 ): StackNodeState | null {
-  if (visited.has(headSha)) {
-    return null
-  }
-
   const commit = commitMap.get(headSha)
   if (!commit) {
     return null
   }
 
-  const branchName = selectBranchName(repo.branches, headSha)
+  // Use specific branch name if provided, otherwise select one
+  const branchName = specificBranchName ?? selectBranchName(repo.branches, headSha)
   if (!branchName) {
     return null
   }
 
-  visited.add(headSha)
+  // Use branch name as the visited key to allow multiple branches at same commit
+  const visitedKey = `${headSha}:${branchName}`
+  if (visited.has(visitedKey)) {
+    return null
+  }
+
+  visited.add(visitedKey)
 
   // Find the base SHA by walking backwards through commits
   const baseSha = findBaseSha(headSha, branchName, commitMap, branchHeadIndex, repo.branches)
 
-  // Find child branches - branches whose baseSha equals our headSha
-  // This handles both single-commit and multi-commit child branches
+  // Find child branches - branches that depend on this branch's lineage
+  // This includes direct children, siblings at same commit, and branches forked from ancestor commits
   const childBranches = findChildBranchesWithForkPoint(
     repo,
     commitMap,
     branchHeadIndex,
     headSha,
-    branchName
+    branchName,
+    baseSha
   )
   const children: StackNodeState[] = []
 
@@ -96,14 +104,15 @@ function buildStackNodeState(
       commitMap,
       branchHeadIndex,
       childBranch.headSha,
-      visited
+      visited,
+      childBranch.ref // Pass specific branch name for siblings at same commit
     )
     if (childNode) {
       children.push(childNode)
     }
   }
 
-  visited.delete(headSha)
+  visited.delete(visitedKey)
 
   return {
     branch: branchName,
@@ -114,17 +123,28 @@ function buildStackNodeState(
 }
 
 /**
- * Finds child branches whose fork point (baseSha) is at the given headSha.
- * This handles multi-commit child branches correctly.
+ * Finds child branches whose lineage intersects with the parent's lineage.
+ *
+ * A branch is considered a "child" if:
+ * 1. Its baseSha equals parentHeadSha (direct child - forks from parent's head), OR
+ * 2. It points to the same commit as parent (sibling at same commit), OR
+ * 3. Its lineage intersects with parent's lineage (shares commits that will be rebased)
+ *
+ * This ensures that when rebasing a branch, all dependent branches are included,
+ * preventing orphaned commits after rebase.
  */
 function findChildBranchesWithForkPoint(
   repo: Repo,
   commitMap: Map<string, Commit>,
   branchHeadIndex: Map<string, string[]>,
   parentHeadSha: string,
-  parentBranchName: string
+  parentBranchName: string,
+  parentBaseSha: string
 ): Branch[] {
   const childBranches: Branch[] = []
+
+  // Collect all commits in parent's lineage (from head to base, exclusive of base)
+  const parentLineage = collectLineage(parentHeadSha, parentBaseSha, commitMap)
 
   for (const branch of repo.branches) {
     // Skip remote branches
@@ -135,10 +155,14 @@ function findChildBranchesWithForkPoint(
     if (branch.ref === parentBranchName) continue
     // Skip if no headSha
     if (!branch.headSha) continue
-    // Skip if same headSha as parent (would be same branch effectively)
-    if (branch.headSha === parentHeadSha) continue
 
-    // Calculate this branch's baseSha to see if it forks from parentHeadSha
+    // Case 1: Sibling at same commit (different branch pointing to same headSha)
+    if (branch.headSha === parentHeadSha) {
+      childBranches.push(branch)
+      continue
+    }
+
+    // Calculate this branch's baseSha
     const branchBaseSha = findBaseSha(
       branch.headSha,
       branch.ref,
@@ -147,8 +171,20 @@ function findChildBranchesWithForkPoint(
       repo.branches
     )
 
+    // Case 2: Direct child (baseSha === parentHeadSha)
     if (branchBaseSha === parentHeadSha) {
       childBranches.push(branch)
+      continue
+    }
+
+    // Case 3: Branch's lineage intersects with parent's lineage
+    // This catches branches that fork from ancestor commits within the rebase range
+    // We need to check if this branch's lineage contains any commit from parent's lineage
+    const branchLineage = collectLineage(branch.headSha, branchBaseSha, commitMap)
+    const hasIntersection = [...branchLineage].some((sha) => parentLineage.has(sha))
+    if (hasIntersection) {
+      childBranches.push(branch)
+      continue
     }
   }
 
@@ -238,6 +274,24 @@ function findBaseSha(
   // the base is the last valid parent we found
   const headCommit = commitMap.get(headSha)
   return headCommit?.parentSha || headSha
+}
+
+/**
+ * Collects all commit SHAs from headSha down to (but not including) baseSha.
+ * Returns the set of commits that will be affected by a rebase.
+ */
+function collectLineage(headSha: string, baseSha: string, commitMap: Map<string, Commit>): Set<string> {
+  const lineage = new Set<string>()
+  let current: string | undefined = headSha
+
+  while (current && current !== baseSha) {
+    lineage.add(current)
+    const commit = commitMap.get(current)
+    if (!commit?.parentSha) break
+    current = commit.parentSha
+  }
+
+  return lineage
 }
 
 /**

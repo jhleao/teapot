@@ -43,8 +43,10 @@ export function StackView({ data, className, workingTree }: StackProps): React.J
 export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit } =
+  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit, uiState } =
     useUiStateContext()
+
+  const trunkHeadSha = uiState?.trunkHeadSha ?? ''
 
   const commitRef = useRef<HTMLDivElement>(null!)
 
@@ -158,7 +160,12 @@ export function CommitView({ data, stack, workingTree }: CommitProps): React.JSX
           {data.name}
         </div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
-        <GitForgeSection branches={data.branches} isTrunk={stack.isTrunk} />
+        <GitForgeSection
+          branches={data.branches}
+          isTrunk={stack.isTrunk}
+          commitSha={data.sha}
+          trunkHeadSha={trunkHeadSha}
+        />
         {!stack.isTrunk && isCurrent && (
           <button
             onClick={handleUncommit}

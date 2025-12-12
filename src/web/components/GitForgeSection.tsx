@@ -2,11 +2,14 @@ import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
 import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
+import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
   isTrunk: boolean
+  commitSha: string
+  trunkHeadSha: string
 }
 
 /**
@@ -14,9 +17,12 @@ interface GitForgeSectionProps {
  */
 export function GitForgeSection({
   branches,
-  isTrunk
+  isTrunk,
+  commitSha,
+  trunkHeadSha
 }: GitForgeSectionProps): React.JSX.Element | null {
-  const { createPullRequest, updatePullRequest } = useUiStateContext()
+  const { createPullRequest, updatePullRequest, submitRebaseIntent, isWorkingTreeDirty } =
+    useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -111,8 +117,34 @@ export function GitForgeSection({
     }
   }
 
+  const handleRebase = async (e: React.MouseEvent): Promise<void> => {
+    e.stopPropagation()
+    if (isLoading || isWorkingTreeDirty) return
+
+    setIsLoading(true)
+    try {
+      await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
+    } catch (error) {
+      log.error('Failed to initiate rebase:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const showRebaseButton = canRebase({ commitSha, trunkHeadSha, isWorkingTreeDirty })
+
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex items-center gap-2">
+      {showRebaseButton && (
+        <button
+          type="button"
+          onClick={handleRebase}
+          disabled={isLoading}
+          className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+        >
+          Rebase
+        </button>
+      )}
       <button
         type="button"
         onClick={handleCreatePr}

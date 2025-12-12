@@ -37,6 +37,7 @@ import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
 import { detectMergedBranches } from '../core/utils/detect-merged-branches'
+import { getTrunkHeadSha } from '../core/utils/get-trunk-head-sha'
 import { createJobIdGenerator } from '../core/utils/job-id-generator'
 
 // ============================================================================
@@ -104,7 +105,8 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
     }
   }
 
-  return { stack, workingTree }
+  const trunkHeadSha = getTrunkHeadSha(repo.branches)
+  return { stack, workingTree, trunkHeadSha }
 }
 
 /**
@@ -193,12 +195,8 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
     return null
   }
 
-  const uiState: UiState = {
-    stack,
-    workingTree
-  }
-
-  return uiState
+  const trunkHeadSha = getTrunkHeadSha(repo.branches)
+  return { stack, workingTree, trunkHeadSha }
 }
 
 const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, { repoPath }) => {

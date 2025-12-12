@@ -6,6 +6,8 @@ export type LocalRepo = {
 export type UiState = {
   stack: UiStack
   workingTree: UiWorkingTreeFile[]
+  /** The SHA of the current trunk head commit. Used for rebase operations. */
+  trunkHeadSha: string
 }
 
 export type UiStack = {

@@ -393,6 +393,10 @@ export class SimpleGitAdapter implements GitAdapter {
         args.push('--force')
       }
 
+      if (options?.detach) {
+        args.push('--detach')
+      }
+
       if (options?.create) {
         args.push('-b')
       }

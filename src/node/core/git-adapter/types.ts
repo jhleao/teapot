@@ -138,6 +138,10 @@ export type CheckoutOptions = {
    * Create branch if it doesn't exist
    */
   create?: boolean
+  /**
+   * Detach HEAD (checkout commit directly, not on any branch)
+   */
+  detach?: boolean
 }
 
 /**

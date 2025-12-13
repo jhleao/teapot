@@ -76,8 +76,12 @@ export async function uncommit(repoPath: string, commitSha: string): Promise<voi
     await git.reset(repoPath, { mode: 'soft', ref: parentSha })
 
     // If we have a target branch, checkout to it
+    // Otherwise, detach HEAD so we can delete the current branch
     if (bestParentBranch) {
       await git.checkout(repoPath, bestParentBranch)
+    } else {
+      // Detach HEAD at parent commit to allow deleting current branch
+      await git.checkout(repoPath, parentSha, { detach: true })
     }
   }
 

@@ -2,15 +2,24 @@ import { execSync } from 'child_process'
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uncommit } from '../uncommit'
+
+// Mock the forge service to avoid electron-store initialization
+vi.mock('../../forge/service', () => ({
+  gitForgeService: {
+    getState: vi.fn().mockResolvedValue({ pullRequests: [] }),
+    closePullRequest: vi.fn()
+  }
+}))
 
 describe('uncommit', () => {
   let repoPath: string
 
   beforeEach(async () => {
+    vi.clearAllMocks()
     repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-uncommit-'))
-    execSync('git init', { cwd: repoPath })
+    execSync('git init -b main', { cwd: repoPath })
     execSync('git config user.name "Test User"', { cwd: repoPath })
     execSync('git config user.email "test@example.com"', { cwd: repoPath })
   })

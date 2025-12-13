@@ -135,7 +135,7 @@ async function collectBranchDescriptors(
   const git = getGitAdapter()
 
   const branchDescriptors: BranchDescriptor[] = localBranches
-    .filter((ref) => !isSymbolicBranch(ref))
+    .filter((ref) => !isSymbolicBranch(ref) && !isRemoteBranchRef(ref))
     .map((ref) => ({
       ref,
       fullRef: `refs/heads/${ref}`,
@@ -377,4 +377,22 @@ function getBranchName(descriptor: BranchDescriptor): string {
 
 function isSymbolicBranch(ref: string): boolean {
   return ref === 'HEAD' || ref.endsWith('/HEAD')
+}
+
+/**
+ * Checks if a branch ref looks like a remote branch (e.g., 'origin/main').
+ * simple-git can incorrectly include remote-looking refs in local branch list
+ * when HEAD is detached at a remote ref.
+ */
+function isRemoteBranchRef(ref: string): boolean {
+  // Remote branches have format 'remote/branch' (e.g., 'origin/main')
+  // Local branches with slashes are rare but possible (e.g., 'feature/foo')
+  // We check for common remote names to avoid false positives
+  const commonRemotes = ['origin', 'upstream', 'fork']
+  const slashIndex = ref.indexOf('/')
+  if (slashIndex <= 0) {
+    return false
+  }
+  const prefix = ref.slice(0, slashIndex)
+  return commonRemotes.includes(prefix)
 }

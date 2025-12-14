@@ -138,9 +138,10 @@ export function WorkingTreeView({
   className?: string
 }): React.JSX.Element {
   const [commitMessage, setCommitMessage] = useState('')
+  const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
+  const [isPending, setIsPending] = useState(false)
   const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts } =
     useUiStateContext()
-  const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
 
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
 
@@ -190,14 +191,25 @@ export function WorkingTreeView({
   // ============================================================================
 
   const handleCommit = async (): Promise<void> => {
-    if (!commitMessage.trim()) return
-    await commit({ message: commitMessage })
-    setCommitMessage('')
+    if (!commitMessage.trim() || isPending) return
+    setIsPending(true)
+    try {
+      await commit({ message: commitMessage })
+      setCommitMessage('')
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const handleAmend = async (): Promise<void> => {
-    await amend({ message: commitMessage })
-    setCommitMessage('')
+    if (isPending) return
+    setIsPending(true)
+    try {
+      await amend({ message: commitMessage })
+      setCommitMessage('')
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const handleDiscardClick = (): void => {
@@ -206,18 +218,25 @@ export function WorkingTreeView({
   }
 
   const handleConfirmDiscard = async (): Promise<void> => {
-    await discardStaged()
-    setCommitMessage('')
-    setIsDiscardDialogOpen(false)
+    if (isPending) return
+    setIsPending(true)
+    try {
+      await discardStaged()
+      setCommitMessage('')
+      setIsDiscardDialogOpen(false)
+    } finally {
+      setIsPending(false)
+    }
   }
 
   const hasStagedChanges = files.some(
     (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
   )
-  // Disable commit/amend/discard during rebase - user should resolve conflicts and use Continue
-  const canCommit = hasStagedChanges && commitMessage.trim() !== '' && !isRebasingWithConflicts
-  const canAmend = hasStagedChanges && !isRebasingWithConflicts
-  const canDiscard = !isRebasingWithConflicts
+  // Disable commit/amend/discard during rebase or when operation is pending
+  const canCommit =
+    hasStagedChanges && commitMessage.trim() !== '' && !isRebasingWithConflicts && !isPending
+  const canAmend = hasStagedChanges && !isRebasingWithConflicts && !isPending
+  const canDiscard = !isRebasingWithConflicts && !isPending
 
   // ============================================================================
   // Render

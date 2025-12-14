@@ -5,9 +5,11 @@ import {
   UiStack,
   UiState,
   UiWorkingTreeFile,
+  type CheckoutResponse,
   type Configuration,
   type RebaseOperationResponse,
-  type RebaseStatusResponse
+  type RebaseStatusResponse,
+  type ShipItResponse
 } from '@shared/types'
 import { dialog, ipcMain, IpcMainEvent } from 'electron'
 import {
@@ -22,6 +24,7 @@ import {
   updateFileStageStatus,
   updatePullRequest as updatePullRequestCore
 } from '../core'
+import { parseRemoteBranch } from '../core/utils/branch-utils'
 import { smartCheckout } from '../core/utils/smart-checkout'
 import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { gitForgeService } from '../core/forge/service'
@@ -424,12 +427,25 @@ const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = async (
   return getUiState(repoPath)
 }
 
-const checkoutHandler: IpcHandlerOf<'checkout'> = async (_event, { repoPath, ref }) => {
+const checkoutHandler: IpcHandlerOf<'checkout'> = async (
+  _event,
+  { repoPath, ref }
+): Promise<CheckoutResponse> => {
   const result = await smartCheckout(repoPath, ref)
   if (!result.success) {
     throw new Error(result.error || 'Checkout failed')
   }
-  return getUiState(repoPath)
+
+  const uiState = await getUiState(repoPath)
+
+  // Generate message for remote checkouts
+  let message: string | undefined
+  const parsed = parseRemoteBranch(ref)
+  if (parsed) {
+    message = `Synced to ${parsed.localBranch}`
+  }
+
+  return { uiState, message }
 }
 
 const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (
@@ -485,7 +501,10 @@ const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
   return getRepo({} as IpcMainEvent, { repoPath })
 }
 
-const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) => {
+const shipIt: IpcHandlerOf<'shipIt'> = async (
+  _event,
+  { repoPath, branchName }
+): Promise<ShipItResponse> => {
   try {
     const gitAdapter = getGitAdapter()
 
@@ -502,19 +521,23 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) 
     // 2. Get current branch before merging (for navigation decision)
     const currentBranch = await gitAdapter.currentBranch(repoPath)
     const wasOnShippedBranch = currentBranch === branchName
+    const targetBranch = pr.baseRefName
 
-    // 3. Merge via GitHub API (squash merge)
+    // 3. Check if shipped branch has children (other PRs targeting it)
+    const hasChildren = forgeState.pullRequests.some(
+      (p) => p.baseRefName === branchName && p.state === 'open'
+    )
+
+    // 4. Merge via GitHub API (squash merge)
     await gitForgeService.mergePullRequest(repoPath, pr.number)
 
-    // 4. Fetch to update remote refs
+    // 5. Fetch to update remote refs
     await gitAdapter.fetch(repoPath)
 
-    // 5. Navigate to appropriate branch after shipping
+    // 6. Navigate to appropriate branch after shipping
+    let message: string
     if (wasOnShippedBranch) {
       // User was on the shipped branch - move them to the PR target (usually main)
-      const targetBranch = pr.baseRefName
-
-      // Checkout the target branch
       await gitAdapter.checkout(repoPath, targetBranch)
 
       // Try to fast-forward to match remote
@@ -526,10 +549,24 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) 
           // Fast-forward failed - that's okay, user is still on target branch
         }
       }
+
+      message = `Shipped! Switched to ${targetBranch}.`
+    } else {
+      message = 'Shipped!'
     }
 
-    // 6. Return updated UI state
-    return getUiState(repoPath)
+    // Add rebase notice if there are child branches
+    if (hasChildren) {
+      message += ' Remaining branches need rebasing.'
+    }
+
+    // 7. Return updated UI state with navigation result
+    const uiState = await getUiState(repoPath)
+    return {
+      uiState,
+      message,
+      needsRebase: hasChildren
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
 

@@ -184,9 +184,21 @@ export function UiStateProvider({
   const checkout = useCallback(
     async (params: { ref: string }) => {
       if (!repoPath) return
-      await callApi(window.api.checkout({ repoPath, ...params }))
+      try {
+        const result = await window.api.checkout({ repoPath, ...params })
+        if (result.uiState) setUiState(result.uiState)
+        if (result.message) {
+          toast.success(result.message)
+        }
+      } catch (error) {
+        log.error('Checkout failed:', error)
+        toast.error('Checkout failed', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
     },
-    [repoPath, callApi]
+    [repoPath]
   )
 
   const deleteBranch = useCallback(
@@ -232,9 +244,26 @@ export function UiStateProvider({
   const shipIt = useCallback(
     async (params: { branchName: string }) => {
       if (!repoPath) return
-      await callApi(window.api.shipIt({ repoPath, ...params }))
+      try {
+        const result = await window.api.shipIt({ repoPath, ...params })
+        if (result.uiState) setUiState(result.uiState)
+        if (result.message) {
+          // Use info toast if needs rebase, success otherwise
+          if (result.needsRebase) {
+            toast.info(result.message)
+          } else {
+            toast.success(result.message)
+          }
+        }
+      } catch (error) {
+        log.error('Ship It failed:', error)
+        toast.error('Ship It failed', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
     },
-    [repoPath, callApi]
+    [repoPath]
   )
 
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0

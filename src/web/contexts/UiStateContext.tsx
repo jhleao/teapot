@@ -2,6 +2,7 @@ import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
+import { useForgeStateContext } from './ForgeStateContext'
 import { useGitWatcher } from '../hooks/use-git-watcher'
 
 interface UiStateContextValue {
@@ -40,6 +41,7 @@ export function UiStateProvider({
   children: ReactNode
   selectedRepoPath: string | null
 }): React.JSX.Element {
+  const { refreshForge } = useForgeStateContext()
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
@@ -221,8 +223,10 @@ export function UiStateProvider({
     async (params: { headBranch: string }) => {
       if (!repoPath) return
       await callApi(window.api.createPullRequest({ repoPath, ...params }))
+      // Refresh forge state to get the newly created PR
+      await refreshForge()
     },
-    [repoPath, callApi]
+    [repoPath, callApi, refreshForge]
   )
 
   const updatePullRequest = useCallback(
@@ -255,6 +259,8 @@ export function UiStateProvider({
             toast.success(result.message)
           }
         }
+        // Refresh forge state to get updated PR status (merged)
+        await refreshForge()
       } catch (error) {
         log.error('Ship It failed:', error)
         toast.error('Ship It failed', {
@@ -263,7 +269,7 @@ export function UiStateProvider({
         throw error
       }
     },
-    [repoPath]
+    [repoPath, refreshForge]
   )
 
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0

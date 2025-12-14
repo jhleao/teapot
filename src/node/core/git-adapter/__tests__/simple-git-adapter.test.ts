@@ -379,4 +379,83 @@ describe('SimpleGitAdapter', () => {
       expect(await adapter.isAncestor(repoPath, 'main', 'feature')).toBe(true)
     })
   })
+
+  describe('merge', () => {
+    it('performs fast-forward merge when possible', async () => {
+      // Create initial commit on main
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch with additional commit
+      await createBranch(repoPath, 'feature', true)
+      const featureTip = await createCommit(
+        repoPath,
+        { 'feature.txt': 'feature' },
+        'feature work'
+      )
+
+      // Go back to main (behind feature)
+      await adapter.checkout(repoPath, 'main')
+
+      // Merge feature into main
+      const result = await adapter.merge(repoPath, 'feature', { ffOnly: true })
+
+      expect(result.success).toBe(true)
+      expect(result.fastForward).toBe(true)
+      expect(result.error).toBeUndefined()
+
+      // Verify main is now at feature tip
+      const mainHead = await adapter.resolveRef(repoPath, 'main')
+      expect(mainHead).toBe(featureTip)
+    })
+
+    it('returns already up to date when no merge needed', async () => {
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch at same commit as main
+      await createBranch(repoPath, 'feature')
+
+      // Try to merge feature (which is at same commit)
+      const result = await adapter.merge(repoPath, 'feature', { ffOnly: true })
+
+      expect(result.success).toBe(true)
+      expect(result.alreadyUpToDate).toBe(true)
+    })
+
+    it('fails with ffOnly when branches have diverged', async () => {
+      // Create base commit
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch with its own commit
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'feature.txt': 'feature' }, 'feature work')
+
+      // Go back to main and add a different commit
+      await adapter.checkout(repoPath, 'main')
+      await createCommit(repoPath, { 'main.txt': 'main' }, 'main work')
+
+      // Try to ff-only merge (should fail)
+      const result = await adapter.merge(repoPath, 'feature', { ffOnly: true })
+
+      expect(result.success).toBe(false)
+      expect(result.fastForward).toBe(false)
+      expect(result.error).toBeDefined()
+      expect(result.error).toContain('fast-forward')
+    })
+
+    it('merges without ffOnly option (regular merge)', async () => {
+      await createCommit(repoPath, { 'base.txt': 'base' }, 'base commit')
+
+      // Create feature branch with additional commit
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'feature.txt': 'feature' }, 'feature work')
+
+      // Go back to main
+      await adapter.checkout(repoPath, 'main')
+
+      // Merge without ffOnly (still does ff when possible)
+      const result = await adapter.merge(repoPath, 'feature')
+
+      expect(result.success).toBe(true)
+    })
+  })
 })

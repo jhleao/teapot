@@ -375,6 +375,7 @@ function annotateBranchHeads(
 
     let pullRequest: UiPullRequest | undefined
     let isMerged: boolean | undefined
+    let hasStaleTarget = false
 
     if (gitForgeState) {
       const normalizedRef = normalizeBranchRef(branch)
@@ -399,6 +400,9 @@ function annotateBranchHeads(
         } else {
           isMerged = false
         }
+        // Check if PR targets a merged branch (stale target)
+        // Ship It should be blocked when targeting a merged branch
+        hasStaleTarget = mergedBranchNames.has(pr.baseRefName)
       } else {
         // No PR found - check local detection fallback
         isMerged = mergedBranchNames.has(branch.ref)
@@ -408,8 +412,10 @@ function annotateBranchHeads(
     commitNode.branches.push({
       name: branch.ref,
       isCurrent: branch.ref === state.currentBranch,
+      isRemote: branch.isRemote,
       pullRequest,
-      isMerged
+      isMerged,
+      hasStaleTarget: hasStaleTarget || undefined
     })
   })
 }

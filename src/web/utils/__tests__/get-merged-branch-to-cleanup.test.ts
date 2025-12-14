@@ -5,6 +5,7 @@ import { getMergedBranchToCleanup } from '../get-merged-branch-to-cleanup.js'
 const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => ({
   name: 'feature-branch',
   isCurrent: false,
+  isRemote: false,
   isMerged: false,
   ...overrides
 })

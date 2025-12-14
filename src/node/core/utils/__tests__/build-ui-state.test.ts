@@ -85,16 +85,21 @@ describe('buildUiState', () => {
     if (!trunkTip) {
       throw new Error('expected a tip commit in the trunk stack')
     }
-    expect(trunkTip.branches).toContainEqual({ name: 'main', isCurrent: false })
+    expect(trunkTip.branches).toContainEqual(
+      expect.objectContaining({ name: 'main', isCurrent: false, isRemote: false })
+    )
 
     const featureTipCommit = featureStack.commits[featureStack.commits.length - 1]
     if (!featureTipCommit) {
       throw new Error('expected a tip commit for the feature stack')
     }
-    expect(featureTipCommit.branches).toContainEqual({
-      name: 'feature/topic',
-      isCurrent: true
-    })
+    expect(featureTipCommit.branches).toContainEqual(
+      expect.objectContaining({
+        name: 'feature/topic',
+        isCurrent: true,
+        isRemote: false
+      })
+    )
   })
 
   it('returns null when the detected trunk branch has no head commit', () => {
@@ -186,7 +191,9 @@ describe('buildUiState', () => {
     if (!remoteTrunkTip) {
       throw new Error('expected remote trunk tip')
     }
-    expect(remoteTrunkTip.branches).toContainEqual({ name: 'origin/main', isCurrent: false })
+    expect(remoteTrunkTip.branches).toContainEqual(
+      expect.objectContaining({ name: 'origin/main', isCurrent: false, isRemote: true })
+    )
 
     const rootUiCommit = trunkStack.commits[0]
     if (!rootUiCommit) {
@@ -201,10 +208,13 @@ describe('buildUiState', () => {
     if (!featureTipCommit) {
       throw new Error('expected feature tip')
     }
-    expect(featureTipCommit.branches).toContainEqual({
-      name: 'feature/topic',
-      isCurrent: true
-    })
+    expect(featureTipCommit.branches).toContainEqual(
+      expect.objectContaining({
+        name: 'feature/topic',
+        isCurrent: true,
+        isRemote: false
+      })
+    )
   })
 
   it('orders spinoff stacks and their commits deterministically by timestamp', () => {
@@ -801,12 +811,19 @@ describe('buildUiState', () => {
     if (!feature1TipCommit || !feature2TipCommit || !feature3TipStack) {
       throw new Error('expected branch heads in spinoffs')
     }
-    expect(feature1TipCommit.branches).toContainEqual({ name: 'feature/one', isCurrent: false })
-    expect(feature2TipCommit.branches).toContainEqual({ name: 'feature/two', isCurrent: false })
-    expect(feature3TipStack.commits.at(-1)?.branches).toContainEqual({
-      name: 'feature/three',
-      isCurrent: false
-    })
+    expect(feature1TipCommit.branches).toContainEqual(
+      expect.objectContaining({ name: 'feature/one', isCurrent: false, isRemote: false })
+    )
+    expect(feature2TipCommit.branches).toContainEqual(
+      expect.objectContaining({ name: 'feature/two', isCurrent: false, isRemote: false })
+    )
+    expect(feature3TipStack.commits.at(-1)?.branches).toContainEqual(
+      expect.objectContaining({
+        name: 'feature/three',
+        isCurrent: false,
+        isRemote: false
+      })
+    )
   })
 
   it('builds trunk stack even when UiStackBranches selection results in no non-trunk branches', () => {
@@ -893,14 +910,20 @@ describe('buildUiState', () => {
     }
 
     // Both main and origin/main should be shown
-    expect(tipCommit.branches).toContainEqual({
-      name: 'main',
-      isCurrent: true
-    })
-    expect(tipCommit.branches).toContainEqual({
-      name: 'origin/main',
-      isCurrent: false
-    })
+    expect(tipCommit.branches).toContainEqual(
+      expect.objectContaining({
+        name: 'main',
+        isCurrent: true,
+        isRemote: false
+      })
+    )
+    expect(tipCommit.branches).toContainEqual(
+      expect.objectContaining({
+        name: 'origin/main',
+        isCurrent: false,
+        isRemote: true
+      })
+    )
   })
 
   it('handles linear trunk-only histories with no spinoffs', () => {

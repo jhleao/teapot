@@ -14,7 +14,6 @@ import {
   amend as amendCommit,
   buildRepoModel,
   buildUiStack,
-  checkout,
   commitToNewBranch,
   createPullRequest as createPullRequestCore,
   deleteBranch,
@@ -23,6 +22,7 @@ import {
   updateFileStageStatus,
   updatePullRequest as updatePullRequestCore
 } from '../core'
+import { smartCheckout } from '../core/utils/smart-checkout'
 import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { gitForgeService } from '../core/forge/service'
 import { getGitAdapter, supportsGetRebaseState } from '../core/git-adapter'
@@ -425,7 +425,10 @@ const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = async (
 }
 
 const checkoutHandler: IpcHandlerOf<'checkout'> = async (_event, { repoPath, ref }) => {
-  await checkout(repoPath, ref)
+  const result = await smartCheckout(repoPath, ref)
+  if (!result.success) {
+    throw new Error(result.error || 'Checkout failed')
+  }
   return getUiState(repoPath)
 }
 

@@ -274,15 +274,16 @@ function createSpinoffUiStacks(parentCommit: UiCommit, state: BuildState): void 
     if (state.UiStackMembership.has(childSha)) {
       return
     }
-    const UiStack = buildNonTrunkUiStack(childSha, state)
+    // parentCommit.sha is a trunk commit, so use it as the trunkBaseSha
+    const UiStack = buildNonTrunkUiStack(childSha, state, parentCommit.sha)
     if (UiStack) {
       parentCommit.spinoffs.push(UiStack)
     }
   })
 }
 
-function buildNonTrunkUiStack(startSha: string, state: BuildState): UiStack | null {
-  const UiStack: UiStack = { commits: [], isTrunk: false }
+function buildNonTrunkUiStack(startSha: string, state: BuildState, trunkBaseSha: string): UiStack | null {
+  const UiStack: UiStack = { commits: [], isTrunk: false, trunkBaseSha }
   let currentSha: string | null = startSha
   const visited = new Set<string>()
 
@@ -322,7 +323,8 @@ function buildNonTrunkUiStack(startSha: string, state: BuildState): UiStack | nu
       if (state.UiStackMembership.has(childSha)) {
         return
       }
-      const spinoffUiStack = buildNonTrunkUiStack(childSha, state)
+      // Nested spinoffs inherit the same trunkBaseSha from their parent stack
+      const spinoffUiStack = buildNonTrunkUiStack(childSha, state, trunkBaseSha)
       if (spinoffUiStack) {
         commitNode.spinoffs.push(spinoffUiStack)
       }

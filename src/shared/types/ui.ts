@@ -13,6 +13,12 @@ export type UiState = {
 export type UiStack = {
   commits: UiCommit[]
   isTrunk: boolean
+  /**
+   * The SHA of the trunk commit this stack branches off from.
+   * Used to determine if the stack needs rebasing onto trunk.
+   * Only set for non-trunk stacks; undefined for trunk stack.
+   */
+  trunkBaseSha?: string
 }
 
 export type UiCommit = {

@@ -8,7 +8,11 @@ When a user clicks on `origin/main` in the UI, they currently get a **detached H
 2. Detached HEAD is a confusing state - commits made here can be lost
 3. After "Ship It", users see origin/main ahead of local main with no clear path forward
 
+<<<<<<< HEAD
 ## Solution Overview
+=======
+## Solution Overview  
+>>>>>>> 1ef81bf (test change 1)
 
 Two improvements:
 

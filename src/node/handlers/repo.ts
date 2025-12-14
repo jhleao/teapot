@@ -25,7 +25,7 @@ import {
 import { smartCheckout } from '../core/utils/smart-checkout'
 import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { gitForgeService } from '../core/forge/service'
-import { getGitAdapter, supportsGetRebaseState } from '../core/git-adapter'
+import { getGitAdapter, supportsGetRebaseState, supportsMerge } from '../core/git-adapter'
 import { GitWatcher } from '../core/git-watcher'
 import {
   abortRebase as abortRebaseExec,
@@ -487,7 +487,9 @@ const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
 
 const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) => {
   try {
-    // 1. Get forge state to find PR number
+    const gitAdapter = getGitAdapter()
+
+    // 1. Get forge state to find PR number and target branch
     const forgeState = await gitForgeService.getState(repoPath)
     const pr = forgeState.pullRequests.find(
       (p) => p.headRefName === branchName && p.state === 'open'
@@ -497,14 +499,36 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (_event, { repoPath, branchName }) 
       throw new Error(`No open PR found for branch "${branchName}"`)
     }
 
-    // 2. Merge via GitHub API (squash merge)
+    // 2. Get current branch before merging (for navigation decision)
+    const currentBranch = await gitAdapter.currentBranch(repoPath)
+    const wasOnShippedBranch = currentBranch === branchName
+
+    // 3. Merge via GitHub API (squash merge)
     await gitForgeService.mergePullRequest(repoPath, pr.number)
 
-    // 3. Fetch to update remote refs
-    const gitAdapter = getGitAdapter()
+    // 4. Fetch to update remote refs
     await gitAdapter.fetch(repoPath)
 
-    // 4. Return updated UI state
+    // 5. Navigate to appropriate branch after shipping
+    if (wasOnShippedBranch) {
+      // User was on the shipped branch - move them to the PR target (usually main)
+      const targetBranch = pr.baseRefName
+
+      // Checkout the target branch
+      await gitAdapter.checkout(repoPath, targetBranch)
+
+      // Try to fast-forward to match remote
+      const remoteBranch = `origin/${targetBranch}`
+      if (supportsMerge(gitAdapter)) {
+        try {
+          await gitAdapter.merge(repoPath, remoteBranch, { ffOnly: true })
+        } catch {
+          // Fast-forward failed - that's okay, user is still on target branch
+        }
+      }
+    }
+
+    // 6. Return updated UI state
     return getUiState(repoPath)
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)

@@ -91,48 +91,62 @@ async function checkoutLocalBranch(
 
 /**
  * Checkout a remote branch, optionally creating/updating local tracking branch.
+ * Implements all-or-nothing: checks ff-ability BEFORE checkout and rolls back on failure.
  */
 async function checkoutRemoteBranch(
   repoPath: string,
   remoteRef: string,
-  _remote: string, // Reserved for future fetch operations
+  remote: string,
   localBranch: string
 ): Promise<RemoteBranchCheckoutResult> {
   const git = getGitAdapter()
 
   try {
-    // Check if local branch already exists
+    // 1. Fetch from remote to ensure we have latest state
+    try {
+      await git.fetch(repoPath, remote)
+    } catch (fetchError) {
+      const fetchMessage = fetchError instanceof Error ? fetchError.message : String(fetchError)
+      return {
+        success: false,
+        error: `Failed to fetch from ${remote}: ${fetchMessage}`
+      }
+    }
+
+    // 2. Check if local branch already exists
     const localExists = await branchExists(repoPath, localBranch)
 
+    // 3. If local exists, check ff-ability BEFORE checkout (all-or-nothing)
     if (localExists) {
-      // Local branch exists - check if we can fast-forward
       const canFF = await canFastForward(repoPath, localBranch, remoteRef)
+      if (!canFF) {
+        // Cannot fast-forward - abort entirely, don't leave user in partial state
+        return {
+          success: false,
+          error: `Cannot sync: ${localBranch} has local changes or has diverged from ${remoteRef}`
+        }
+      }
+    }
 
-      if (canFF) {
-        // First checkout the local branch
-        await git.checkout(repoPath, localBranch)
+    // 4. Save state for rollback
+    const originalBranch = await git.currentBranch(repoPath)
+    const originalHead = await git.resolveRef(repoPath, 'HEAD')
 
-        // Then fast-forward if we have merge support
-        if (supportsMerge(git)) {
-          const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
+    // 5. Now safe to checkout
+    if (localExists) {
+      await git.checkout(repoPath, localBranch)
 
-          if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-            log.warn(`[smartCheckout] Fast-forward failed, but checkout succeeded:`, mergeResult.error)
+      // 6. Fast-forward (should always succeed given our pre-check)
+      if (supportsMerge(git)) {
+        const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
+        if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
+          // This shouldn't happen given our pre-check, but rollback
+          log.warn(`[smartCheckout] FF failed despite pre-check:`, mergeResult.error)
+          await rollbackCheckout(repoPath, originalBranch, originalHead)
+          return {
+            success: false,
+            error: `Fast-forward failed unexpectedly: ${mergeResult.error}`
           }
-        }
-
-        return {
-          success: true,
-          localBranch
-        }
-      } else {
-        // Cannot fast-forward (diverged or local is ahead)
-        // Just checkout the local branch, let user handle sync
-        await git.checkout(repoPath, localBranch)
-
-        return {
-          success: true,
-          localBranch
         }
       }
     } else {
@@ -141,11 +155,11 @@ async function checkoutRemoteBranch(
         checkout: true,
         startPoint: remoteRef
       })
+    }
 
-      return {
-        success: true,
-        localBranch
-      }
+    return {
+      success: true,
+      localBranch
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -155,6 +169,28 @@ async function checkoutRemoteBranch(
       success: false,
       error: `Remote checkout failed: ${message}`
     }
+  }
+}
+
+/**
+ * Rollback to original state on failure.
+ */
+async function rollbackCheckout(
+  repoPath: string,
+  originalBranch: string | null,
+  originalHead: string
+): Promise<void> {
+  const git = getGitAdapter()
+
+  try {
+    if (originalBranch) {
+      await git.checkout(repoPath, originalBranch)
+    } else {
+      // Was in detached HEAD, restore to original commit
+      await git.checkout(repoPath, originalHead)
+    }
+  } catch (rollbackError) {
+    log.error('[smartCheckout] Rollback failed:', rollbackError)
   }
 }
 

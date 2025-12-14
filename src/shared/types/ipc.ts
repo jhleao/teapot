@@ -36,6 +36,26 @@ export type RebaseStatusResponse = {
 }
 
 /**
+ * Response type for checkout operations
+ */
+export type CheckoutResponse = {
+  uiState: UiState | null
+  /** Message to display to user (for remote checkouts) */
+  message?: string
+}
+
+/**
+ * Response type for Ship It operations
+ */
+export type ShipItResponse = {
+  uiState: UiState | null
+  /** Message to display to user */
+  message?: string
+  /** Whether remaining branches need rebasing */
+  needsRebase?: boolean
+}
+
+/**
  * IPC Channel names - single source of truth for channel identifiers
  */
 export const IPC_CHANNELS = {
@@ -157,7 +177,7 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.checkout]: {
     request: { repoPath: string; ref: string }
-    response: UiState | null
+    response: CheckoutResponse
   }
   [IPC_CHANNELS.deleteBranch]: {
     request: { repoPath: string; branchName: string }
@@ -198,7 +218,7 @@ export interface IpcContract {
       repoPath: string
       branchName: string
     }
-    response: UiState | null
+    response: ShipItResponse
   }
 }
 

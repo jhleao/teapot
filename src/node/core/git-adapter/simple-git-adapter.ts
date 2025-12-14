@@ -769,6 +769,45 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  // ============================================================================
+  // Merge Operations
+  // ============================================================================
+
+  async merge(
+    dir: string,
+    branch: string,
+    options?: import('@shared/types/repo').MergeOptions
+  ): Promise<import('@shared/types/repo').MergeResult> {
+    try {
+      const git = this.createGit(dir)
+      const args = ['merge']
+
+      if (options?.ffOnly) {
+        args.push('--ff-only')
+      }
+
+      args.push(branch)
+
+      const result = await git.raw(args)
+
+      return {
+        success: true,
+        fastForward: result.includes('Fast-forward'),
+        alreadyUpToDate: result.includes('Already up to date')
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      return {
+        success: false,
+        fastForward: false,
+        error: errorMessage.includes('Not possible to fast-forward')
+          ? 'Cannot fast-forward: local branch has diverged or has unpushed commits'
+          : errorMessage
+      }
+    }
+  }
+
   private createError(operation: string, originalError: unknown): GitError {
     const message = originalError instanceof Error ? originalError.message : String(originalError)
     return new (class extends Error implements GitError {

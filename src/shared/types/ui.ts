@@ -36,6 +36,8 @@ export type UiBranch = {
    * or just directly to the commit.
    */
   isCurrent: boolean
+  /** True if this is a remote-tracking branch (e.g., origin/main) */
+  isRemote: boolean
   pullRequest?: UiPullRequest
   /**
    * True if this branch has been merged into trunk.
@@ -44,6 +46,11 @@ export type UiBranch = {
    * 2. Local detection: branch head is ancestor of trunk (fallback)
    */
   isMerged?: boolean
+  /**
+   * True if this branch has a PR that targets a merged branch.
+   * Ship It should be disabled when true.
+   */
+  hasStaleTarget?: boolean
 }
 
 export type UiPullRequest = {
@@ -83,3 +90,41 @@ export type UiCommitRebaseStatus =
   | 'scheduled'
   /** This commit is not being rebased or involved in a rebasing operation. */
   | null
+
+// ============================================================================
+// Ship It Navigation Types
+// ============================================================================
+
+/**
+ * Result of Ship It navigation after merging a PR.
+ */
+export type ShipItNavigationResult = {
+  /** What action was taken */
+  action: 'stayed' | 'switched-to-main' | 'switched-to-parent'
+  /** Branch user is now on (if switched) */
+  targetBranch?: string
+  /** Info message to show user */
+  message: string
+  /** Whether remaining branches need rebasing */
+  needsRebase: boolean
+}
+
+/**
+ * Context needed to determine Ship It navigation.
+ */
+export type ShipItNavigationContext = {
+  /** Repository path for git operations */
+  repoPath: string
+  /** The branch that was shipped */
+  shippedBranch: string
+  /** The branch the PR targeted (parent or main) */
+  prTargetBranch: string
+  /** The branch user was on before shipping */
+  userCurrentBranch: string | null
+  /** Whether user was in detached HEAD */
+  wasDetached: boolean
+  /** Whether shipped branch has children in the stack */
+  hasChildren: boolean
+  /** Whether working tree is clean */
+  isWorkingTreeClean: boolean
+}

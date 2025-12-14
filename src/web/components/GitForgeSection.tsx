@@ -162,7 +162,7 @@ export function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {!prIsMerged && pr.isInSync && pr.isMergeable && !isWorkingTreeDirty && (
+        {!prIsMerged && pr.isInSync && pr.isMergeable && !isWorkingTreeDirty && !branchWithPr?.hasStaleTarget && (
           <button
             type="button"
             onClick={handleShipIt}
@@ -171,6 +171,14 @@ export function GitForgeSection({
           >
             {isLoading ? 'Shipping...' : 'Ship it!'}
           </button>
+        )}
+        {!prIsMerged && branchWithPr?.hasStaleTarget && (
+          <span
+            className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"
+            title="PR target branch has been merged. Update the PR target first."
+          >
+            Stale target
+          </span>
         )}
         {prIsMerged && mergedBranchToCleanup && (
           <button

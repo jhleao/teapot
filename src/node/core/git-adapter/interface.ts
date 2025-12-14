@@ -224,6 +224,20 @@ export interface GitAdapter {
   mergeBase?(dir: string, ref1: string, ref2: string): Promise<string>
 
   /**
+   * Merge a branch into the current branch.
+   *
+   * @param dir - Repository directory path
+   * @param branch - Branch to merge into current HEAD
+   * @param options - Merge options (ffOnly, etc.)
+   * @returns Result of the merge operation
+   */
+  merge?(
+    dir: string,
+    branch: string,
+    options?: import('@shared/types/repo').MergeOptions
+  ): Promise<import('@shared/types/repo').MergeResult>
+
+  /**
    * Check if a commit is an ancestor of another commit.
    *
    * Uses `git merge-base --is-ancestor` under the hood.
@@ -363,4 +377,17 @@ export function supportsGetRebaseState(adapter: GitAdapter): adapter is GitAdapt
   } | null>
 } {
   return typeof adapter.getRebaseState === 'function'
+}
+
+/**
+ * Type guard to check if an adapter supports merge
+ */
+export function supportsMerge(adapter: GitAdapter): adapter is GitAdapter & {
+  merge: (
+    dir: string,
+    branch: string,
+    options?: import('@shared/types/repo').MergeOptions
+  ) => Promise<import('@shared/types/repo').MergeResult>
+} {
+  return typeof adapter.merge === 'function'
 }

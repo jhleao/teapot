@@ -8,6 +8,27 @@ export type GitForgeState = {
   mergedBranchNames?: string[]
 }
 
+/**
+ * Status of the forge state fetch operation.
+ * Used to provide UI feedback about network operations.
+ */
+export type ForgeStatus = 'idle' | 'fetching' | 'error' | 'success'
+
+/**
+ * Result of a forge state fetch, including status metadata.
+ * Allows the UI to show loading/error states while still displaying stale data.
+ */
+export type ForgeStateResult = {
+  /** The forge state (may be stale if status is 'error') */
+  state: GitForgeState
+  /** Current status of the fetch operation */
+  status: ForgeStatus
+  /** Error message if status is 'error' */
+  error?: string
+  /** Timestamp of last successful fetch (ms since epoch) */
+  lastSuccessfulFetch?: number
+}
+
 export type ForgePullRequest = {
   number: number
   title: string

@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GitHubAdapter } from '../github'
 
-// Mock undici's request function
-vi.mock('undici', () => ({
-  request: vi.fn()
-}))
+// Mock undici's request function and Agent class
+vi.mock('undici', () => {
+  // Create a mock Agent class
+  const MockAgent = function () {
+    return {}
+  }
+  return {
+    request: vi.fn(),
+    Agent: MockAgent
+  }
+})
 
 import { request } from 'undici'
 

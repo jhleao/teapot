@@ -1,38 +1,92 @@
 import { log } from '@shared/logger'
-import { GitForgeAdapter, GitForgeState } from '../../../shared/types/git-forge'
+import {
+  ForgeStateResult,
+  ForgeStatus,
+  GitForgeAdapter,
+  GitForgeState
+} from '../../../shared/types/git-forge'
 
 // Re-exporting shared types here for convenience if needed by consumers in node/
-export type { GitForgeAdapter, GitForgeState }
+export type { GitForgeAdapter, GitForgeState, ForgeStateResult, ForgeStatus }
 
 /**
  * This class handles caching and periodic fetching of the forge state.
  * It acts as a middleware between the raw adapter and the application state.
+ *
+ * Key behaviors:
+ * - Caches state with a 10-second TTL to reduce API calls
+ * - Returns stale state on error to maintain UI continuity
+ * - Tracks fetch status for UI feedback (loading/error indicators)
+ * - On error, schedules retry sooner than normal TTL
  */
 export class GitForgeClient {
   private state: GitForgeState = { pullRequests: [] }
   private lastFetchTime = 0
-  private readonly CACHE_TTL_MS = 10000 // 10 seconds
+  private lastSuccessfulFetch = 0
+  private status: ForgeStatus = 'idle'
+  private lastError?: string
+  private readonly CACHE_TTL_MS = 10_000 // 10 seconds
+  private readonly ERROR_RETRY_MS = 5_000 // Retry sooner after error
 
   constructor(private readonly adapter: GitForgeAdapter) {}
 
-  async getState(): Promise<GitForgeState> {
+  /**
+   * Returns the current forge state with status metadata.
+   * Fetches fresh data if cache is expired, otherwise returns cached state.
+   * On error, returns stale state with error status for graceful degradation.
+   */
+  async getStateWithStatus(): Promise<ForgeStateResult> {
     const now = Date.now()
+
     if (now - this.lastFetchTime > this.CACHE_TTL_MS) {
+      this.status = 'fetching'
+      this.lastFetchTime = now
+
       try {
         this.state = await this.adapter.fetchState()
-        this.lastFetchTime = now
+        this.lastSuccessfulFetch = now
+        this.status = 'success'
+        this.lastError = undefined
       } catch (error) {
+        this.status = 'error'
+        this.lastError = error instanceof Error ? error.message : String(error)
         log.error('Failed to fetch git forge state:', error)
-        // Return stale state on error to prevent UI flicker
+        // Schedule earlier retry by adjusting lastFetchTime
+        this.lastFetchTime = now - this.CACHE_TTL_MS + this.ERROR_RETRY_MS
       }
     }
-    return this.state
+
+    return {
+      state: this.state,
+      status: this.status,
+      error: this.lastError,
+      lastSuccessfulFetch: this.lastSuccessfulFetch || undefined
+    }
   }
 
-  // Method to force refresh if needed (e.g. user clicks "refresh")
-  async refresh(): Promise<GitForgeState> {
+  /**
+   * @deprecated Use getStateWithStatus() for new code. Returns state without status metadata.
+   */
+  async getState(): Promise<GitForgeState> {
+    const result = await this.getStateWithStatus()
+    return result.state
+  }
+
+  /**
+   * Forces a refresh of the forge state, bypassing the cache.
+   * Returns state with status metadata.
+   */
+  async refreshWithStatus(): Promise<ForgeStateResult> {
     this.lastFetchTime = 0
-    return this.getState()
+    return this.getStateWithStatus()
+  }
+
+  /**
+   * @deprecated Use refreshWithStatus() for new code.
+   */
+  async refresh(): Promise<GitForgeState> {
+    const result = await this.refreshWithStatus()
+    return result.state
   }
 
   async createPullRequest(

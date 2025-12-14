@@ -1,5 +1,6 @@
 import { IpcMainInvokeEvent } from 'electron'
 import type { RebaseState } from '../../node/core/rebase'
+import type { ForgeStateResult } from './git-forge'
 import type { UiState } from './ui'
 
 /**
@@ -60,6 +61,7 @@ export type ShipItResponse = {
  */
 export const IPC_CHANNELS = {
   getRepo: 'getRepo',
+  getForgeState: 'getForgeState',
   submitRebaseIntent: 'submitRebaseIntent',
   confirmRebaseIntent: 'confirmRebaseIntent',
   cancelRebaseIntent: 'cancelRebaseIntent',
@@ -102,6 +104,10 @@ export interface IpcContract {
   [IPC_CHANNELS.getRepo]: {
     request: { repoPath: string; declutterTrunk?: boolean }
     response: UiState | null
+  }
+  [IPC_CHANNELS.getForgeState]: {
+    request: { repoPath: string }
+    response: ForgeStateResult
   }
   [IPC_CHANNELS.submitRebaseIntent]: {
     request: { repoPath: string; headSha: string; baseSha: string }

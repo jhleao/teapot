@@ -1,9 +1,17 @@
 import { log } from '@shared/logger'
-import { GitForgeState } from '../../../shared/types/git-forge'
+import { ForgeStateResult, GitForgeState } from '../../../shared/types/git-forge'
 import { configStore } from '../../store'
 import { getGitAdapter } from '../git-adapter'
 import { GitHubAdapter } from './adapters/github'
 import { GitForgeClient } from './git-forge'
+
+/** Default result when no forge client is available */
+const NO_CLIENT_RESULT: ForgeStateResult = {
+  state: { pullRequests: [] },
+  status: 'idle',
+  error: undefined,
+  lastSuccessfulFetch: undefined
+}
 
 export class GitForgeService {
   private clients = new Map<string, GitForgeClient>()
@@ -89,12 +97,24 @@ export class GitForgeService {
     }
   }
 
-  async getState(repoPath: string): Promise<GitForgeState> {
+  /**
+   * Returns forge state with status metadata for UI feedback.
+   * Use this method for new code that needs loading/error states.
+   */
+  async getStateWithStatus(repoPath: string): Promise<ForgeStateResult> {
     const client = await this.getClient(repoPath)
     if (!client) {
-      return { pullRequests: [] }
+      return NO_CLIENT_RESULT
     }
-    return client.getState()
+    return client.getStateWithStatus()
+  }
+
+  /**
+   * @deprecated Use getStateWithStatus() for new code.
+   */
+  async getState(repoPath: string): Promise<GitForgeState> {
+    const result = await this.getStateWithStatus(repoPath)
+    return result.state
   }
 
   async createPullRequest(

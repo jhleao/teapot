@@ -15,13 +15,13 @@ function AppWithProviders(): React.JSX.Element {
   const repoPath = selectedRepo?.path ?? null
 
   return (
-    <UiStateProvider selectedRepoPath={repoPath}>
-      <ForgeStateProvider repoPath={repoPath}>
+    <ForgeStateProvider repoPath={repoPath}>
+      <UiStateProvider selectedRepoPath={repoPath}>
         <DragProvider>
           <App />
         </DragProvider>
-      </ForgeStateProvider>
-    </UiStateProvider>
+      </UiStateProvider>
+    </ForgeStateProvider>
   )
 }
 

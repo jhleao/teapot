@@ -3,7 +3,9 @@ import { configStore } from '../../store'
 import { gitForgeService } from '../forge/service'
 import { getGitAdapter } from '../git-adapter'
 import { buildRepoModel } from './build-repo'
+import { detectMergedBranches } from './detect-merged-branches'
 import { findBaseBranch } from './find-base-branch'
+import { findValidPrTarget } from './find-valid-pr-target'
 
 export async function createPullRequest(repoPath: string, headBranch: string): Promise<void> {
   const git = getGitAdapter()
@@ -29,7 +31,23 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
   const title = headCommit.message.split('\n')[0] || 'No title'
 
   // Find base branch by traversing up the parents
-  const baseBranch = findBaseBranch(repo, headCommit.sha)
+  const candidateBaseBranch = findBaseBranch(repo, headCommit.sha)
+
+  // Get merged branches to skip them as targets
+  const trunkBranch = repo.branches.find((b) => b.isTrunk && !b.isRemote)
+  const trunkRef = trunkBranch?.ref ?? 'main'
+  const mergedBranchNames = await detectMergedBranches(repoPath, repo.branches, trunkRef, git)
+
+  // Get forge state to check existing PRs
+  const forgeState = await gitForgeService.getState(repoPath)
+
+  // Find a valid target (skipping merged branches)
+  const baseBranch = findValidPrTarget(
+    headBranch,
+    candidateBaseBranch,
+    forgeState.pullRequests,
+    new Set(mergedBranchNames)
+  )
 
   // Get configured remote URL
   const remotes = await git.listRemotes(repoPath)

@@ -9,7 +9,7 @@ When a user clicks on `origin/main` in the UI, they currently get a **detached H
 3. After "Ship It", users see origin/main ahead of local main with no clear path forward
 
 ## Solution Overview   
-
+ 
 Two improvements:
 
 1. **Click `origin/main`** → fetch + checkout local `main` + fast-forward (all-or-nothing)

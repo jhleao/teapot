@@ -523,11 +523,6 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
     const wasOnShippedBranch = currentBranch === branchName
     const targetBranch = pr.baseRefName
 
-    console.log('[shipIt] currentBranch:', currentBranch)
-    console.log('[shipIt] branchName:', branchName)
-    console.log('[shipIt] wasOnShippedBranch:', wasOnShippedBranch)
-    console.log('[shipIt] targetBranch:', targetBranch)
-
     // 3. Check if shipped branch has children (other PRs targeting it)
     const hasChildren = forgeState.pullRequests.some(
       (p) => p.baseRefName === branchName && p.state === 'open'
@@ -543,26 +538,20 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
     let message: string
     if (wasOnShippedBranch) {
       // User was on the shipped branch - move them to the PR target (usually main)
-      console.log('[shipIt] Checking out targetBranch:', targetBranch)
       await gitAdapter.checkout(repoPath, targetBranch)
-      console.log('[shipIt] Checkout complete')
 
       // Try to fast-forward to match remote
       const remoteBranch = `origin/${targetBranch}`
       if (supportsMerge(gitAdapter)) {
-        console.log('[shipIt] Attempting fast-forward merge with:', remoteBranch)
         try {
           await gitAdapter.merge(repoPath, remoteBranch, { ffOnly: true })
-          console.log('[shipIt] Fast-forward merge complete')
-        } catch (e) {
+        } catch {
           // Fast-forward failed - that's okay, user is still on target branch
-          console.log('[shipIt] Fast-forward merge failed:', e)
         }
       }
 
       message = `Shipped! Switched to ${targetBranch}.`
     } else {
-      console.log('[shipIt] Not on shipped branch, skipping checkout')
       message = 'Shipped!'
     }
 

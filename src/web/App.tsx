@@ -1,16 +1,26 @@
 import { Settings } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
 import { Toaster } from './components/Toaster'
 import { Topbar } from './components/Topbar'
+import { useForgeStateContext } from './contexts/ForgeStateContext'
 import { useLocalStateContext } from './contexts/LocalStateContext'
 import { useUiStateContext } from './contexts/UiStateContext'
+import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
 
 function App(): React.JSX.Element {
   const { uiState, repoError } = useUiStateContext()
+  const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
+
+  // Merge forge state (PR data) into the UI stack at render time
+  // This allows local data to display immediately while forge state loads asynchronously
+  const enrichedStack = useMemo(
+    () => enrichStackWithForge(uiState?.stack ?? null, forgeState),
+    [uiState?.stack, forgeState]
+  )
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   const handleAddRepo = async (): Promise<void> => {
@@ -93,8 +103,8 @@ function App(): React.JSX.Element {
                 </button>
               </div>
             </div>
-          ) : uiState?.stack ? (
-            <StackView data={uiState.stack} workingTree={uiState.workingTree} />
+          ) : enrichedStack ? (
+            <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
           ) : (
             <div className="text-muted-foreground">Loading...</div>
           )}

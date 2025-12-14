@@ -1,9 +1,22 @@
-import { request } from 'undici'
+import { request, Agent } from 'undici'
 import {
   ForgePullRequest,
   GitForgeAdapter,
   GitForgeState
 } from '../../../../shared/types/git-forge'
+
+/**
+ * Shared HTTP agent with timeout configuration for GitHub API requests.
+ * Prevents indefinite hangs on network issues.
+ */
+const githubAgent = new Agent({
+  connectTimeout: 10_000, // 10s to establish connection
+  headersTimeout: 30_000, // 30s to receive headers
+  bodyTimeout: 30_000 // 30s to receive body
+})
+
+/** Per-request timeout for GitHub API calls */
+const REQUEST_TIMEOUT_MS = 15_000
 
 export class GitHubAdapter implements GitForgeAdapter {
   constructor(
@@ -22,6 +35,8 @@ export class GitHubAdapter implements GitForgeAdapter {
     const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`
 
     const { body, statusCode } = await request(url, {
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',
@@ -100,6 +115,8 @@ export class GitHubAdapter implements GitForgeAdapter {
 
     const { body, statusCode } = await request(url, {
       method: 'POST',
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',
@@ -140,6 +157,8 @@ export class GitHubAdapter implements GitForgeAdapter {
 
     const { body, statusCode } = await request(url, {
       method: 'PATCH',
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',
@@ -167,6 +186,8 @@ export class GitHubAdapter implements GitForgeAdapter {
     const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls/${number}`
 
     const { body, statusCode } = await request(url, {
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',
@@ -197,6 +218,8 @@ export class GitHubAdapter implements GitForgeAdapter {
 
     const { body, statusCode } = await request(url, {
       method: 'PUT',
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',
@@ -230,6 +253,8 @@ export class GitHubAdapter implements GitForgeAdapter {
 
     const { body, statusCode } = await request(url, {
       method: 'DELETE',
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${this.pat}`,
         'User-Agent': 'Teapot-Git-Client',

@@ -1,5 +1,6 @@
 import React from 'react'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
+import { ForgeStatusIndicator } from './ForgeStatusIndicator'
 import { RepoMetadata } from './RepoMetadata'
 import { RepoSelector } from './RepoSelector'
 
@@ -24,8 +25,9 @@ export function Topbar(): React.JSX.Element {
         )}
       </div>
 
-      {/* Right side: Actions */}
+      {/* Right side: Actions and status */}
       <div className="flex shrink-0 items-center gap-3">
+        <ForgeStatusIndicator />
         <RepoSelector
           repos={repos}
           onSelectRepo={selectRepo}

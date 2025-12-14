@@ -48,32 +48,35 @@ import { createJobIdGenerator } from '../core/utils/job-id-generator'
 // Helper to get fresh UI state
 // ============================================================================
 
+/**
+ * Builds the UI state from local git data only.
+ * Does NOT fetch forge state - this ensures local operations are never blocked by network.
+ * Forge state should be fetched separately via getForgeState IPC handler.
+ */
 async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<UiState | null> {
   const config: Configuration = { repoPath }
   const gitAdapter = getGitAdapter()
 
-  const [repo, forgeState, session, workingTreeStatus] = await Promise.all([
+  // Only fetch local git data - no network calls here
+  const [repo, session, workingTreeStatus] = await Promise.all([
     buildRepoModel(config),
-    gitForgeService.getState(repoPath),
     rebaseSessionStore.getSession(repoPath),
     gitAdapter.getWorkingTreeStatus(repoPath)
   ])
 
-  // Enhance forge state with local merged branch detection (fallback for when API doesn't have PR data)
   // Find trunk ref for ancestor checking
-  const trunkBranch = repo.branches.find((b) => b.isTrunk && !b.isRemote) ??
-    repo.branches.find((b) => b.isTrunk)
+  const trunkBranch =
+    repo.branches.find((b) => b.isTrunk && !b.isRemote) ?? repo.branches.find((b) => b.isTrunk)
   const trunkRef = trunkBranch?.ref ?? 'main'
 
   // Detect locally merged branches (branches whose head is ancestor of trunk)
+  // This is a local git operation, so it's fast
   const mergedBranchNames = await detectMergedBranches(repoPath, repo.branches, trunkRef, gitAdapter)
 
-  // Merge local detection with forge state
-  const enhancedForgeState = forgeState
-    ? { ...forgeState, mergedBranchNames }
-    : { pullRequests: [], mergedBranchNames }
+  // Build UI with local-only forge state (no PR data, just local merge detection)
+  const localForgeState = { pullRequests: [], mergedBranchNames }
 
-  const stack = buildUiStack(repo, enhancedForgeState, { declutterTrunk })
+  const stack = buildUiStack(repo, localForgeState, { declutterTrunk })
   const workingTree = buildUiWorkingTree(repo)
 
   if (!stack) {
@@ -148,6 +151,14 @@ const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {
 
 const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath, declutterTrunk = true }) => {
   return getUiState(repoPath, declutterTrunk)
+}
+
+/**
+ * Fetches forge state (GitHub PRs) separately from local git state.
+ * This allows the UI to display local data immediately while forge state loads in the background.
+ */
+const getForgeState: IpcHandlerOf<'getForgeState'> = async (_event, { repoPath }) => {
+  return gitForgeService.getStateWithStatus(repoPath)
 }
 
 // ============================================================================
@@ -593,6 +604,7 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
 export function registerRepoHandlers(): void {
   // Repository
   ipcMain.handle(IPC_CHANNELS.getRepo, getRepo)
+  ipcMain.handle(IPC_CHANNELS.getForgeState, getForgeState)
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
 

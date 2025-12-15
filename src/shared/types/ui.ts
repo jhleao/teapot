@@ -38,6 +38,8 @@ export type UiBranch = {
   isCurrent: boolean
   /** True if this is a remote-tracking branch (e.g., origin/main) */
   isRemote: boolean
+  /** True if this is a trunk branch (main, master, origin/main, origin/master) */
+  isTrunk: boolean
   pullRequest?: UiPullRequest
   /**
    * True if this branch has been merged into trunk.

@@ -1,6 +1,5 @@
 import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
-import { isTrunk } from '@shared/types/repo'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useForgeStateContext } from './ForgeStateContext'
@@ -345,13 +344,14 @@ function hasRebaseConflictStatus(stack: UiStack): boolean {
 }
 
 /**
- * Checks if the current branch is a trunk branch (main/master).
- * Only checks the root stack since trunk is always at the root, never in spinoffs.
+ * Checks if HEAD is on a trunk commit (main/master or origin/main).
+ * Handles both checked-out branches and detached HEAD.
  */
 function isCurrentBranchTrunk(stack: UiStack): boolean {
   for (const commit of stack.commits) {
+    if (!commit.isCurrent) continue
     for (const branch of commit.branches) {
-      if (branch.isCurrent && isTrunk(branch.name)) {
+      if (branch.isTrunk) {
         return true
       }
     }

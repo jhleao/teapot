@@ -133,27 +133,28 @@ function generateMockStackInternal(
     const commitName = generateCommitName(i, commitCount, depth, isLastCommit)
 
     // Determine branch info - commits can be tips of multiple branches
-    const branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean }> = []
+    const branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean; isTrunk: boolean }> =
+      []
 
     if (depth === 0) {
       // Main stack commits are always on main branch
-      branches.push({ name: 'main', isCurrent: false, isRemote: false })
+      branches.push({ name: 'main', isCurrent: false, isRemote: false, isTrunk: true })
 
       // Last commit might also be tip of other branches
       if (isLastCommit) {
         const additionalBranch = getRandomBranchName()
-        branches.push({ name: additionalBranch, isCurrent: false, isRemote: false })
+        branches.push({ name: additionalBranch, isCurrent: false, isRemote: false, isTrunk: false })
       }
     } else {
       // For spinoff commits, they're tips of their feature branch
       const branchName = getRandomBranchName()
-      branches.push({ name: branchName, isCurrent: false, isRemote: false })
+      branches.push({ name: branchName, isCurrent: false, isRemote: false, isTrunk: false })
 
       // Sometimes commits can be tips of multiple branches (e.g., merged branches)
       if (isLastCommit && Math.random() < 0.3) {
         const additionalBranch = getRandomBranchName()
         if (additionalBranch !== branchName) {
-          branches.push({ name: additionalBranch, isCurrent: false, isRemote: false })
+          branches.push({ name: additionalBranch, isCurrent: false, isRemote: false, isTrunk: false })
         }
       }
     }

@@ -48,3 +48,4 @@ describe('isTrunk', () => {
     expect(isTrunk('MASTER')).toBe(false)
   })
 })
+

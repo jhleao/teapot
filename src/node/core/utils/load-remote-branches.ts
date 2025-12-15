@@ -1,4 +1,5 @@
 import type { Branch } from '@shared/types'
+import { isTrunk as isTrunkBranchName } from '@shared/types'
 import { getGitAdapter } from '../git-adapter'
 
 type BranchDescriptor = {
@@ -61,10 +62,14 @@ export async function buildBranchesFromRemoteDescriptors(
   for (const descriptor of descriptors) {
     const headSha = await git.resolveRef(dir, descriptor.fullRef)
     const normalizedRef = getBranchName(descriptor)
-
+    // A branch is trunk if:
+    // 1. Its normalized name matches the detected trunk branch, OR
+    // 2. Its normalized name is a canonical trunk name (main/master) as fallback
+    const isTrunk =
+      (trunkBranch && normalizedRef === trunkBranch) || isTrunkBranchName(normalizedRef)
     branches.push({
       ref: descriptor.ref,
-      isTrunk: Boolean(trunkBranch && normalizedRef === trunkBranch),
+      isTrunk,
       isRemote: descriptor.isRemote,
       headSha
     })

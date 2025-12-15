@@ -1,5 +1,6 @@
 import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
+import { isTrunk } from '@shared/types/repo'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useForgeStateContext } from './ForgeStateContext'
@@ -30,6 +31,8 @@ interface UiStateContextValue {
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
+  /** True when the current branch is a trunk branch (main/master). Amending on trunk is dangerous. */
+  isOnTrunk: boolean
 }
 
 const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
@@ -277,6 +280,9 @@ export function UiStateProvider({
   // Check if any commit in the stack has 'conflicted' or 'resolved' status
   const isRebasingWithConflicts = uiState?.stack ? hasRebaseConflictStatus(uiState.stack) : false
 
+  // Check if currently on a trunk branch (main/master) - amending on trunk is dangerous
+  const isOnTrunk = uiState?.stack ? isCurrentBranchTrunk(uiState.stack) : false
+
   return (
     <UiStateContext.Provider
       value={{
@@ -302,7 +308,8 @@ export function UiStateProvider({
         uncommit,
         shipIt,
         isWorkingTreeDirty,
-        isRebasingWithConflicts
+        isRebasingWithConflicts,
+        isOnTrunk
       }}
     >
       {children}
@@ -330,6 +337,21 @@ function hasRebaseConflictStatus(stack: UiStack): boolean {
     // Check spinoffs
     for (const spinoff of commit.spinoffs) {
       if (hasRebaseConflictStatus(spinoff)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * Checks if the current branch is a trunk branch (main/master).
+ * Only checks the root stack since trunk is always at the root, never in spinoffs.
+ */
+function isCurrentBranchTrunk(stack: UiStack): boolean {
+  for (const commit of stack.commits) {
+    for (const branch of commit.branches) {
+      if (branch.isCurrent && isTrunk(branch.name)) {
         return true
       }
     }

@@ -1,4 +1,5 @@
 import { log } from '@shared/logger'
+import { isTrunk } from '@shared/types/repo'
 import { configStore } from '../../store'
 import { gitForgeService } from '../forge/service'
 import { getGitAdapter } from '../git-adapter'
@@ -60,27 +61,26 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
 
   // Retrieve PAT for authentication
   const pat = configStore.getGithubPat()
+  const credentials = pat ? { username: pat, password: '' } : undefined
 
-  // Ensure the head branch is pushed to origin before creating PR
-  try {
-    // simple-git uses system Git credentials automatically
-    // If PAT is needed, user should configure it in Git credential helper
-    await git.push(repoPath, {
-      remote: 'origin',
-      ref: headBranch,
-      setUpstream: true,
-      credentials: pat
-        ? {
-            username: pat,
-            password: '' // PAT as username for HTTPS auth
-          }
-        : undefined
-    })
-  } catch (error) {
-    log.error(`Failed to push branch ${headBranch} before creating PR:`, error)
-    throw new Error(
-      `Failed to push branch ${headBranch}: ${error instanceof Error ? error.message : String(error)}`
-    )
+  // Push branches to origin before creating PR
+  // For mid-stack PRs, the base branch must also exist on remote
+  const branchesToPush = isTrunk(baseBranch) ? [headBranch] : [baseBranch, headBranch]
+
+  for (const branch of branchesToPush) {
+    try {
+      await git.push(repoPath, {
+        remote: 'origin',
+        ref: branch,
+        setUpstream: true,
+        credentials
+      })
+    } catch (error) {
+      log.error(`Failed to push branch ${branch} before creating PR:`, error)
+      throw new Error(
+        `Failed to push branch ${branch}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
   }
 
   await gitForgeService.createPullRequest(repoPath, title, headBranch, baseBranch, false)

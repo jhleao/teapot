@@ -12,7 +12,8 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
   const git = getGitAdapter()
 
   // We need the repo model to find the base branch and commit message
-  const repo = await buildRepoModel({ repoPath })
+  // Load remotes to check if base branch already exists on origin
+  const repo = await buildRepoModel({ repoPath }, { loadRemotes: true })
 
   const headBranchObj = repo.branches.find((b) => b.ref === headBranch)
   if (!headBranchObj) {
@@ -65,7 +66,10 @@ export async function createPullRequest(repoPath: string, headBranch: string): P
 
   // Push branches to origin before creating PR
   // For mid-stack PRs, the base branch must also exist on remote
-  const branchesToPush = isTrunk(baseBranch) ? [headBranch] : [baseBranch, headBranch]
+  const baseBranchExistsOnRemote =
+    isTrunk(baseBranch) || repo.branches.some((b) => b.isRemote && b.ref === `origin/${baseBranch}`)
+
+  const branchesToPush = baseBranchExistsOnRemote ? [headBranch] : [baseBranch, headBranch]
 
   for (const branch of branchesToPush) {
     try {

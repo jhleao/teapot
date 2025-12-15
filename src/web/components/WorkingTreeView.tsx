@@ -140,7 +140,7 @@ export function WorkingTreeView({
   const [commitMessage, setCommitMessage] = useState('')
   const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
-  const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts } =
+  const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts, isOnTrunk } =
     useUiStateContext()
 
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
@@ -232,10 +232,10 @@ export function WorkingTreeView({
   const hasStagedChanges = files.some(
     (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
   )
-  // Disable commit/amend/discard during rebase or when operation is pending
+  // Disable commit/amend during rebase, when operation is pending, or (for amend) when on trunk
   const canCommit =
     hasStagedChanges && commitMessage.trim() !== '' && !isRebasingWithConflicts && !isPending
-  const canAmend = hasStagedChanges && !isRebasingWithConflicts && !isPending
+  const canAmend = hasStagedChanges && !isRebasingWithConflicts && !isPending && !isOnTrunk
   const canDiscard = !isRebasingWithConflicts && !isPending
 
   // ============================================================================

@@ -18,7 +18,8 @@ describe('enrichStackWithForge', () => {
           {
             name: 'feature-branch',
             isCurrent: true,
-            isRemote: false
+            isRemote: false,
+            isTrunk: false
           }
         ]
       }
@@ -127,7 +128,8 @@ describe('enrichStackWithForge', () => {
             {
               name: 'origin/feature-branch',
               isCurrent: false,
-              isRemote: true
+              isRemote: true,
+              isTrunk: false
             }
           ]
         }
@@ -167,7 +169,8 @@ describe('enrichStackWithForge', () => {
                     {
                       name: 'child-branch',
                       isCurrent: true,
-                      isRemote: false
+                      isRemote: false,
+                      isTrunk: false
                     }
                   ]
                 }
@@ -218,6 +221,7 @@ describe('enrichStackWithForge', () => {
               name: 'feature-branch',
               isCurrent: true,
               isRemote: false,
+              isTrunk: false,
               pullRequest: existingPr
             }
           ]

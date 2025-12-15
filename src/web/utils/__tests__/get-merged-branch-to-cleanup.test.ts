@@ -6,6 +6,7 @@ const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => ({
   name: 'feature-branch',
   isCurrent: false,
   isRemote: false,
+  isTrunk: false,
   isMerged: false,
   ...overrides
 })

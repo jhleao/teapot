@@ -413,6 +413,7 @@ function annotateBranchHeads(
       name: branch.ref,
       isCurrent: branch.ref === state.currentBranch,
       isRemote: branch.isRemote,
+      isTrunk: branch.isTrunk,
       pullRequest,
       isMerged,
       hasStaleTarget: hasStaleTarget || undefined

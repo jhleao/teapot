@@ -20,3 +20,19 @@ export function getUiCommitBySha(stack: UiStack, sha: string): UiCommit | undefi
 
   return undefined
 }
+
+/**
+ * Finds the branch name being rebased (if mid-rebase with conflicts)
+ */
+export function findRebasingBranchName(stack: UiStack): string | null {
+  for (const commit of stack.commits) {
+    if (commit.rebaseStatus === 'conflicted' || commit.rebaseStatus === 'resolved') {
+      return commit.branches[0]?.name ?? null
+    }
+    for (const spinoff of commit.spinoffs) {
+      const found = findRebasingBranchName(spinoff)
+      if (found) return found
+    }
+  }
+  return null
+}

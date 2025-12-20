@@ -6,7 +6,6 @@ import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { BranchBadge } from './BranchBadge'
 import { GitForgeSection } from './GitForgeSection'
-import { RebaseStatusBadge } from './RebaseStatusBadge'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
 
@@ -26,7 +25,12 @@ interface CommitProps {
   baseSha?: string
 }
 
-export function StackView({ data, className, workingTree, baseSha = '' }: StackProps): React.JSX.Element {
+export function StackView({
+  data,
+  className,
+  workingTree,
+  baseSha = ''
+}: StackProps): React.JSX.Element {
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
 
@@ -45,10 +49,15 @@ export function StackView({ data, className, workingTree, baseSha = '' }: StackP
   )
 }
 
-export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitProps): React.JSX.Element {
+export function CommitView({
+  data,
+  stack,
+  workingTree,
+  baseSha = ''
+}: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent, continueRebase, abortRebase, uncommit, uiState } =
+  const { confirmRebaseIntent, cancelRebaseIntent, uncommit, uiState, isRebasingWithConflicts } =
     useUiStateContext()
 
   const trunkHeadSha = uiState?.trunkHeadSha ?? ''
@@ -67,7 +76,8 @@ export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitPro
 
   const isPartOfRebasePlan = Boolean(data.rebaseStatus)
 
-  const showWorkingTree = isCurrent && workingTree && workingTree.length > 0
+  const showWorkingTree =
+    isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
 
@@ -79,14 +89,6 @@ export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitPro
 
   const handleCancelRebase = async (): Promise<void> => {
     await cancelRebaseIntent()
-  }
-
-  const handleContinueRebase = async (): Promise<void> => {
-    await continueRebase()
-  }
-
-  const handleAbortRebase = async (): Promise<void> => {
-    await abortRebase()
   }
 
   const handleUncommit = async (e: React.MouseEvent): Promise<void> => {
@@ -102,7 +104,12 @@ export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitPro
           <div className="ml-[-2px] w-full">
             {data.spinoffs.map((spinoff, index) => (
               <div key={`spinoff-${data.name}-${index}`}>
-                <StackView className="ml-[12px]" data={spinoff} workingTree={workingTree} baseSha={data.sha} />
+                <StackView
+                  className="ml-[12px]"
+                  data={spinoff}
+                  workingTree={workingTree}
+                  baseSha={data.sha}
+                />
                 <SineCurve />
               </div>
             ))}
@@ -180,7 +187,6 @@ export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitPro
             Uncommit
           </button>
         )}
-        {data.rebaseStatus && <RebaseStatusBadge status={data.rebaseStatus} />}
         {data.rebaseStatus === 'prompting' && (
           <div className="ml-auto flex gap-2">
             <button
@@ -194,22 +200,6 @@ export function CommitView({ data, stack, workingTree, baseSha = '' }: CommitPro
               className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
             >
               Confirm
-            </button>
-          </div>
-        )}
-        {(data.rebaseStatus === 'conflicted' || data.rebaseStatus === 'resolved') && (
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={handleAbortRebase}
-              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
-            >
-              Abort
-            </button>
-            <button
-              onClick={handleContinueRebase}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
-            >
-              Continue
             </button>
           </div>
         )}

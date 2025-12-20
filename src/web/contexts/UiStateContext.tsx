@@ -2,8 +2,8 @@ import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { useForgeStateContext } from './ForgeStateContext'
 import { useGitWatcher } from '../hooks/use-git-watcher'
+import { useForgeStateContext } from './ForgeStateContext'
 
 interface UiStateContextValue {
   toggleTheme: () => void

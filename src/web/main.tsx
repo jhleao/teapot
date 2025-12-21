@@ -3,6 +3,7 @@ import './assets/main.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { DragCursor } from './components/DragCursor'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { DragProvider } from './contexts/DragContext'
 import { ForgeStateProvider } from './contexts/ForgeStateContext'
@@ -19,6 +20,7 @@ function AppWithProviders(): React.JSX.Element {
       <UiStateProvider selectedRepoPath={repoPath}>
         <DragProvider>
           <App />
+          <DragCursor />
         </DragProvider>
       </UiStateProvider>
     </ForgeStateProvider>

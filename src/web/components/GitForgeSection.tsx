@@ -27,8 +27,14 @@ export const GitForgeSection = memo(function GitForgeSection({
   trunkHeadSha,
   baseSha
 }: GitForgeSectionProps): React.JSX.Element | null {
-  const { createPullRequest, updatePullRequest, submitRebaseIntent, cleanupBranch, shipIt, isWorkingTreeDirty } =
-    useUiStateContext()
+  const {
+    createPullRequest,
+    updatePullRequest,
+    submitRebaseIntent,
+    cleanupBranch,
+    shipIt,
+    isWorkingTreeDirty
+  } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -172,11 +178,7 @@ export const GitForgeSection = memo(function GitForgeSection({
           rel="noopener noreferrer"
           className={cn(
             'cursor-pointer text-sm hover:underline',
-            prIsMerged
-              ? 'text-muted-foreground'
-              : pr.isInSync
-                ? 'text-accent'
-                : 'text-warning'
+            prIsMerged ? 'text-muted-foreground' : pr.isInSync ? 'text-accent' : 'text-warning'
           )}
           onClick={(e) => e.stopPropagation()}
         >
@@ -194,16 +196,20 @@ export const GitForgeSection = memo(function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {!prIsMerged && pr.isInSync && pr.isMergeable && !isWorkingTreeDirty && !branchWithPr?.hasStaleTarget && (
-          <button
-            type="button"
-            onClick={handleShipIt}
-            disabled={isLoading}
-            className="bg-green-600 hover:bg-green-700 text-white cursor-pointer rounded-md border border-green-700 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
-          >
-            {isLoading ? 'Shipping...' : 'Ship it!'}
-          </button>
-        )}
+        {!prIsMerged &&
+          pr.isInSync &&
+          pr.isMergeable &&
+          !isWorkingTreeDirty &&
+          !branchWithPr?.hasStaleTarget && (
+            <button
+              type="button"
+              onClick={handleShipIt}
+              disabled={isLoading}
+              className="cursor-pointer rounded-md border border-green-700 bg-green-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+            >
+              {isLoading ? 'Shipping...' : 'Ship it!'}
+            </button>
+          )}
         {!prIsMerged && branchWithPr?.hasStaleTarget && (
           <span
             className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"

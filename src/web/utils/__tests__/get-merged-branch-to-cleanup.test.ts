@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import type { UiBranch } from '@shared/types'
+import { describe, expect, it } from 'vitest'
 import { getMergedBranchToCleanup } from '../get-merged-branch-to-cleanup.js'
 
 const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => ({

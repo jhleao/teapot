@@ -39,6 +39,7 @@ But wait - why does the error say "useUiStateContext must be used within a UiSta
 If `UiStateProvider` itself throws during initialization (e.g., in `useGitWatcher`, `refreshRepo`, or an effect), the context is never established. Any child component trying to use `useUiStateContext()` will throw this error.
 
 Looking at `UiStateContext.tsx`:
+
 ```typescript
 export function UiStateProvider({ ... }) {
   // These could throw:
@@ -63,6 +64,7 @@ export function UiStateProvider({ ... }) {
 ### Hypothesis B: Toaster Renders Outside Provider After Error
 
 The `Toaster` component is rendered inside `App`:
+
 ```typescript
 function App() {
   const { uiState, repoError } = useUiStateContext()  // ← throws if no provider
@@ -103,6 +105,7 @@ ThemeProvider                    ← provides isDark, toggleTheme
 ```
 
 **New file: `src/web/contexts/ThemeContext.tsx`**
+
 ```typescript
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 
@@ -141,6 +144,7 @@ export function useTheme(): ThemeContextValue {
 ```
 
 **Changes to `main.tsx`**:
+
 ```typescript
 import { ThemeProvider } from './contexts/ThemeContext'
 
@@ -158,26 +162,30 @@ createRoot(document.getElementById('root')!).render(
 ```
 
 **Changes to `Toaster.tsx`**:
+
 ```typescript
 import { useTheme } from '../contexts/ThemeContext'
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { isDark } = useTheme()  // No longer depends on UiStateContext
+  const { isDark } = useTheme() // No longer depends on UiStateContext
   // ...
 }
 ```
 
 **Changes to `UiStateContext.tsx`**:
+
 - Remove `isDark`, `toggleTheme` state and effects
 - Import and re-export from ThemeContext for backward compatibility (or update all consumers)
 
 **Pros**:
+
 - Clean separation of concerns
 - Theme survives any provider failure
 - ErrorBoundary can render themed fallback
 - Foundation for future preferences (font size, etc.)
 
 **Cons**:
+
 - More files/providers
 - Migration effort for existing consumers
 
@@ -188,6 +196,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 **Rationale**: Toaster doesn't need React context for theming - it can use CSS custom properties.
 
 **Changes to `main.tsx`**:
+
 ```typescript
 function AppWithProviders() {
   const { selectedRepo } = useLocalStateContext()
@@ -206,6 +215,7 @@ function AppWithProviders() {
 ```
 
 **Changes to `Toaster.tsx`**:
+
 ```typescript
 const Toaster = ({ ...props }: ToasterProps) => {
   // Use CSS custom properties instead of context
@@ -220,10 +230,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
 ```
 
 **Pros**:
+
 - Minimal changes
 - No new providers
 
 **Cons**:
+
 - Theme detection is less React-idiomatic
 - Harder to sync with other themed components
 
@@ -248,10 +260,12 @@ export function UiStateProvider({ children, selectedRepoPath }) {
 ```
 
 **Pros**:
+
 - Context remains available during error state
 - Can show contextual error UI
 
 **Cons**:
+
 - Doesn't help if provider itself fails to initialize
 - More complex error handling logic
 

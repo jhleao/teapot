@@ -264,7 +264,10 @@ export const WorkingTreeView = memo(function WorkingTreeView({
   }, [])
 
   const hasStagedChanges = useMemo(
-    () => files.some((file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'),
+    () =>
+      files.some(
+        (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
+      ),
     [files]
   )
   // Disable commit/amend during rebase, when operation is pending, or (for amend) when on trunk

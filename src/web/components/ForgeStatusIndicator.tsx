@@ -21,7 +21,7 @@ export function ForgeStatusIndicator(): React.JSX.Element | null {
 
   if (forgeStatus === 'fetching') {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Loader2Icon className="size-3 animate-spin" />
         <span>Syncing...</span>
       </div>
@@ -35,7 +35,7 @@ export function ForgeStatusIndicator(): React.JSX.Element | null {
       className={cn(
         'flex items-center gap-1.5 text-xs',
         'text-amber-500 hover:text-amber-400',
-        'transition-colors cursor-pointer'
+        'cursor-pointer transition-colors'
       )}
       title={forgeError ?? 'GitHub connection error. Click to retry.'}
     >

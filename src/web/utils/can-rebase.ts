@@ -14,11 +14,7 @@ interface CanRebaseParams {
  * - spinoff's base is not already the trunk head (needs rebasing)
  * - working tree is clean
  */
-export function canRebase({
-  baseSha,
-  trunkHeadSha,
-  isWorkingTreeDirty
-}: CanRebaseParams): boolean {
+export function canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty }: CanRebaseParams): boolean {
   if (!baseSha || !trunkHeadSha) {
     return false
   }

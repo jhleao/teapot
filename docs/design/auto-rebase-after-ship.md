@@ -30,6 +30,7 @@ After successfully merging a mid-stack PR via "Ship It", automatically rebase ch
 ### Option A: Automatic Rebase (Recommended)
 
 After Ship It completes:
+
 1. Fetch updated remote state
 2. Detect child branches of the shipped branch
 3. Rebase each child onto `origin/<shipped-branch>`
@@ -37,10 +38,12 @@ After Ship It completes:
 5. Update PRs if they exist
 
 **Pros:**
+
 - Seamless UX - stack stays healthy automatically
 - Matches behavior of Graphite, ghstack, etc.
 
 **Cons:**
+
 - Can cause conflicts that block the operation
 - Force-push changes commit SHAs (breaks links to specific commits)
 
@@ -49,10 +52,12 @@ After Ship It completes:
 Show dialog after Ship It: "Branch-C needs to be rebased. Rebase now?"
 
 **Pros:**
+
 - User stays in control
 - Can defer if they have uncommitted work
 
 **Cons:**
+
 - Extra click for common operation
 - User might dismiss and forget
 
@@ -61,10 +66,12 @@ Show dialog after Ship It: "Branch-C needs to be rebased. Rebase now?"
 When creating a PR, detect if base has diverged and offer rebase first.
 
 **Pros:**
+
 - Only rebases when needed
 - User can create PR without rebase if they want
 
 **Cons:**
+
 - Conflicts surface later in workflow
 - PR might be created with known issues
 
@@ -86,6 +93,7 @@ When shipping B, both C and D need rebasing. Order matters if D depends on C.
 Child branch has changes that conflict with merged content.
 
 **Solution:**
+
 - Stop rebase process
 - Show conflict resolution UI
 - Allow abort to restore previous state
@@ -95,6 +103,7 @@ Child branch has changes that conflict with merged content.
 User has dirty working tree when Ship It completes.
 
 **Solution:**
+
 - Stash changes before rebase
 - Restore after rebase completes
 - Or: block rebase, show warning
@@ -104,6 +113,7 @@ User has dirty working tree when Ship It completes.
 User is checked out to a branch that needs rebasing.
 
 **Solution:**
+
 - Rebase in place (branch moves with HEAD)
 - Or: checkout to shipped branch first, then rebase children
 
@@ -112,6 +122,7 @@ User is checked out to a branch that needs rebasing.
 Local branch has commits not yet on remote.
 
 **Solution:**
+
 - Still rebase - this is normal workflow
 - Force-push will update remote
 
@@ -120,6 +131,7 @@ Local branch has commits not yet on remote.
 PR exists but will have new commit SHAs after rebase.
 
 **Solution:**
+
 - Force-push updates the PR automatically
 - GitHub preserves PR number and comments
 
@@ -138,6 +150,7 @@ Ship B: need to rebase C, then rebase D onto new C.
 Shipped branch was deleted as part of cleanup.
 
 **Solution:**
+
 - Rebase onto the PR's merge target instead (e.g., main)
 - Or: rebase onto `origin/main` if that was the ultimate target
 
@@ -146,6 +159,7 @@ Shipped branch was deleted as part of cleanup.
 After rebase, a commit becomes empty (changes already in base).
 
 **Solution:**
+
 - Skip empty commits (`git rebase --skip` equivalent)
 - Warn user if commits were dropped
 
@@ -154,6 +168,7 @@ After rebase, a commit becomes empty (changes already in base).
 Fetch succeeds, rebase succeeds, push fails.
 
 **Solution:**
+
 - Local state is still valid (rebased)
 - Retry push, or let user push manually later
 
@@ -222,19 +237,23 @@ For each child (topological order):
 ## Implementation Phases
 
 ### Phase 1: Basic Auto-Rebase
+
 - Single child branch
 - No conflict handling (abort on conflict)
 - Force-push after rebase
 
 ### Phase 2: Multi-Branch Support
+
 - Topological ordering
 - Handle diamond dependencies
 
 ### Phase 3: Conflict Resolution
+
 - Integrate with existing rebase conflict UI
 - Resume/abort support
 
 ### Phase 4: Polish
+
 - Progress UI
 - Settings for behavior
 - Edge case handling

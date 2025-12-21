@@ -1,6 +1,14 @@
 import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode
+} from 'react'
 import { toast } from 'sonner'
 import { useGitWatcher } from '../hooks/use-git-watcher'
 import { useForgeStateContext } from './ForgeStateContext'

@@ -3,6 +3,7 @@
 ## Observed Behavior
 
 After rebasing feature branches onto `origin/main`:
+
 - The visualization shows `origin/main` at the top of trunk
 - Local `main` appears lower in the stack (behind origin/main)
 - Feature branches correctly appear as spinoffs from `origin/main`
@@ -11,6 +12,7 @@ After rebasing feature branches onto `origin/main`:
 ## Context: The Stacked Diff Workflow
 
 In Teapot's stacked diff workflow:
+
 1. User works on feature branches stacked on trunk
 2. User rebases features onto latest `origin/main` (after fetching)
 3. User's local `main` may not be updated yet
@@ -24,9 +26,9 @@ In `build-ui-state.ts`, `buildTrunkUiStack()` handles trunk visualization:
 
 ```typescript
 function buildTrunkUiStack(
-  branch: Branch,           // local trunk (main)
+  branch: Branch, // local trunk (main)
   state: BuildState,
-  remoteTrunk?: Branch      // origin/main
+  remoteTrunk?: Branch // origin/main
 ): TrunkBuildResult | null {
   const localLineage = collectBranchLineage(branch.headSha, state.commitMap)
 
@@ -41,7 +43,7 @@ function buildTrunkUiStack(
     if (remoteIsAhead && !localIsAhead) {
       // Remote is strictly ahead - use remote lineage only
       // This happens after Ship it: origin/main moved forward, local main is behind
-      lineage = remoteLineage  // ← LOCAL LINEAGE DROPPED
+      lineage = remoteLineage // ← LOCAL LINEAGE DROPPED
     } else if (localIsAhead && !remoteIsAhead) {
       lineage = localLineage
     } else {
@@ -55,6 +57,7 @@ function buildTrunkUiStack(
 ### The Problem
 
 When `remoteIsAhead && !localIsAhead`:
+
 - Code uses **only remote lineage**
 - Local `main`'s commit isn't in this lineage
 - `main` badge gets placed on its commit, but that commit appears "orphaned" from the main trunk line
@@ -64,6 +67,7 @@ When `remoteIsAhead && !localIsAhead`:
 The comment says: "This happens after Ship it: origin/main moved forward, local main is behind"
 
 The "Ship It" feature merges a PR and the remote moves forward. After ship-it:
+
 - `origin/main` points to the merge commit
 - Local `main` points to the pre-merge commit
 - The old commit is now "orphaned" - it's not in the new trunk lineage
@@ -76,10 +80,10 @@ The "Ship It" feature merges a PR and the remote moves forward. After ship-it:
 
 **It's a bug in the heuristic.** The code tries to distinguish two scenarios:
 
-| Scenario | Local main | Origin/main | Desired visualization |
-|----------|-----------|-------------|----------------------|
-| After Ship It | Points to orphaned commit | Moved forward via merge | Show only remote lineage (correct) |
-| After rebase on remote | Behind but valid | Ahead | Show both, with main at its position |
+| Scenario               | Local main                | Origin/main             | Desired visualization                |
+| ---------------------- | ------------------------- | ----------------------- | ------------------------------------ |
+| After Ship It          | Points to orphaned commit | Moved forward via merge | Show only remote lineage (correct)   |
+| After rebase on remote | Behind but valid          | Ahead                   | Show both, with main at its position |
 
 The current heuristic treats both scenarios the same, but they have different visualization needs.
 
@@ -106,11 +110,13 @@ if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
 ```
 
 **Pros**:
+
 - Simple, predictable behavior
 - Both `main` and `origin/main` badges appear at correct positions
 - Works for all ahead/behind/diverged scenarios
 
 **Cons**:
+
 - After Ship It, may show "orphaned" commits that are no longer relevant
 - Could clutter the view with old history
 
@@ -123,6 +129,7 @@ if (remoteTrunk?.headSha && remoteTrunk.headSha !== branch.headSha) {
 **Rationale**: Distinguish between genuinely orphaned commits (post-merge) and simply behind (pre-pull).
 
 A commit is "orphaned" if:
+
 1. It's not reachable from remote trunk, AND
 2. Remote trunk has moved forward via a merge (not just new commits)
 
@@ -151,6 +158,7 @@ Actually, `remoteIsAhead = remoteSet.has(branch.headSha)` means "local head is I
 **Re-reading the code**: The issue is that even though local head is in remote lineage, we're using `lineage = remoteLineage` which should include local's commit. The problem might be in how branches are annotated, not in lineage building.
 
 Let me trace through:
+
 1. `remoteLineage` = [oldest, ..., localHead, ..., remoteHead]
 2. `lineage = remoteLineage` includes local head
 3. `main` badge should appear on local head's UiCommit
@@ -182,6 +190,7 @@ function trimTrunkCommits(trunkStack: UiStack): void {
 ```
 
 If `main` badge is on a commit that:
+
 1. Has no spinoffs
 2. Is below (older than) commits with spinoffs
 
@@ -196,6 +205,7 @@ Then it might get trimmed! This could explain the visual issue.
 **Rationale**: The current behavior might be intentional, but the UI doesn't communicate it well.
 
 Add a visual indicator when local trunk is behind remote:
+
 - Show `main` badge with a "behind" indicator (↓ icon, different color)
 - Tooltip: "Local main is X commits behind origin/main"
 - Clear call-to-action: "Pull to sync"
@@ -205,17 +215,19 @@ Add a visual indicator when local trunk is behind remote:
 interface UiBranch {
   name: string
   isCurrent: boolean
-  isBehindRemote?: boolean  // New field
-  commitsBehind?: number    // New field
+  isBehindRemote?: boolean // New field
+  commitsBehind?: number // New field
   // ...
 }
 ```
 
 **Pros**:
+
 - Communicates state clearly without changing logic
 - Teaches users about the sync state
 
 **Cons**:
+
 - Adds UI complexity
 - Doesn't fix the underlying lineage issue
 
@@ -241,8 +253,14 @@ console.log('Local head in final:', lineage.includes(branch.headSha))
 
 ```typescript
 // Add to trimTrunkCommits
-console.log('Before trim:', trunkStack.commits.map(c => c.sha))
-console.log('After trim:', trunkStack.commits.map(c => c.sha))
+console.log(
+  'Before trim:',
+  trunkStack.commits.map((c) => c.sha)
+)
+console.log(
+  'After trim:',
+  trunkStack.commits.map((c) => c.sha)
+)
 ```
 
 ## Recommendation

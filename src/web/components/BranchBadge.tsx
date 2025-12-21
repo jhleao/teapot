@@ -3,7 +3,11 @@ import React, { memo, useCallback } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 
-export const BranchBadge = memo(function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
+export const BranchBadge = memo(function BranchBadge({
+  data
+}: {
+  data: UiBranch
+}): React.JSX.Element {
   const { checkout, deleteBranch, isWorkingTreeDirty } = useUiStateContext()
 
   const handleDoubleClick = useCallback(

@@ -1,6 +1,6 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import electronUpdater from 'electron-updater'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { registerHandlers } from './handlers'
@@ -59,7 +59,7 @@ app.whenReady().then(() => {
 
   // Check for updates in production (silent download + OS notification when ready)
   if (!is.dev) {
-    autoUpdater.checkForUpdatesAndNotify()
+    electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   }
 
   app.on('activate', function () {

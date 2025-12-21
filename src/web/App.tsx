@@ -105,7 +105,7 @@ function App(): React.JSX.Element {
               </div>
             </div>
           ) : enrichedStack ? (
-            <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
+            <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} isRoot />
           ) : (
             <div className="text-muted-foreground">Loading...</div>
           )}

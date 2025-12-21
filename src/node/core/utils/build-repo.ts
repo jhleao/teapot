@@ -245,9 +245,11 @@ async function collectCommitsFromDescriptors(
     }
   }
 
-  // Step 2: Load all non-trunk branches WITHOUT depth limit
-  // Feature branches are typically small (1-20 commits), so we load them completely
-  // This ensures the full changeset is visible in the stacked diff UI
+  // Step 2: Load all non-trunk branches until they meet known commits
+  // Feature branches are typically small (1-20 commits), so we load them
+  // from tip until we hit a commit already in the map (usually a trunk commit).
+  // This prevents loading old trunk history through feature branches, which would
+  // circumvent the trunk depth limit and cause performance issues.
   for (let i = 0; i < branchDescriptors.length; i += 1) {
     const descriptor = branchDescriptors[i]
     if (!descriptor) {
@@ -263,10 +265,9 @@ async function collectCommitsFromDescriptors(
       continue
     }
 
-    // Load feature branch completely (no depth limit)
-    await collectCommitsForRef(dir, descriptor.fullRef, commitsMap, {
-      depth: undefined, // No depth limit for feature branches
-      maxCommits: maxCommitsPerBranch // Safety limit only
+    // Load feature branch until we hit a known commit (typically a trunk commit)
+    await collectCommitsUntilKnown(dir, descriptor.fullRef, commitsMap, {
+      maxCommits: maxCommitsPerBranch
     })
   }
 

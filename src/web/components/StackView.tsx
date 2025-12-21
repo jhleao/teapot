@@ -1,4 +1,5 @@
 import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
+import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDragContext } from '../contexts/DragContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -31,24 +32,30 @@ export function StackView({
   data,
   className,
   workingTree,
-  baseSha = '',
-  isRoot = false
+  baseSha = ''
 }: StackProps): React.JSX.Element {
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
 
   return (
-    <div className={cn('flex flex-col pt-5', className)}>
-      <SyncButton isRoot={isRoot} isTrunk={data.isTrunk} />
-      {childrenFirst.map((commit, index) => (
-        <CommitView
-          key={`${commit.name}-${commit.timestampMs}-${index}`}
-          data={commit}
-          stack={data}
-          workingTree={workingTree}
-          baseSha={baseSha}
-        />
-      ))}
+    <div>
+      {Boolean(data.isTrunk) && (
+        <div>
+          <SyncButton />
+          <div className="border-border ml-2 h-8 w-[2px] border-r-2" />
+        </div>
+      )}
+      <div className={cn('flex flex-col', className)}>
+        {childrenFirst.map((commit, index) => (
+          <CommitView
+            key={`${commit.name}-${commit.timestampMs}-${index}`}
+            data={commit}
+            stack={data}
+            workingTree={workingTree}
+            baseSha={baseSha}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -65,7 +72,8 @@ export const CommitView = memo(function CommitView({
     registerCommitRef,
     unregisterCommitRef,
     commitBelowMouse,
-    draggingCommitSha
+    draggingCommitSha,
+    pendingRebase
   } = useDragContext()
   const { confirmRebaseIntent, cancelRebaseIntent, uncommit, uiState, isRebasingWithConflicts } =
     useUiStateContext()
@@ -90,19 +98,27 @@ export const CommitView = memo(function CommitView({
     isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
-  const isBeingDragged = useMemo(
-    () => draggingCommitSha && isPartOfDraggedStack(data.sha, draggingCommitSha, stack),
-    [data.sha, draggingCommitSha, stack]
-  )
+  const isBeingDragged = useMemo(() => {
+    const rebasingSha = draggingCommitSha || pendingRebase?.headSha
+    if (!rebasingSha) return false
+    return isPartOfDraggedStack(data.sha, rebasingSha, stack)
+  }, [data.sha, draggingCommitSha, pendingRebase, stack])
 
   const hasSpinoffs = data.spinoffs.length > 0
+
+  const [isCanceling, setIsCanceling] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
     await confirmRebaseIntent()
   }, [confirmRebaseIntent])
 
   const handleCancelRebase = useCallback(async (): Promise<void> => {
-    await cancelRebaseIntent()
+    setIsCanceling(true)
+    try {
+      await cancelRebaseIntent()
+    } finally {
+      setIsCanceling(false)
+    }
   }, [cancelRebaseIntent])
 
   const handleUncommit = useCallback(
@@ -118,10 +134,9 @@ export const CommitView = memo(function CommitView({
   }, [handleCommitDotMouseDown, data.sha])
 
   return (
-    <div className="w-full pl-2 whitespace-nowrap">
+    <div className={cn('w-full pl-2 whitespace-nowrap')}>
       {hasSpinoffs && (
-        <div className="flex w-full">
-          <div className="border-border h-auto w-[2px] border-r-2" />
+        <div className={cn('border-border flex h-auto w-full border-l-2 pt-2')}>
           <div className="ml-[-2px] w-full">
             {data.spinoffs.map((spinoff, index) => (
               <div key={`spinoff-${data.name}-${index}`}>
@@ -166,7 +181,7 @@ export const CommitView = memo(function CommitView({
         )}
       >
         {commitBelowMouse === data.sha && (
-          <div className="bg-accent animate-in fade-in absolute -top-[1px] left-0 h-[3px] w-full duration-150" />
+          <div className="bg-accent animate-in absolute -top-px left-0 h-[3px] w-full duration-150" />
         )}
         <div className="flex items-center gap-2" onMouseDown={onCommitDotMouseDown}>
           <CommitDot
@@ -212,13 +227,16 @@ export const CommitView = memo(function CommitView({
           <div className="ml-auto flex gap-2 pr-4">
             <button
               onClick={handleCancelRebase}
-              className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
+              disabled={isCanceling}
+              className="border-border bg-muted text-foreground hover:bg-muted/80 flex items-center gap-1 rounded border px-3 py-1 text-xs transition-colors disabled:opacity-50"
             >
+              {isCanceling && <Loader2 className="h-3 w-3 animate-spin" />}
               Cancel
             </button>
             <button
               onClick={handleConfirmRebase}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors"
+              disabled={isCanceling}
+              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
             >
               Confirm
             </button>
@@ -229,17 +247,9 @@ export const CommitView = memo(function CommitView({
   )
 })
 
-function SyncButton({
-  isRoot,
-  isTrunk
-}: {
-  isRoot: boolean
-  isTrunk: boolean
-}): React.JSX.Element | null {
+function SyncButton(): React.JSX.Element | null {
   const { syncTrunk } = useUiStateContext()
   const [isSyncing, setIsSyncing] = useState(false)
-
-  if (!isRoot || !isTrunk) return null
 
   const handleSyncTrunk = async (): Promise<void> => {
     if (isSyncing) return

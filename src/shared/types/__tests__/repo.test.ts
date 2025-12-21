@@ -6,13 +6,20 @@ import { describe, expect, it } from 'vitest'
 import { isTrunk, TRUNK_BRANCHES } from '../repo'
 
 describe('TRUNK_BRANCHES', () => {
-  it('contains main and master', () => {
+  it('contains all canonical trunk names', () => {
     expect(TRUNK_BRANCHES).toContain('main')
     expect(TRUNK_BRANCHES).toContain('master')
+    expect(TRUNK_BRANCHES).toContain('develop')
+    expect(TRUNK_BRANCHES).toContain('trunk')
   })
 
-  it('has exactly two entries', () => {
-    expect(TRUNK_BRANCHES).toHaveLength(2)
+  it('has exactly four entries', () => {
+    expect(TRUNK_BRANCHES).toHaveLength(4)
+  })
+
+  it('is ordered by preference (main first)', () => {
+    expect(TRUNK_BRANCHES[0]).toBe('main')
+    expect(TRUNK_BRANCHES[1]).toBe('master')
   })
 })
 
@@ -25,9 +32,13 @@ describe('isTrunk', () => {
     expect(isTrunk('master')).toBe(true)
   })
 
+  it('returns true for develop and trunk', () => {
+    expect(isTrunk('develop')).toBe(true)
+    expect(isTrunk('trunk')).toBe(true)
+  })
+
   it('returns false for feature branches', () => {
     expect(isTrunk('feature-1')).toBe(false)
-    expect(isTrunk('develop')).toBe(false)
     expect(isTrunk('release/1.0')).toBe(false)
   })
 
@@ -48,4 +59,3 @@ describe('isTrunk', () => {
     expect(isTrunk('MASTER')).toBe(false)
   })
 })
-

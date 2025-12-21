@@ -32,7 +32,16 @@ export default defineConfig(
   {
     rules: {
       '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }]
+      '@typescript-eslint/no-empty-function': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/member-ordering': [
+        'error',
+        {
+          default: {
+            memberTypes: ['public-static-method', 'private-static-method']
+          }
+        }
+      ]
     }
   }
 )

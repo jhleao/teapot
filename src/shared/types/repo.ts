@@ -59,8 +59,9 @@ export type Configuration = {
 
 /**
  * Common trunk branch names recognized by the application.
+ * Ordered by preference - main is preferred over master, etc.
  */
-export const TRUNK_BRANCHES = ['main', 'master'] as const
+export const TRUNK_BRANCHES = ['main', 'master', 'develop', 'trunk'] as const
 
 /**
  * Type representing a trunk branch name.

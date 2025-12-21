@@ -1,6 +1,6 @@
 import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
 import { dialog, ipcMain } from 'electron'
-import { gitForgeService } from '../core/forge/service'
+import { gitForgeService } from '../services/ForgeService'
 import { configStore } from '../store'
 
 const getLocalReposHandler: IpcHandlerOf<'getLocalRepos'> = () => {

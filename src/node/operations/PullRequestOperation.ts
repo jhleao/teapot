@@ -1,0 +1,236 @@
+/**
+ * PullRequestOperation - Orchestrates pull request operations
+ *
+ * This module handles:
+ * - Creating PRs with automatic base branch detection
+ * - Updating PRs (force push)
+ * - Shipping PRs (merge via GitHub API)
+ */
+
+import { log } from '@shared/logger'
+import type { Branch, Repo } from '@shared/types'
+import { isTrunk } from '@shared/types/repo'
+import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
+import { PrTargetResolver } from '../domain'
+import { RepoModelService } from '../services'
+import { gitForgeService } from '../services/ForgeService'
+import { getMergedBranchNames } from '../services/MergedBranchesService'
+import { configStore } from '../store'
+
+export type ShipItResult =
+  | {
+      success: true
+      message: string
+      needsRebase: boolean
+    }
+  | {
+      success: false
+      error: string
+    }
+
+export class PullRequestOperation {
+  /**
+   * Creates a pull request for the given branch with automatic base branch detection.
+   */
+  static async create(repoPath: string, headBranch: string): Promise<void> {
+    const git = getGitAdapter()
+    const repo = await this.loadRepoWithRemotes(repoPath)
+
+    const headBranchObj = this.findBranch(repo, headBranch)
+    if (!headBranchObj?.headSha) {
+      throw new Error(`Branch ${headBranch} not found`)
+    }
+
+    const title = this.getCommitMessage(repo, headBranchObj.headSha)
+    const baseBranch = await this.findBaseBranch(
+      repoPath,
+      repo,
+      headBranch,
+      headBranchObj.headSha,
+      git
+    )
+
+    await this.getOriginRemote(repoPath, git)
+
+    const branchesToPush = this.determineBranchesToPush(repo, baseBranch, headBranch)
+    await this.pushBranches(repoPath, branchesToPush, git)
+
+    await gitForgeService.createPullRequest(repoPath, title, headBranch, baseBranch, false)
+  }
+
+  /**
+   * Updates an existing pull request by force pushing the branch.
+   */
+  static async update(repoPath: string, headBranch: string): Promise<void> {
+    log.debug(`[PullRequestOperation.update] Updating PR for branch: ${headBranch}`)
+
+    const git = getGitAdapter()
+    await this.forcePushBranch(repoPath, headBranch, git)
+    await gitForgeService.refreshWithStatus(repoPath)
+
+    log.debug(`[PullRequestOperation.update] Successfully updated PR for branch ${headBranch}`)
+  }
+
+  /**
+   * Ships a PR by merging it via GitHub API and handling post-merge navigation.
+   * If the user was on the shipped branch, switches to the target branch.
+   */
+  static async shipIt(repoPath: string, branchName: string): Promise<ShipItResult> {
+    const git = getGitAdapter()
+
+    // Get forge state to find PR number and target branch
+    const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
+    const pr = forgeState.pullRequests.find(
+      (p) => p.headRefName === branchName && p.state === 'open'
+    )
+
+    if (!pr) {
+      return { success: false, error: `No open PR found for branch "${branchName}"` }
+    }
+
+    // Get current branch before merging (for navigation decision)
+    const currentBranch = await git.currentBranch(repoPath)
+    const wasOnShippedBranch = currentBranch === branchName
+    const targetBranch = pr.baseRefName
+
+    // Check if shipped branch has children (other PRs targeting it)
+    const hasChildren = forgeState.pullRequests.some(
+      (p) => p.baseRefName === branchName && p.state === 'open'
+    )
+
+    // Merge via GitHub API (squash merge)
+    await gitForgeService.mergePullRequest(repoPath, pr.number)
+
+    // Fetch to update remote refs
+    await git.fetch(repoPath)
+
+    // Navigate to appropriate branch after shipping
+    let message: string
+    if (wasOnShippedBranch) {
+      // User was on the shipped branch - move them to the PR target (usually main)
+      await git.checkout(repoPath, targetBranch)
+
+      // Try to fast-forward to match remote
+      const remoteBranch = `origin/${targetBranch}`
+      if (supportsMerge(git)) {
+        try {
+          await git.merge(repoPath, remoteBranch, { ffOnly: true })
+        } catch {
+          // Fast-forward failed - that's okay, user is still on target branch
+        }
+      }
+
+      message = `Shipped! Switched to ${targetBranch}.`
+    } else {
+      message = 'Shipped!'
+    }
+
+    // Add rebase notice if there are child branches
+    if (hasChildren) {
+      message += ' Remaining branches need rebasing.'
+    }
+
+    return { success: true, message, needsRebase: hasChildren }
+  }
+
+  private static async loadRepoWithRemotes(repoPath: string): Promise<Repo> {
+    return RepoModelService.buildRepoModel({ repoPath }, { loadRemotes: true })
+  }
+
+  private static findBranch(repo: Repo, branchName: string): Branch | undefined {
+    return repo.branches.find((b) => b.ref === branchName)
+  }
+
+  private static getCommitMessage(repo: Repo, commitSha: string): string {
+    const commit = repo.commits.find((c) => c.sha === commitSha)
+    return commit?.message.split('\n')[0] || 'No title'
+  }
+
+  private static async findBaseBranch(
+    repoPath: string,
+    repo: Repo,
+    headBranch: string,
+    headCommitSha: string,
+    git: GitAdapter
+  ): Promise<string> {
+    const candidateBaseBranch = PrTargetResolver.findBaseBranch(repo, headCommitSha)
+
+    const mergedBranchNames = await getMergedBranchNames(repoPath, repo, git)
+
+    const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
+
+    return PrTargetResolver.findValidPrTarget(
+      headBranch,
+      candidateBaseBranch,
+      forgeState.pullRequests,
+      new Set(mergedBranchNames)
+    )
+  }
+
+  private static async getOriginRemote(repoPath: string, git: GitAdapter): Promise<string> {
+    const remotes = await git.listRemotes(repoPath)
+    const origin = remotes.find((r) => r.name === 'origin')
+
+    if (!origin) {
+      throw new Error('No origin remote configured')
+    }
+
+    return origin.url
+  }
+
+  private static async pushBranches(
+    repoPath: string,
+    branches: string[],
+    git: GitAdapter
+  ): Promise<void> {
+    const pat = configStore.getGithubPat()
+    const credentials = pat ? { username: pat, password: '' } : undefined
+
+    for (const branch of branches) {
+      try {
+        await git.push(repoPath, {
+          remote: 'origin',
+          ref: branch,
+          setUpstream: true,
+          credentials
+        })
+      } catch (error) {
+        log.error(`Failed to push branch ${branch} before creating PR:`, error)
+        throw new Error(
+          `Failed to push branch ${branch}: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
+    }
+  }
+
+  private static determineBranchesToPush(
+    repo: Repo,
+    baseBranch: string,
+    headBranch: string
+  ): string[] {
+    const baseBranchExistsOnRemote =
+      isTrunk(baseBranch) ||
+      repo.branches.some((b) => b.isRemote && b.ref === `origin/${baseBranch}`)
+
+    return baseBranchExistsOnRemote ? [headBranch] : [baseBranch, headBranch]
+  }
+
+  private static async forcePushBranch(
+    repoPath: string,
+    branch: string,
+    git: GitAdapter
+  ): Promise<void> {
+    try {
+      await git.push(repoPath, {
+        remote: 'origin',
+        ref: branch,
+        force: true
+      })
+    } catch (error) {
+      log.error(`Failed to push branch ${branch}:`, error)
+      throw new Error(
+        `Failed to push branch ${branch}: ${error instanceof Error ? error.message : String(error)}`
+      )
+    }
+  }
+}

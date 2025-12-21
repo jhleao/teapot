@@ -133,8 +133,12 @@ function generateMockStackInternal(
     const commitName = generateCommitName(i, commitCount, depth, isLastCommit)
 
     // Determine branch info - commits can be tips of multiple branches
-    const branches: Array<{ name: string; isCurrent: boolean; isRemote: boolean; isTrunk: boolean }> =
-      []
+    const branches: Array<{
+      name: string
+      isCurrent: boolean
+      isRemote: boolean
+      isTrunk: boolean
+    }> = []
 
     if (depth === 0) {
       // Main stack commits are always on main branch
@@ -154,7 +158,12 @@ function generateMockStackInternal(
       if (isLastCommit && Math.random() < 0.3) {
         const additionalBranch = getRandomBranchName()
         if (additionalBranch !== branchName) {
-          branches.push({ name: additionalBranch, isCurrent: false, isRemote: false, isTrunk: false })
+          branches.push({
+            name: additionalBranch,
+            isCurrent: false,
+            isRemote: false,
+            isTrunk: false
+          })
         }
       }
     }

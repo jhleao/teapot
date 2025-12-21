@@ -1,6 +1,6 @@
 import { IpcMainInvokeEvent } from 'electron'
-import type { RebaseState } from '../../node/core/rebase'
 import type { ForgeStateResult } from './git-forge'
+import type { RebaseState } from './rebase'
 import type { UiState } from './ui'
 
 /**

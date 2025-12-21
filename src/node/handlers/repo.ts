@@ -44,6 +44,7 @@ import { detectMergedBranches } from '../core/utils/detect-merged-branches'
 import { getTrunkBranchRef } from '../core/utils/get-trunk'
 import { getTrunkHeadSha } from '../core/utils/get-trunk-head-sha'
 import { createJobIdGenerator } from '../core/utils/job-id-generator'
+import { getRepoCache } from '../core/utils/repo-cache'
 import { pullRemoteBranch, smartCheckout } from '../core/utils/smart-checkout'
 
 // ============================================================================
@@ -70,15 +71,23 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
   const trunkBranch =
     repo.branches.find((b) => b.isTrunk && !b.isRemote) ?? repo.branches.find((b) => b.isTrunk)
   const trunkRef = trunkBranch?.ref ?? 'main'
+  const trunkBranchHeadSha = trunkBranch?.headSha ?? ''
 
   // Detect locally merged branches (branches whose head is ancestor of trunk)
-  // This is a local git operation, so it's fast
-  const mergedBranchNames = await detectMergedBranches(
-    repoPath,
-    repo.branches,
-    trunkRef,
-    gitAdapter
-  )
+  // Use cache keyed by trunk HEAD SHA - invalidates automatically when trunk advances
+  const cache = getRepoCache(repoPath)
+  let mergedBranchNames = cache.getMergedBranches(trunkBranchHeadSha)
+
+  if (!mergedBranchNames) {
+    // Cache miss - compute and store
+    mergedBranchNames = await detectMergedBranches(
+      repoPath,
+      repo.branches,
+      trunkRef,
+      gitAdapter
+    )
+    cache.setMergedBranches(trunkBranchHeadSha, mergedBranchNames)
+  }
 
   // Build UI with local-only forge state (no PR data, just local merge detection)
   const localForgeState = { pullRequests: [], mergedBranchNames }

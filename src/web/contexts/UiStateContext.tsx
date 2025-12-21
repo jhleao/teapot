@@ -15,8 +15,6 @@ interface UiStateContextValue {
   amend: (params: { message?: string }) => Promise<void>
   discardStaged: () => Promise<void>
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
-  prefetchRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<UiState | null>
-  applyPrefetchedState: (state: UiState) => void
   confirmRebaseIntent: () => Promise<void>
   cancelRebaseIntent: () => Promise<void>
   continueRebase: () => Promise<void>
@@ -150,18 +148,6 @@ export function UiStateProvider({
     },
     [repoPath, callApi]
   )
-
-  const prefetchRebaseIntent = useCallback(
-    async (params: { headSha: string; baseSha: string }): Promise<UiState | null> => {
-      if (!repoPath) return null
-      return window.api.submitRebaseIntent({ repoPath, ...params })
-    },
-    [repoPath]
-  )
-
-  const applyPrefetchedState = useCallback((state: UiState): void => {
-    setUiState(state)
-  }, [])
 
   const confirmRebaseIntent = useCallback(async () => {
     if (!repoPath) return
@@ -338,8 +324,6 @@ export function UiStateProvider({
       amend,
       discardStaged,
       submitRebaseIntent,
-      prefetchRebaseIntent,
-      applyPrefetchedState,
       confirmRebaseIntent,
       cancelRebaseIntent,
       continueRebase,
@@ -367,8 +351,6 @@ export function UiStateProvider({
       amend,
       discardStaged,
       submitRebaseIntent,
-      prefetchRebaseIntent,
-      applyPrefetchedState,
       confirmRebaseIntent,
       cancelRebaseIntent,
       continueRebase,

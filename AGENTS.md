@@ -8,8 +8,8 @@ Teapot is an Electron desktop application for managing Git stacks and pull reque
 
 ```bash
 # Development
-pnpm dev              # Start development with hot reload
-pnpm dev:watch        # Development with file watching
+pnpm dev              # Start development with frontend only hot reload
+pnpm dev:watch        # Development with fullstack hot reload
 
 # Code quality
 pnpm lint             # ESLint

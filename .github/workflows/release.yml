@@ -34,13 +34,9 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:mac
+      - run: pnpm build:mac -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-build
-          path: dist/*.dmg
 
   build-windows:
     needs: release-please
@@ -54,13 +50,9 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:win
+      - run: pnpm build:win -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: dist/*.exe
 
   build-linux:
     needs: release-please
@@ -74,10 +66,6 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:linux
+      - run: pnpm build:linux -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-build
-          path: dist/*.AppImage

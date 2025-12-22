@@ -1,25 +1,40 @@
 import { Ban, GitBranch, Loader2 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { useDragContext } from '../contexts/DragContext'
+import { cn } from '../utils/cn'
 
 export function DragCursor(): React.JSX.Element | null {
-  const {
-    mousePosition,
-    draggedBranchCount,
-    draggingCommitSha,
-    targetLabel,
-    isRebaseLoading,
-    pendingRebase
-  } = useDragContext()
+  const { draggedBranchCount, draggingCommitSha, targetLabel, isRebaseLoading, pendingRebase } =
+    useDragContext()
 
-  if (mousePosition && draggingCommitSha) {
+  const cursorRef = useRef<HTMLDivElement>(null)
+
+  // Direct DOM updates for cursor position - bypasses React rendering
+  useEffect(() => {
+    if (!draggingCommitSha && !isRebaseLoading) return
+
+    const updateCursorPosition = (e: MouseEvent): void => {
+      if (cursorRef.current) {
+        cursorRef.current.style.left = `${e.clientX}px`
+        cursorRef.current.style.top = `${e.clientY}px`
+      }
+    }
+
+    window.addEventListener('mousemove', updateCursorPosition)
+    return () => window.removeEventListener('mousemove', updateCursorPosition)
+  }, [draggingCommitSha, isRebaseLoading])
+
+  if (draggingCommitSha) {
     const isValidTarget = targetLabel !== null
 
     return (
       <div
-        className={`animate-in fade-in zoom-in-10 pointer-events-none fixed z-50 flex h-7 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 text-xs font-medium shadow-lg ${
+        ref={cursorRef}
+        className={cn(
+          'animate-in fade-in zoom-in-10 pointer-events-none fixed z-50 flex h-7 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 text-xs font-medium shadow-lg',
           isValidTarget ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground'
-        }`}
-        style={{ left: mousePosition.x, top: mousePosition.y }}
+        )}
+        style={{ left: 0, top: 0 }}
       >
         {isValidTarget ? (
           <>
@@ -40,6 +55,7 @@ export function DragCursor(): React.JSX.Element | null {
   if (isRebaseLoading && pendingRebase) {
     return (
       <div
+        ref={cursorRef}
         className="bg-accent text-accent-foreground animate-in fade-in pointer-events-none fixed z-50 flex h-7 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 text-xs font-medium shadow-lg"
         style={{ left: pendingRebase.cursorPosition.x, top: pendingRebase.cursorPosition.y }}
       >

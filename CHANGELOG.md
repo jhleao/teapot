@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/jhleao/teapot/compare/teapot-v0.2.0...teapot-v0.2.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* refresh forge state on pr update ([88336ed](https://github.com/jhleao/teapot/commit/88336ed346e920584e1f279ded7a7cabc5d3559b))
+
 ## [0.2.0](https://github.com/jhleao/teapot/compare/teapot-v0.1.0...teapot-v0.2.0) (2025-12-22)
 
 

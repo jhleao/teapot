@@ -21,6 +21,7 @@ interface DragState {
   potentialDragSha: string | null
   originalParentSha: string | null
   frozenBoundingBoxes: CommitBoundingBox[]
+  forbiddenDropTargets: Set<string>
 }
 
 interface PendingRebase {
@@ -59,7 +60,8 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   const dragState = useRef<DragState>({
     potentialDragSha: null,
     originalParentSha: null,
-    frozenBoundingBoxes: []
+    frozenBoundingBoxes: [],
+    forbiddenDropTargets: new Set()
   })
 
   const commitRefsMap = useRef<Map<string, RefObject<HTMLDivElement>>>(new Map())
@@ -88,6 +90,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
       state.frozenBoundingBoxes = captureCommitBoundingBoxes(commitRefsMap.current, stack)
       state.originalParentSha = findParentCommitSha(state.potentialDragSha, stack)
+      state.forbiddenDropTargets = collectDescendantShas(state.potentialDragSha, stack)
       setDraggingCommitSha(state.potentialDragSha)
       setMousePosition({ x: e.clientX, y: e.clientY })
     }
@@ -95,13 +98,18 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     const updateDropTarget = (e: MouseEvent): void => {
       if (!draggingCommitSha) return
 
-      const { frozenBoundingBoxes, originalParentSha } = dragState.current
+      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets } = dragState.current
       setMousePosition({ x: e.clientX, y: e.clientY })
 
       if (frozenBoundingBoxes.length > 0) {
         const candidate = findClosestCommitBelowMouse(e.clientY, frozenBoundingBoxes)
-        // Exclude the dragged commit itself and its original parent
-        if (candidate && candidate !== draggingCommitSha && candidate !== originalParentSha) {
+        // Exclude: dragged commit itself, original parent, and any descendants (can't rebase onto a child)
+        if (
+          candidate &&
+          candidate !== draggingCommitSha &&
+          candidate !== originalParentSha &&
+          !forbiddenDropTargets.has(candidate)
+        ) {
           setCommitBelowMouse(candidate)
         } else {
           setCommitBelowMouse(null)
@@ -135,6 +143,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       state.potentialDragSha = null
       state.originalParentSha = null
       state.frozenBoundingBoxes = []
+      state.forbiddenDropTargets = new Set()
 
       setDraggingCommitSha(null)
       setCommitBelowMouse(null)
@@ -152,10 +161,15 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
         return
       }
 
-      const { frozenBoundingBoxes, originalParentSha } = dragState.current
+      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets } = dragState.current
       const candidate = findClosestCommitBelowMouse(e.clientY, frozenBoundingBoxes)
-      // Only commit if dropping on a valid target (not self, not original parent)
-      if (candidate && candidate !== draggingCommitSha && candidate !== originalParentSha) {
+      // Only commit if dropping on a valid target (not self, not original parent, not a descendant)
+      if (
+        candidate &&
+        candidate !== draggingCommitSha &&
+        candidate !== originalParentSha &&
+        !forbiddenDropTargets.has(candidate)
+      ) {
         const branchCount = countBranchesFromCommit(draggingCommitSha, stack)
         commitDrop(draggingCommitSha, candidate, branchCount, { x: e.clientX, y: e.clientY })
       }
@@ -298,4 +312,38 @@ function countBranchesFromCommit(targetSha: string, stack: UiStack): number {
     count += commit.spinoffs.reduce((sum, s) => sum + countAllBranches(s), 0)
   }
   return count
+}
+
+/** Collect all SHAs in a stack (recursively includes spinoffs) */
+function collectAllShasInStack(stack: UiStack, result: Set<string>): void {
+  for (const commit of stack.commits) {
+    result.add(commit.sha)
+    for (const spinoff of commit.spinoffs) {
+      collectAllShasInStack(spinoff, result)
+    }
+  }
+}
+
+/** Collect all descendant SHAs of a commit (children at any level) */
+function collectDescendantShas(targetSha: string, stack: UiStack): Set<string> {
+  const result = new Set<string>()
+  const ctx = findCommitInStack(targetSha, stack)
+  if (!ctx) return result
+
+  // Include all commits after the target in the same sub-stack (direct descendants)
+  // and all their spinoffs (branch descendants)
+  for (let i = ctx.index + 1; i < ctx.stack.commits.length; i++) {
+    const commit = ctx.stack.commits[i]
+    result.add(commit.sha)
+    for (const spinoff of commit.spinoffs) {
+      collectAllShasInStack(spinoff, result)
+    }
+  }
+
+  // Also include spinoffs of the target commit itself (they are children too)
+  for (const spinoff of ctx.commit.spinoffs) {
+    collectAllShasInStack(spinoff, result)
+  }
+
+  return result
 }

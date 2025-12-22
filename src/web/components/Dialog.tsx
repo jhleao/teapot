@@ -22,7 +22,10 @@ export function Dialog({ children, open, onOpenChange }: DialogProps) {
   return (
     <DialogPortal>
       <DialogOverlay onClick={() => onOpenChange(false)} />
-      <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         {/* Content wrapper to center */}
         <div className="pointer-events-auto">{children}</div>
       </div>

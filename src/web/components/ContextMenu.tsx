@@ -35,6 +35,7 @@ export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
               'border-border bg-background'
             )}
             style={{ top: position.y, left: position.x }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={() => {
               // Close on item click
               close()
@@ -65,6 +66,7 @@ function ContextMenuOverlay({ onClick }: { onClick: () => void }) {
   return (
     <div
       className="fixed inset-0 z-40"
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation()
         onClick()

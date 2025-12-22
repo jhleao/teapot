@@ -8,6 +8,7 @@ import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
 import { Toaster } from './components/Toaster'
 import { Topbar } from './components/Topbar'
+import { ScrollArea, ScrollBar } from './components/ui/scroll-area'
 import { useForgeStateContext } from './contexts/ForgeStateContext'
 import { useLocalStateContext } from './contexts/LocalStateContext'
 import { useUiStateContext } from './contexts/UiStateContext'
@@ -34,23 +35,26 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex h-screen flex-col">
       <TitleBar />
-      <div className="px-6 pt-2 pb-32">
-        <Topbar />
+      <ScrollArea className="flex-1">
+        <div className="px-6 pt-2 pb-32">
+          <Topbar />
 
-        <div className="">
-          {!selectedRepo ? (
-            <EmptyState variant="no-repo" onAction={handleAddRepo} />
-          ) : repoError ? (
-            <EmptyState variant="error" errorMessage={repoError} />
-          ) : enrichedStack ? (
-            <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
-          ) : (
-            <EmptyState variant="loading" />
-          )}
+          <div className="">
+            {!selectedRepo ? (
+              <EmptyState variant="no-repo" onAction={handleAddRepo} />
+            ) : repoError ? (
+              <EmptyState variant="error" errorMessage={repoError} />
+            ) : enrichedStack ? (
+              <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
+            ) : (
+              <EmptyState variant="loading" />
+            )}
+          </div>
         </div>
-      </div>
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>
 
       <button
         onClick={() => setIsSettingsOpen(true)}

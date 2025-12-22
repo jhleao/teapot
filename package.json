@@ -7,6 +7,7 @@
   },
   "main": "./out/main/index.js",
   "type": "module",
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -29,6 +30,7 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@radix-ui/react-scroll-area": "^1.2.10",
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",

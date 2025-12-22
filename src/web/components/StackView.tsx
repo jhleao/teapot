@@ -40,9 +40,9 @@ export function StackView({
   return (
     <div>
       {Boolean(data.isTrunk) && (
-        <div>
+        <div className="mb-[-16px]">
           <SyncButton />
-          <div className="border-border ml-2 h-8 w-[2px] border-r-2" />
+          <div className="border-border ml-2 h-14 w-[2px] border-r-2" />
         </div>
       )}
       <div className={cn('flex flex-col', className)}>

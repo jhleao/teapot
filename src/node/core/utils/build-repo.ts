@@ -3,6 +3,7 @@ import { isTrunk as isTrunkBranchName } from '@shared/types'
 import type { LogOptions } from '../git-adapter'
 import { getGitAdapter } from '../git-adapter'
 import { getTrunkBranchRef } from './get-trunk.js'
+import { getRepoCache } from './repo-cache.js'
 
 type BranchDescriptor = {
   ref: string
@@ -276,7 +277,8 @@ async function collectCommitsFromDescriptors(
 
 /**
  * Loads commits from a ref until we find a commit already in the map.
- * This is used for remote trunk to fill the gap between local and remote.
+ * Uses commit cache to avoid git log calls when possible.
+ * This is used for remote trunk and feature branches.
  */
 async function collectCommitsUntilKnown(
   dir: string,
@@ -287,43 +289,93 @@ async function collectCommitsUntilKnown(
   } = {}
 ): Promise<void> {
   const git = getGitAdapter()
+  const cache = getRepoCache(dir)
   const { maxCommits = 1000 } = options
 
-  const logEntries = await git.log(dir, ref)
+  // First, resolve the ref to get the head SHA
+  const headSha = await git.resolveRef(dir, ref)
+  if (!headSha) {
+    return
+  }
 
+  // Phase 1: Walk the cache to find commits we already know
+  // This avoids calling git.log() if all commits are cached
+  let currentSha: string | null = headSha
   let processedCount = 0
-  for (const entry of logEntries) {
-    if (processedCount >= maxCommits) {
-      break
-    }
+  let needsGitFetch = false
+  let fetchFromSha: string | null = null
 
-    const sha = entry.sha
-    const existingCommit = commitsMap.get(sha)
-
-    // If we've already seen this commit AND it's fully populated, stop loading
-    // A commit is fully populated if it has a message
-    // Commits created as placeholders by ensureCommit have empty messages
+  while (currentSha && processedCount < maxCommits) {
+    // Check if already in commitsMap (fully populated)
+    const existingCommit = commitsMap.get(currentSha)
     if (existingCommit && existingCommit.message) {
+      // Hit a known commit - we're done
       break
     }
 
-    const commit = ensureCommit(commitsMap, sha)
+    // Check cache
+    const cached = cache.getCommit(currentSha)
+    if (cached) {
+      // Cache hit - apply to commitsMap
+      const commit = ensureCommit(commitsMap, cached.sha)
+      commit.message = cached.message
+      commit.timeMs = cached.timeMs
+      commit.parentSha = cached.parentSha
 
-    // Populate commit metadata
-    commit.message = entry.message
-    commit.timeMs = entry.timeMs
-
-    const parentSha = entry.parentSha
-    commit.parentSha = parentSha
-
-    if (parentSha) {
-      const parentCommit = ensureCommit(commitsMap, parentSha)
-      if (!parentCommit.childrenSha.includes(sha)) {
-        parentCommit.childrenSha.push(sha)
+      if (cached.parentSha) {
+        const parentCommit = ensureCommit(commitsMap, cached.parentSha)
+        if (!parentCommit.childrenSha.includes(cached.sha)) {
+          parentCommit.childrenSha.push(cached.sha)
+        }
       }
-    }
 
-    processedCount++
+      currentSha = cached.parentSha || null
+      processedCount++
+    } else {
+      // Cache miss - need to fetch from git starting here
+      needsGitFetch = true
+      fetchFromSha = currentSha
+      break
+    }
+  }
+
+  // Phase 2: If we need more commits, fetch from git
+  if (needsGitFetch && fetchFromSha && processedCount < maxCommits) {
+    const remaining = maxCommits - processedCount
+    const logEntries = await git.log(dir, fetchFromSha, { maxCommits: remaining })
+
+    for (const entry of logEntries) {
+      const sha = entry.sha
+      const existingCommit = commitsMap.get(sha)
+
+      // If we've already seen this commit AND it's fully populated, stop loading
+      if (existingCommit && existingCommit.message) {
+        break
+      }
+
+      // Cache this commit for future calls
+      cache.setCommit({
+        sha: entry.sha,
+        message: entry.message,
+        timeMs: entry.timeMs,
+        parentSha: entry.parentSha
+      })
+
+      // Add to commitsMap
+      const commit = ensureCommit(commitsMap, sha)
+      commit.message = entry.message
+      commit.timeMs = entry.timeMs
+      commit.parentSha = entry.parentSha
+
+      if (entry.parentSha) {
+        const parentCommit = ensureCommit(commitsMap, entry.parentSha)
+        if (!parentCommit.childrenSha.includes(sha)) {
+          parentCommit.childrenSha.push(sha)
+        }
+      }
+
+      processedCount++
+    }
   }
 }
 
@@ -334,11 +386,21 @@ async function collectCommitsForRef(
   options: LogOptions = {}
 ): Promise<void> {
   const git = getGitAdapter()
+  const cache = getRepoCache(dir)
 
   const logEntries = await git.log(dir, ref, options)
 
   for (const entry of logEntries) {
     const sha = entry.sha
+
+    // Cache this commit for future calls (commits are immutable)
+    cache.setCommit({
+      sha: entry.sha,
+      message: entry.message,
+      timeMs: entry.timeMs,
+      parentSha: entry.parentSha
+    })
+
     const commit = ensureCommit(commitsMap, sha)
 
     // Always populate commit metadata (message, time, parent)

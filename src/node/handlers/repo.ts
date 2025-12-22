@@ -9,7 +9,8 @@ import {
   type Configuration,
   type RebaseOperationResponse,
   type RebaseStatusResponse,
-  type ShipItResponse
+  type ShipItResponse,
+  type SyncTrunkResponse
 } from '@shared/types'
 import { dialog, ipcMain, IpcMainEvent } from 'electron'
 import {
@@ -24,9 +25,6 @@ import {
   updateFileStageStatus,
   updatePullRequest as updatePullRequestCore
 } from '../core'
-import { parseRemoteBranch } from '../core/utils/branch-utils'
-import { smartCheckout } from '../core/utils/smart-checkout'
-import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { gitForgeService } from '../core/forge/service'
 import { getGitAdapter, supportsGetRebaseState, supportsMerge } from '../core/git-adapter'
 import { GitWatcher } from '../core/git-watcher'
@@ -37,12 +35,16 @@ import {
   skipRebaseCommit as skipRebaseCommitExec
 } from '../core/rebase-executor'
 import { createStoredSession, rebaseSessionStore } from '../core/rebase-session-store'
+import { parseRemoteBranch } from '../core/utils/branch-utils'
 import { buildRebaseIntent } from '../core/utils/build-rebase-intent'
 import { buildFullUiState } from '../core/utils/build-ui-state'
 import { buildUiWorkingTree } from '../core/utils/build-ui-working-tree'
+import { cleanupBranch } from '../core/utils/cleanup-branch'
 import { detectMergedBranches } from '../core/utils/detect-merged-branches'
+import { getTrunkBranchRef } from '../core/utils/get-trunk'
 import { getTrunkHeadSha } from '../core/utils/get-trunk-head-sha'
 import { createJobIdGenerator } from '../core/utils/job-id-generator'
+import { pullRemoteBranch, smartCheckout } from '../core/utils/smart-checkout'
 
 // ============================================================================
 // Helper to get fresh UI state
@@ -71,7 +73,12 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
 
   // Detect locally merged branches (branches whose head is ancestor of trunk)
   // This is a local git operation, so it's fast
-  const mergedBranchNames = await detectMergedBranches(repoPath, repo.branches, trunkRef, gitAdapter)
+  const mergedBranchNames = await detectMergedBranches(
+    repoPath,
+    repo.branches,
+    trunkRef,
+    gitAdapter
+  )
 
   // Build UI with local-only forge state (no PR data, just local merge detection)
   const localForgeState = { pullRequests: [], mergedBranchNames }
@@ -107,7 +114,11 @@ async function getUiState(repoPath: string, declutterTrunk?: boolean): Promise<U
       const gitRebaseState = await gitAdapter.getRebaseState(repoPath)
       if (gitRebaseState?.branch) {
         const hasConflicts = workingTreeStatus.conflicted.length > 0
-        applyRebaseStatusToStack(stack, gitRebaseState.branch, hasConflicts ? 'conflicted' : 'resolved')
+        applyRebaseStatusToStack(
+          stack,
+          gitRebaseState.branch,
+          hasConflicts ? 'conflicted' : 'resolved'
+        )
       }
     }
   }
@@ -593,6 +604,54 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
   }
 }
 
+const syncTrunk: IpcHandlerOf<'syncTrunk'> = async (
+  _event,
+  { repoPath }
+): Promise<SyncTrunkResponse> => {
+  const config: Configuration = { repoPath }
+  const gitAdapter = getGitAdapter()
+
+  // Get the list of branches to find trunk
+  const branches = await gitAdapter.listBranches(repoPath)
+  const trunkName = await getTrunkBranchRef(config, branches)
+
+  if (!trunkName) {
+    return {
+      uiState: await getUiState(repoPath),
+      status: 'error',
+      message: 'Could not determine trunk branch'
+    }
+  }
+
+  // Use pullRemoteBranch to sync trunk with origin
+  const remoteRef = `origin/${trunkName}`
+  const result = await pullRemoteBranch(repoPath, remoteRef, 'origin', trunkName)
+
+  const uiState = await getUiState(repoPath)
+
+  if (result.status === 'success') {
+    return {
+      uiState,
+      status: 'success',
+      message: `Synced ${trunkName} with origin`
+    }
+  }
+
+  if (result.status === 'conflict') {
+    return {
+      uiState,
+      status: 'conflict',
+      message: result.error ?? `${trunkName} has diverged from origin`
+    }
+  }
+
+  return {
+    uiState,
+    status: 'error',
+    message: result.error ?? 'Sync failed'
+  }
+}
+
 // ============================================================================
 // Utilities
 // ============================================================================
@@ -607,6 +666,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getForgeState, getForgeState)
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
+  ipcMain.handle(IPC_CHANNELS.syncTrunk, syncTrunk)
 
   // Rebase planning
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)

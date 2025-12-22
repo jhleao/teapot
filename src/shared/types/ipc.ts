@@ -57,6 +57,17 @@ export type ShipItResponse = {
 }
 
 /**
+ * Response type for sync trunk operations
+ */
+export type SyncTrunkResponse = {
+  uiState: UiState | null
+  /** Status of the sync operation */
+  status: 'success' | 'conflict' | 'error'
+  /** Message to display to user */
+  message?: string
+}
+
+/**
  * IPC Channel names - single source of truth for channel identifiers
  */
 export const IPC_CHANNELS = {
@@ -88,7 +99,8 @@ export const IPC_CHANNELS = {
   createPullRequest: 'createPullRequest',
   uncommit: 'uncommit',
   updatePullRequest: 'updatePullRequest',
-  shipIt: 'shipIt'
+  shipIt: 'shipIt',
+  syncTrunk: 'syncTrunk'
 } as const
 
 export const IPC_EVENTS = {
@@ -225,6 +237,10 @@ export interface IpcContract {
       branchName: string
     }
     response: ShipItResponse
+  }
+  [IPC_CHANNELS.syncTrunk]: {
+    request: { repoPath: string }
+    response: SyncTrunkResponse
   }
 }
 

@@ -71,7 +71,6 @@ export const CommitView = memo(function CommitView({
     handleCommitDotMouseDown,
     registerCommitRef,
     unregisterCommitRef,
-    commitBelowMouse,
     draggingCommitSha,
     pendingRebase
   } = useDragContext()
@@ -129,9 +128,12 @@ export const CommitView = memo(function CommitView({
     [uncommit, data.sha]
   )
 
-  const onCommitDotMouseDown = useCallback(() => {
-    handleCommitDotMouseDown(data.sha)
-  }, [handleCommitDotMouseDown, data.sha])
+  const onCommitDotMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      handleCommitDotMouseDown(data.sha, e)
+    },
+    [handleCommitDotMouseDown, data.sha]
+  )
 
   return (
     <div className={cn('w-full pl-2 whitespace-nowrap')}>
@@ -174,15 +176,15 @@ export const CommitView = memo(function CommitView({
 
       <div
         ref={commitRef}
+        data-commit-sha={data.sha}
         className={cn(
           'relative -ml-[11px] flex items-center gap-2 transition-colors select-none',
           isPartOfRebasePlan && 'bg-accent/30',
           isBeingDragged && 'bg-accent/10'
         )}
       >
-        {commitBelowMouse === data.sha && (
-          <div className="bg-accent animate-in absolute -top-px left-0 h-[3px] w-full duration-150" />
-        )}
+        {/* Drop indicator - shown/hidden via direct DOM manipulation in DragContext */}
+        <div className="drop-indicator bg-accent absolute -top-px left-0 hidden h-[3px] w-full" />
         <div className="flex items-center gap-2" onMouseDown={onCommitDotMouseDown}>
           <CommitDot
             top={showTopLine}

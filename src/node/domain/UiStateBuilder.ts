@@ -745,7 +745,7 @@ export class UiStateBuilder {
   public static applyRebaseStatusToCommits(
     stack: UiStack,
     branchName: string,
-    status: 'conflicted' | 'resolved'
+    status: 'conflicted' | 'resolved' | 'queued'
   ): void {
     for (const commit of stack.commits) {
       // Check if this commit belongs to the branch being rebased

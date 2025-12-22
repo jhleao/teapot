@@ -100,7 +100,9 @@ export const IPC_CHANNELS = {
   shipIt: 'shipIt',
   syncTrunk: 'syncTrunk',
   createBranch: 'createBranch',
-  renameBranch: 'renameBranch'
+  renameBranch: 'renameBranch',
+  resumeRebaseQueue: 'resumeRebaseQueue',
+  dismissRebaseQueue: 'dismissRebaseQueue'
 } as const
 
 export const IPC_EVENTS = {
@@ -248,6 +250,14 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.renameBranch]: {
     request: { repoPath: string; oldBranchName: string; newBranchName: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.resumeRebaseQueue]: {
+    request: { repoPath: string }
+    response: RebaseOperationResponse
+  }
+  [IPC_CHANNELS.dismissRebaseQueue]: {
+    request: { repoPath: string }
     response: UiState | null
   }
 }

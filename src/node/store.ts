@@ -1,9 +1,20 @@
-import type { LocalRepo } from '@shared/types'
+import type { LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
 import Store from 'electron-store'
+
+// Rebase session type - defined here to avoid circular imports with SessionService
+export type StoredRebaseSession = {
+  intent: RebaseIntent
+  state: RebaseState
+  version: number
+  createdAtMs: number
+  updatedAtMs: number
+  originalBranch: string
+}
 
 interface StoreSchema {
   repos: LocalRepo[]
   githubPat?: string
+  rebaseSessions: Record<string, StoredRebaseSession>
 }
 
 export class ConfigStore {
@@ -13,7 +24,8 @@ export class ConfigStore {
     this.store = new Store<StoreSchema>({
       name: 'config',
       defaults: {
-        repos: []
+        repos: [],
+        rebaseSessions: {}
       }
     })
   }
@@ -66,6 +78,29 @@ export class ConfigStore {
     const filteredRepos = repos.filter((repo) => repo.path !== path)
     this.setRepos(filteredRepos)
     return filteredRepos
+  }
+
+  // Rebase session persistence methods
+  getRebaseSession(repoPath: string): StoredRebaseSession | null {
+    const sessions = this.store.get('rebaseSessions', {})
+    return sessions[repoPath] ?? null
+  }
+
+  setRebaseSession(repoPath: string, session: StoredRebaseSession): void {
+    const sessions = this.store.get('rebaseSessions', {})
+    sessions[repoPath] = session
+    this.store.set('rebaseSessions', sessions)
+  }
+
+  deleteRebaseSession(repoPath: string): void {
+    const sessions = this.store.get('rebaseSessions', {})
+    delete sessions[repoPath]
+    this.store.set('rebaseSessions', sessions)
+  }
+
+  hasRebaseSession(repoPath: string): boolean {
+    const sessions = this.store.get('rebaseSessions', {})
+    return repoPath in sessions
   }
 }
 

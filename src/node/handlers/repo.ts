@@ -100,6 +100,17 @@ const getRebaseStatus: IpcHandlerOf<'getRebaseStatus'> = async (
   return RebaseOperation.getRebaseStatus(repoPath)
 }
 
+const resumeRebaseQueue: IpcHandlerOf<'resumeRebaseQueue'> = async (
+  _event,
+  { repoPath }
+): Promise<RebaseOperationResponse> => {
+  return RebaseOperation.resumeRebaseQueue(repoPath)
+}
+
+const dismissRebaseQueue: IpcHandlerOf<'dismissRebaseQueue'> = async (_event, { repoPath }) => {
+  return RebaseOperation.dismissRebaseQueue(repoPath)
+}
+
 // ============================================================================
 // Working Tree Handlers
 // ============================================================================
@@ -287,6 +298,8 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.abortRebase, abortRebase)
   ipcMain.handle(IPC_CHANNELS.skipRebaseCommit, skipRebaseCommit)
   ipcMain.handle(IPC_CHANNELS.getRebaseStatus, getRebaseStatus)
+  ipcMain.handle(IPC_CHANNELS.resumeRebaseQueue, resumeRebaseQueue)
+  ipcMain.handle(IPC_CHANNELS.dismissRebaseQueue, dismissRebaseQueue)
 
   // Working tree
   ipcMain.handle(IPC_CHANNELS.discardStaged, discardStaged)

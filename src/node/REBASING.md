@@ -63,3 +63,56 @@ pending → running → completed
              ↓
           aborted
 ```
+
+## Session Persistence & Recovery
+
+Sessions survive app crashes and restarts via a two-tier write-through cache:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     SessionStore                        │
+│  ┌───────────────┐         ┌─────────────────────────┐  │
+│  │ Memory (Map)  │ ←sync→  │ Disk (electron-store)   │  │
+│  │ Fast lookups  │         │ Survives restarts       │  │
+│  └───────────────┘         └─────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### API
+
+```typescript
+getSession(repoPath)      // Read (memory first, disk fallback)
+createSession(repoPath, plan, originalBranch)
+updateState(repoPath, state)
+clearSession(repoPath)
+```
+
+### Write-Through
+
+Every mutation writes to disk first, then memory:
+
+```typescript
+set(key, session) {
+  this.disk.setRebaseSession(key, session)  // Persist
+  this.memory.set(key, session)             // Cache
+}
+```
+
+### Recovery Flow
+
+```
+getSession(repoPath)
+    ↓
+Memory hit? → return
+    ↓ miss
+Load from disk → cache in memory → return
+```
+
+### Recovery Scenarios
+
+| Scenario                     | Behavior                                      |
+| ---------------------------- | --------------------------------------------- |
+| Crash during job execution   | Resume from last persisted state              |
+| Crash while awaiting-user    | Session restored, conflict still pending      |
+| Clean shutdown mid-rebase    | Session persisted, resumable on next launch   |
+| User aborts after restart    | `clearSession()` removes from memory and disk |

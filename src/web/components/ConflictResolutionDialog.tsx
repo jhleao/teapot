@@ -12,7 +12,8 @@ export function ConflictResolutionDialog(): React.JSX.Element {
 
   // Derive conflicted files from workingTree
   const conflictedFiles = uiState?.workingTree.filter((f) => f.status === 'conflicted') ?? []
-  const allResolved = conflictedFiles.length === 0
+  const unresolvedFiles = conflictedFiles.filter((f) => !f.resolved)
+  const allResolved = conflictedFiles.length === 0 || unresolvedFiles.length === 0
   const rebasingBranchName = uiState?.stack ? findRebasingBranchName(uiState.stack) : null
 
   const handleContinue = async (): Promise<void> => {
@@ -44,7 +45,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
             <span className="font-mono font-semibold">{rebasingBranchName ?? 'branch'}</span> has
             conflicts.
             <br />
-            Resolve your conflicts and add them to the git stage.
+            Resolve conflicts in your editor and save.
           </DialogDescription>
         </DialogHeader>
 
@@ -66,20 +67,12 @@ export function ConflictResolutionDialog(): React.JSX.Element {
           </div>
         </div>
 
-        {!allResolved && (
-          <>
-            <div className="text-muted-foreground px-4 py-2 text-xs">
-              {`${conflictedFiles.length} file${conflictedFiles.length > 1 ? 's' : ''} with conflicts remaining.`}
-            </div>
-
-            <div className="bg-warning/10 text-warning border-warning/30 mx-4 mb-2 flex items-start gap-2 rounded border px-2 py-1.5 text-xs">
-              <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-              <span>
-                Do NOT commit via editor. Instead stage the resolutions and then click continue
-                below when done.
-              </span>
-            </div>
-          </>
+        {conflictedFiles.length > 0 && (
+          <div className="text-muted-foreground px-4 py-2 text-xs">
+            {allResolved
+              ? `All conflicts resolved. Click Continue to proceed.`
+              : `${unresolvedFiles.length} of ${conflictedFiles.length} file${conflictedFiles.length > 1 ? 's' : ''} with conflicts remaining.`}
+          </div>
         )}
 
         <DialogFooter className="mt-2 gap-1.5 px-4 pb-3 sm:gap-1.5">
@@ -110,7 +103,11 @@ function ConflictFileItem({ file }: { file: UiWorkingTreeFile }): React.JSX.Elem
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <AlertTriangle className="text-error h-4 w-4 shrink-0" />
+      {file.resolved ? (
+        <CheckCircle className="h-4 w-4 shrink-0 text-green-600" />
+      ) : (
+        <AlertTriangle className="text-error h-4 w-4 shrink-0" />
+      )}
       <span className="flex-1 truncate">
         {directoryPath && <span className="text-muted-foreground">{directoryPath}</span>}
         <span>{filename}</span>

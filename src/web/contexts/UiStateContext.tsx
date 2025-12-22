@@ -28,6 +28,8 @@ interface UiStateContextValue {
   continueRebase: () => Promise<void>
   abortRebase: () => Promise<void>
   skipRebaseCommit: () => Promise<void>
+  resumeRebaseQueue: () => Promise<void>
+  dismissRebaseQueue: () => Promise<void>
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
   cleanupBranch: (params: { branchName: string }) => Promise<void>
@@ -43,6 +45,8 @@ interface UiStateContextValue {
   isRebasingWithConflicts: boolean
   /** True when the current branch is a trunk branch (main/master). Amending on trunk is dangerous. */
   isOnTrunk: boolean
+  /** Branches that are pending in queue after external continue */
+  queuedBranches: string[]
 }
 
 const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
@@ -202,6 +206,21 @@ export function UiStateProvider({
     }
   }, [repoPath])
 
+  const resumeRebaseQueue = useCallback(async () => {
+    if (!repoPath) return
+    const result = await window.api.resumeRebaseQueue({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Resume rebase queue failed:', result.error)
+    }
+  }, [repoPath])
+
+  const dismissRebaseQueue = useCallback(async () => {
+    if (!repoPath) return
+    const result = await window.api.dismissRebaseQueue({ repoPath })
+    if (result) setUiState(result)
+  }, [repoPath])
+
   const checkout = useCallback(
     async (params: { ref: string }) => {
       if (!repoPath) return
@@ -342,6 +361,12 @@ export function UiStateProvider({
     [uiState?.stack]
   )
 
+  // Find branches that are pending in queue after external continue
+  const queuedBranches = useMemo(
+    () => (uiState?.stack ? findQueuedBranches(uiState.stack) : []),
+    [uiState?.stack]
+  )
+
   const contextValue = useMemo<UiStateContextValue>(
     () => ({
       toggleTheme,
@@ -358,6 +383,8 @@ export function UiStateProvider({
       continueRebase,
       abortRebase,
       skipRebaseCommit,
+      resumeRebaseQueue,
+      dismissRebaseQueue,
       checkout,
       deleteBranch,
       cleanupBranch,
@@ -370,7 +397,8 @@ export function UiStateProvider({
       syncTrunk,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
-      isOnTrunk
+      isOnTrunk,
+      queuedBranches
     }),
     [
       toggleTheme,
@@ -387,6 +415,8 @@ export function UiStateProvider({
       continueRebase,
       abortRebase,
       skipRebaseCommit,
+      resumeRebaseQueue,
+      dismissRebaseQueue,
       checkout,
       deleteBranch,
       cleanupBranch,
@@ -399,7 +429,8 @@ export function UiStateProvider({
       syncTrunk,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
-      isOnTrunk
+      isOnTrunk,
+      queuedBranches
     ]
   )
 
@@ -447,4 +478,22 @@ function isCurrentBranchTrunk(stack: UiStack): boolean {
     }
   }
   return false
+}
+
+/**
+ * Finds branches that have 'queued' rebase status (pending in queue after external continue).
+ */
+function findQueuedBranches(stack: UiStack): string[] {
+  const branches: string[] = []
+  function traverse(s: UiStack) {
+    for (const commit of s.commits) {
+      if (commit.rebaseStatus === 'queued') {
+        const branchName = commit.branches[0]?.name
+        if (branchName) branches.push(branchName)
+      }
+      for (const spinoff of commit.spinoffs) traverse(spinoff)
+    }
+  }
+  traverse(stack)
+  return branches
 }

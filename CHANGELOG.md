@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/jhleao/teapot/compare/v0.3.0...v0.3.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* release tagging ([1d99d92](https://github.com/jhleao/teapot/commit/1d99d923411c252c806e3aaae77b83e2dbe2f502))
+
 ## [0.3.0](https://github.com/jhleao/teapot/compare/v0.2.3...v0.3.0) (2025-12-22)
 
 

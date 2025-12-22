@@ -1,9 +1,8 @@
 /**
- * Tests for smart checkout utility
+ * Tests for branch checkout
  *
- * Smart checkout handles:
- * 1. Remote branch checkout (origin/main → checkout/create main + ff if possible)
- * 2. Local branch checkout with tracking branch sync
+ * Checkout is now a simple operation that just calls git checkout.
+ * No smart routing, no fetching, no fast-forwarding.
  */
 
 import { execSync } from 'child_process'
@@ -24,7 +23,7 @@ vi.mock('../../store', () => ({
   }
 }))
 
-describe('smartCheckout', () => {
+describe('BranchOperation.checkout', () => {
   let repoPath: string
   let adapter: SimpleGitAdapter
 
@@ -44,49 +43,20 @@ describe('smartCheckout', () => {
     it('checks out existing local branch', async () => {
       await createBranch(repoPath, 'feature', false)
 
-      const result = await BranchOperation.smartCheckout(repoPath, 'feature')
+      const result = await BranchOperation.checkout(repoPath, 'feature')
 
       expect(result.success).toBe(true)
-      expect(result.localBranch).toBe('feature')
       expect(await adapter.currentBranch(repoPath)).toBe('feature')
     })
 
     it('returns error for non-existent branch', async () => {
-      const result = await BranchOperation.smartCheckout(repoPath, 'nonexistent')
+      const result = await BranchOperation.checkout(repoPath, 'nonexistent')
 
       expect(result.success).toBe(false)
       expect(result.error).toBeDefined()
     })
-  })
 
-  describe('remote branch checkout (simulated)', () => {
-    // For these tests, we simulate a remote by:
-    // 1. Creating a commit on main
-    // 2. Creating a branch to simulate remote state
-    // Note: Full remote tests would need a bare remote repo setup
-
-    it('creates local branch from remote-like ref and checks it out', async () => {
-      // Create initial state on main
-      await createCommit(repoPath, { 'main.txt': 'main content' }, 'main commit')
-
-      // Simulate a remote branch by creating origin/feature locally
-      // In a real scenario this would be a remote tracking branch
-      await createBranch(repoPath, 'remote-feature', false)
-      await adapter.checkout(repoPath, 'remote-feature')
-      await createCommit(repoPath, { 'feature.txt': 'feature work' }, 'feature commit')
-      await adapter.checkout(repoPath, 'main')
-
-      // Now smartCheckout should handle checking out remote-feature
-      const result = await BranchOperation.smartCheckout(repoPath, 'remote-feature')
-
-      expect(result.success).toBe(true)
-      expect(await adapter.currentBranch(repoPath)).toBe('remote-feature')
-    })
-  })
-
-  describe('fast-forward sync', () => {
-    it('fast-forwards local branch when behind target', async () => {
-      // Create feature branch
+    it('checks out branch with commits', async () => {
       await createBranch(repoPath, 'feature', true)
       const featureHead = await createCommit(
         repoPath,
@@ -94,11 +64,9 @@ describe('smartCheckout', () => {
         'feature commit'
       )
 
-      // Go back to main (main is behind feature)
       await adapter.checkout(repoPath, 'main')
 
-      // Smart checkout to feature should work directly
-      const result = await BranchOperation.smartCheckout(repoPath, 'feature')
+      const result = await BranchOperation.checkout(repoPath, 'feature')
 
       expect(result.success).toBe(true)
       expect(await adapter.currentBranch(repoPath)).toBe('feature')
@@ -107,28 +75,24 @@ describe('smartCheckout', () => {
   })
 
   describe('error handling', () => {
-    it('handles dirty working tree gracefully', async () => {
+    it('handles dirty working tree gracefully when no conflicts', async () => {
       await createBranch(repoPath, 'feature', false)
 
       // Create uncommitted change
       execSync('echo "dirty" > dirty.txt', { cwd: repoPath })
 
       // Should still work for simple checkout (git handles this)
-      const result = await BranchOperation.smartCheckout(repoPath, 'feature')
+      const result = await BranchOperation.checkout(repoPath, 'feature')
 
       // Git allows checkout if files don't conflict
       expect(result.success).toBe(true)
     })
 
     it('returns descriptive error for invalid ref', async () => {
-      const result = await BranchOperation.smartCheckout(repoPath, 'definitely-not-a-branch-12345')
+      const result = await BranchOperation.checkout(repoPath, 'definitely-not-a-branch-12345')
 
       expect(result.success).toBe(false)
       expect(result.error).toBeDefined()
-      // Error message should indicate the branch/ref doesn't exist
-      expect(result.error?.includes('not found') || result.error?.includes('did not match')).toBe(
-        true
-      )
     })
   })
 })

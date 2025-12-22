@@ -17,8 +17,6 @@ import {
   type SyncTrunkResponse
 } from '@shared/types'
 
-import { BranchUtils } from '../domain'
-
 import { gitForgeService } from '../services/ForgeService'
 import { GitWatcher } from '../services/GitWatcherService'
 
@@ -137,18 +135,13 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (
   _event,
   { repoPath, ref }
 ): Promise<CheckoutResponse> => {
-  const result = await BranchOperation.smartCheckout(repoPath, ref)
+  const result = await BranchOperation.checkout(repoPath, ref)
   if (!result.success) {
     throw new Error(result.error || 'Checkout failed')
   }
 
   const uiState = await UiStateOperation.getUiState(repoPath)
-
-  // Generate message for remote checkouts
-  const parsed = BranchUtils.parseRemoteBranch(ref)
-  const message = parsed ? `Synced to ${parsed.localBranch}` : undefined
-
-  return { uiState, message }
+  return { uiState }
 }
 
 const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (

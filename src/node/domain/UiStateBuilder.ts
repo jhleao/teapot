@@ -230,6 +230,28 @@ export class UiStateBuilder {
       .sort((a, b) => a.path.localeCompare(b.path))
   }
 
+  /**
+   * Recursively finds commits belonging to a branch and marks them with the given rebase status.
+   * Used to show which commits are currently being rebased and their conflict state.
+   */
+  public static applyRebaseStatusToCommits(
+    stack: UiStack,
+    branchName: string,
+    status: 'conflicted' | 'resolved' | 'queued'
+  ): void {
+    for (const commit of stack.commits) {
+      // Check if this commit belongs to the branch being rebased
+      if (commit.branches.some((b) => b.name === branchName)) {
+        commit.rebaseStatus = status
+      }
+
+      // Recurse into spinoffs
+      for (const spinoff of commit.spinoffs) {
+        UiStateBuilder.applyRebaseStatusToCommits(spinoff, branchName, status)
+      }
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // Private: Branch selection
   // ─────────────────────────────────────────────────────────────────────────
@@ -732,31 +754,5 @@ export class UiStateBuilder {
     node.children.forEach((child) =>
       UiStateBuilder.applyIntentTarget(commits, child, commit.sha, allocateSyntheticTime)
     )
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Public: Rebase status helpers
-  // ─────────────────────────────────────────────────────────────────────────
-
-  /**
-   * Recursively finds commits belonging to a branch and marks them with the given rebase status.
-   * Used to show which commits are currently being rebased and their conflict state.
-   */
-  public static applyRebaseStatusToCommits(
-    stack: UiStack,
-    branchName: string,
-    status: 'conflicted' | 'resolved' | 'queued'
-  ): void {
-    for (const commit of stack.commits) {
-      // Check if this commit belongs to the branch being rebased
-      if (commit.branches.some((b) => b.name === branchName)) {
-        commit.rebaseStatus = status
-      }
-
-      // Recurse into spinoffs
-      for (const spinoff of commit.spinoffs) {
-        UiStateBuilder.applyRebaseStatusToCommits(spinoff, branchName, status)
-      }
-    }
   }
 }

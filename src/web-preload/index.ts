@@ -34,7 +34,6 @@ const generatedApi = generateApi(IPC_CHANNELS)
 export const api = {
   ...generatedApi,
   onRepoChange: (callback: () => void) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subscription = (_event: any): void => callback()
     ipcRenderer.on(IPC_EVENTS.repoChange, subscription)
     return (): void => {
@@ -42,7 +41,6 @@ export const api = {
     }
   },
   onRepoError: (callback: (error: string) => void) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const subscription = (_event: any, error: string): void => callback(error)
     ipcRenderer.on(IPC_EVENTS.repoError, subscription)
     return (): void => {

@@ -32,6 +32,7 @@ interface UiStateContextValue {
   deleteBranch: (params: { branchName: string }) => Promise<void>
   cleanupBranch: (params: { branchName: string }) => Promise<void>
   createBranch: (params: { branchName?: string; commitSha: string }) => Promise<void>
+  renameBranch: (params: { oldBranchName: string; newBranchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
@@ -242,6 +243,14 @@ export function UiStateProvider({
     [repoPath, callApi]
   )
 
+  const renameBranch = useCallback(
+    async (params: { oldBranchName: string; newBranchName: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.renameBranch({ repoPath, ...params }))
+    },
+    [repoPath, callApi]
+  )
+
   const createPullRequest = useCallback(
     async (params: { headBranch: string }) => {
       if (!repoPath) return
@@ -353,6 +362,7 @@ export function UiStateProvider({
       deleteBranch,
       cleanupBranch,
       createBranch,
+      renameBranch,
       createPullRequest,
       updatePullRequest,
       uncommit,
@@ -381,6 +391,7 @@ export function UiStateProvider({
       deleteBranch,
       cleanupBranch,
       createBranch,
+      renameBranch,
       createPullRequest,
       updatePullRequest,
       uncommit,

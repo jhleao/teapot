@@ -168,6 +168,14 @@ const createBranchHandler: IpcHandlerOf<'createBranch'> = async (
   return UiStateOperation.getUiState(repoPath)
 }
 
+const renameBranchHandler: IpcHandlerOf<'renameBranch'> = async (
+  _event,
+  { repoPath, oldBranchName, newBranchName }
+) => {
+  await BranchOperation.rename(repoPath, oldBranchName, newBranchName)
+  return UiStateOperation.getUiState(repoPath)
+}
+
 const syncTrunk: IpcHandlerOf<'syncTrunk'> = async (
   _event,
   { repoPath }
@@ -291,6 +299,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.deleteBranch, deleteBranchHandler)
   ipcMain.handle(IPC_CHANNELS.cleanupBranch, cleanupBranchHandler)
   ipcMain.handle(IPC_CHANNELS.createBranch, createBranchHandler)
+  ipcMain.handle(IPC_CHANNELS.renameBranch, renameBranchHandler)
 
   // GitHub
   ipcMain.handle(IPC_CHANNELS.createPullRequest, createPullRequest)

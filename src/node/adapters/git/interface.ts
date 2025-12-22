@@ -169,6 +169,15 @@ export interface GitAdapter {
   deleteBranch(dir: string, ref: string): Promise<void>
 
   /**
+   * Rename a branch
+   *
+   * @param dir - Repository directory path
+   * @param oldRef - Current branch name
+   * @param newRef - New branch name
+   */
+  renameBranch(dir: string, oldRef: string, newRef: string): Promise<void>
+
+  /**
    * Checkout a branch or commit
    *
    * @param dir - Repository directory path

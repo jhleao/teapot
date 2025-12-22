@@ -1,7 +1,8 @@
 import type { UiBranch } from '@shared/types'
-import React, { memo, useCallback } from 'react'
+import React, { memo, useCallback, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
+import { RenameBranchDialog } from './RenameBranchDialog'
 
 export const BranchBadge = memo(function BranchBadge({
   data
@@ -9,6 +10,7 @@ export const BranchBadge = memo(function BranchBadge({
   data: UiBranch
 }): React.JSX.Element {
   const { checkout, deleteBranch, isWorkingTreeDirty } = useUiStateContext()
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -27,6 +29,10 @@ export const BranchBadge = memo(function BranchBadge({
     deleteBranch({ branchName: data.name })
   }, [deleteBranch, data.name])
 
+  const handleRename = useCallback(() => {
+    setIsRenameDialogOpen(true)
+  }, [])
+
   return (
     <>
       <ContextMenu
@@ -34,6 +40,9 @@ export const BranchBadge = memo(function BranchBadge({
         content={
           <>
             <ContextMenuItem onClick={handleCopy}>Copy branch name</ContextMenuItem>
+            <ContextMenuItem onClick={handleRename} disabled={data.isRemote}>
+              Rename branch
+            </ContextMenuItem>
             <ContextMenuItem onClick={handleDelete} disabled={data.isCurrent}>
               Delete branch
             </ContextMenuItem>
@@ -62,6 +71,11 @@ export const BranchBadge = memo(function BranchBadge({
           {data.name}
         </span>
       </ContextMenu>
+      <RenameBranchDialog
+        open={isRenameDialogOpen}
+        onOpenChange={setIsRenameDialogOpen}
+        branchName={data.name}
+      />
     </>
   )
 })

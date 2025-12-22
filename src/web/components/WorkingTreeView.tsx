@@ -16,10 +16,12 @@ import { CommitDot } from './SvgPaths'
 
 function SelectAllToggle({
   files,
-  onToggle
+  onToggle,
+  isLoading
 }: {
   files: UiWorkingTreeFile[]
   onToggle: () => void
+  isLoading?: boolean
 }) {
   const stagedCount = files.filter(
     (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
@@ -34,7 +36,7 @@ function SelectAllToggle({
 
   return (
     <div className="mb-2 flex items-center gap-2">
-      <Checkbox state={checkboxState} onClick={onToggle} />
+      <Checkbox state={checkboxState} onClick={onToggle} isLoading={isLoading} />
       <span className="text-muted-foreground text-sm">
         {files.length} file{files.length !== 1 ? 's' : ''} changed
       </span>
@@ -154,6 +156,8 @@ export const WorkingTreeView = memo(function WorkingTreeView({
   const [newBranchName, setNewBranchName] = useState('')
   const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
+  const [loadingFiles, setLoadingFiles] = useState<Set<string>>(new Set())
+  const [isSelectAllLoading, setIsSelectAllLoading] = useState(false)
   const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts, isOnTrunk } =
     useUiStateContext()
 
@@ -172,10 +176,19 @@ export const WorkingTreeView = memo(function WorkingTreeView({
       // If it's unstaged or partially staged, we stage (fully).
       const shouldStage = file.stageStatus !== 'staged'
 
-      await setFilesStageStatus({
-        staged: shouldStage,
-        files: [file.path]
-      })
+      setLoadingFiles((prev) => new Set(prev).add(file.path))
+      try {
+        await setFilesStageStatus({
+          staged: shouldStage,
+          files: [file.path]
+        })
+      } finally {
+        setLoadingFiles((prev) => {
+          const next = new Set(prev)
+          next.delete(file.path)
+          return next
+        })
+      }
     },
     [setFilesStageStatus]
   )
@@ -186,23 +199,28 @@ export const WorkingTreeView = memo(function WorkingTreeView({
     ).length
     const allStaged = stagedCount === sortedFiles.length && sortedFiles.length > 0
 
-    if (allStaged) {
-      // Unstage all
-      await setFilesStageStatus({
-        staged: false,
-        files: sortedFiles.map((file) => file.path)
-      })
-    } else {
-      // Stage all (including partially staged)
-      // We want to stage everything that isn't fully staged
-      const filesToStage = sortedFiles
-        .filter((file) => file.stageStatus !== 'staged')
-        .map((file) => file.path)
+    setIsSelectAllLoading(true)
+    try {
+      if (allStaged) {
+        // Unstage all
+        await setFilesStageStatus({
+          staged: false,
+          files: sortedFiles.map((file) => file.path)
+        })
+      } else {
+        // Stage all (including partially staged)
+        // We want to stage everything that isn't fully staged
+        const filesToStage = sortedFiles
+          .filter((file) => file.stageStatus !== 'staged')
+          .map((file) => file.path)
 
-      await setFilesStageStatus({
-        staged: true,
-        files: filesToStage
-      })
+        await setFilesStageStatus({
+          staged: true,
+          files: filesToStage
+        })
+      }
+    } finally {
+      setIsSelectAllLoading(false)
     }
   }, [sortedFiles, setFilesStageStatus])
 
@@ -288,10 +306,19 @@ export const WorkingTreeView = memo(function WorkingTreeView({
       </div>
       <div className="flex flex-1 flex-col py-3 pr-3">
         <div className="text-muted-foreground mb-2 text-sm font-semibold">Working Tree</div>
-        <SelectAllToggle files={sortedFiles} onToggle={handleSelectAllToggle} />
+        <SelectAllToggle
+          files={sortedFiles}
+          onToggle={handleSelectAllToggle}
+          isLoading={isSelectAllLoading}
+        />
         <div className="flex flex-col gap-2">
           {sortedFiles.map((file, index) => (
-            <FileItem key={`${file.path}-${index}`} file={file} onToggle={handleFileToggle} />
+            <FileItem
+              key={`${file.path}-${index}`}
+              file={file}
+              onToggle={handleFileToggle}
+              isLoading={loadingFiles.has(file.path) || isSelectAllLoading}
+            />
           ))}
         </div>
         <CommitForm

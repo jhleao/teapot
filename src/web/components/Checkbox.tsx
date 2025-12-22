@@ -1,8 +1,24 @@
-import { Check, Minus, Square } from 'lucide-react'
+import { Check, Loader2, Minus, Square } from 'lucide-react'
 
 export type CheckboxState = 'checked' | 'unchecked' | 'indeterminate'
 
-export function Checkbox({ state, onClick }: { state: CheckboxState; onClick: () => void }) {
+export function Checkbox({
+  state,
+  onClick,
+  isLoading
+}: {
+  state: CheckboxState
+  onClick: () => void
+  isLoading?: boolean
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex h-5 w-5 items-center justify-center">
+        <Loader2 className="text-muted-foreground h-4 w-4 animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <button onClick={onClick} className="cursor-pointer" type="button">
       {state === 'checked' && (

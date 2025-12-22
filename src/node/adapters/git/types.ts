@@ -188,6 +188,7 @@ export type RebaseResult = {
   success: boolean
   conflicts: string[]
   currentCommit?: string
+  error?: string
 }
 
 /**

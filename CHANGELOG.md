@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/jhleao/teapot/compare/v0.3.1...v0.4.0) (2025-12-22)
+
+
+### Features
+
+* auto updater ([1e50258](https://github.com/jhleao/teapot/commit/1e502580d42534f8a34e59bd741ea672efd75fa1))
+
 ## [0.3.1](https://github.com/jhleao/teapot/compare/v0.3.0...v0.3.1) (2025-12-22)
 
 

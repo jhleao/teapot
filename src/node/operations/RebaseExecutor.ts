@@ -123,6 +123,9 @@ export class RebaseExecutor {
     const session = await SessionService.getSession(repoPath)
     if (!session) {
       const result = await git.rebaseContinue(repoPath)
+      if (result.error) {
+        return { status: 'error', message: result.error }
+      }
       if (result.success) {
         return { status: 'completed', finalState: this.createMinimalState() }
       }
@@ -138,6 +141,10 @@ export class RebaseExecutor {
     }
 
     const result = await git.rebaseContinue(repoPath)
+
+    if (result.error) {
+      return { status: 'error', message: result.error, state: session.state }
+    }
 
     if (!result.success && result.conflicts.length > 0) {
       const activeJobId = session.state.queue.activeJobId

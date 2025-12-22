@@ -1,6 +1,7 @@
 import type { UiStack } from '@shared/types'
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -14,7 +15,6 @@ import {
   findClosestCommitBelowMouse,
   type CommitBoundingBox
 } from '../utils/dragging'
-import { throttle } from '../utils/throttle'
 import { useUiStateContext } from './UiStateContext'
 
 interface DragState {
@@ -34,8 +34,6 @@ interface PendingRebase {
 
 interface DragContextValue {
   draggingCommitSha: string | null
-  commitBelowMouse: string | null
-  mousePosition: { x: number; y: number } | null
   draggedBranchCount: number
   /** Branch name of hovered commit, or short SHA if no branch */
   targetLabel: string | null
@@ -43,7 +41,7 @@ interface DragContextValue {
   pendingRebase: PendingRebase | null
   registerCommitRef: (sha: string, ref: RefObject<HTMLDivElement>) => void
   unregisterCommitRef: (sha: string) => void
-  handleCommitDotMouseDown: (sha: string) => void
+  handleCommitDotMouseDown: (sha: string, e: React.MouseEvent) => void
 }
 
 const DragContext = createContext<DragContextValue | undefined>(undefined)
@@ -53,7 +51,6 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const [draggingCommitSha, setDraggingCommitSha] = useState<string | null>(null)
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
-  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null)
   const [isRebaseLoading, setIsRebaseLoading] = useState(false)
   const [pendingRebase, setPendingRebase] = useState<PendingRebase | null>(null)
 
@@ -66,25 +63,36 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const commitRefsMap = useRef<Map<string, RefObject<HTMLDivElement>>>(new Map())
 
-  const registerCommitRef = (sha: string, ref: RefObject<HTMLDivElement>): void => {
+  const registerCommitRef = useCallback((sha: string, ref: RefObject<HTMLDivElement>): void => {
     commitRefsMap.current.set(sha, ref)
-  }
+  }, [])
 
-  const unregisterCommitRef = (sha: string): void => {
+  const unregisterCommitRef = useCallback((sha: string): void => {
     commitRefsMap.current.delete(sha)
-  }
+  }, [])
 
-  const handleCommitDotMouseDown = (sha: string): void => {
-    if (isWorkingTreeDirty || isRebaseLoading) return
-    dragState.current.potentialDragSha = sha
-  }
+  const handleCommitDotMouseDown = useCallback(
+    (sha: string, e: React.MouseEvent): void => {
+      if (e.button !== 0) return // Only left-click initiates drag
+      if (isWorkingTreeDirty || isRebaseLoading) return
+
+      // Don't allow dragging commits without branches
+      const stack = uiState?.stack
+      if (!stack) return
+      const ctx = findCommitInStack(sha, stack)
+      if (!ctx || ctx.commit.branches.length === 0) return
+
+      dragState.current.potentialDragSha = sha
+    },
+    [isWorkingTreeDirty, isRebaseLoading, uiState?.stack]
+  )
 
   // Mouse event handlers for drag operation
   useEffect(() => {
     const stack = uiState?.stack
     if (!stack) return
 
-    const maybeStartDrag = (e: MouseEvent): void => {
+    const maybeStartDrag = (): void => {
       const state = dragState.current
       if (!state.potentialDragSha || draggingCommitSha) return
 
@@ -92,14 +100,12 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       state.originalParentSha = findParentCommitSha(state.potentialDragSha, stack)
       state.forbiddenDropTargets = collectDescendantShas(state.potentialDragSha, stack)
       setDraggingCommitSha(state.potentialDragSha)
-      setMousePosition({ x: e.clientX, y: e.clientY })
     }
 
     const updateDropTarget = (e: MouseEvent): void => {
       if (!draggingCommitSha) return
 
       const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets } = dragState.current
-      setMousePosition({ x: e.clientX, y: e.clientY })
 
       if (frozenBoundingBoxes.length > 0) {
         const candidate = findClosestCommitBelowMouse(e.clientY, frozenBoundingBoxes)
@@ -147,11 +153,10 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
       setDraggingCommitSha(null)
       setCommitBelowMouse(null)
-      setMousePosition(null)
     }
 
     const handleMouseMove = (e: MouseEvent): void => {
-      maybeStartDrag(e)
+      maybeStartDrag()
       updateDropTarget(e)
     }
 
@@ -176,12 +181,24 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       resetDragState()
     }
 
-    const throttledMouseMove = throttle(handleMouseMove, 50)
-    window.addEventListener('mousemove', throttledMouseMove)
+    let rafId: number | null = null
+    let lastEvent: MouseEvent | null = null
+
+    const rafMouseMove = (e: MouseEvent): void => {
+      lastEvent = e
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        if (lastEvent) handleMouseMove(lastEvent)
+      })
+    }
+
+    window.addEventListener('mousemove', rafMouseMove)
     window.addEventListener('mouseup', handleMouseUp)
     return () => {
-      window.removeEventListener('mousemove', throttledMouseMove)
+      window.removeEventListener('mousemove', rafMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
+      if (rafId !== null) cancelAnimationFrame(rafId)
     }
   }, [uiState?.stack, submitRebaseIntent, draggingCommitSha])
 
@@ -210,6 +227,25 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     }
   }, [isRebaseLoading])
 
+  // Show/hide drop indicator via direct DOM manipulation (avoids CommitView re-renders)
+  useEffect(() => {
+    const targetElement = commitBelowMouse
+      ? document.querySelector(`[data-commit-sha="${commitBelowMouse}"] .drop-indicator`)
+      : null
+
+    if (targetElement instanceof HTMLElement) {
+      targetElement.classList.remove('hidden')
+      targetElement.classList.add('animate-in')
+    }
+
+    return () => {
+      if (targetElement instanceof HTMLElement) {
+        targetElement.classList.add('hidden')
+        targetElement.classList.remove('animate-in')
+      }
+    }
+  }, [commitBelowMouse])
+
   const draggedBranchCount = useMemo(() => {
     if (!draggingCommitSha || !uiState?.stack) return 0
     return countBranchesFromCommit(draggingCommitSha, uiState.stack)
@@ -221,24 +257,30 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     return branchName ?? commitBelowMouse.slice(0, 7)
   }, [commitBelowMouse, uiState?.stack])
 
-  return (
-    <DragContext.Provider
-      value={{
-        draggingCommitSha,
-        commitBelowMouse,
-        mousePosition,
-        draggedBranchCount,
-        targetLabel,
-        isRebaseLoading,
-        pendingRebase,
-        registerCommitRef,
-        unregisterCommitRef,
-        handleCommitDotMouseDown
-      }}
-    >
-      {children}
-    </DragContext.Provider>
+  const contextValue = useMemo<DragContextValue>(
+    () => ({
+      draggingCommitSha,
+      draggedBranchCount,
+      targetLabel,
+      isRebaseLoading,
+      pendingRebase,
+      registerCommitRef,
+      unregisterCommitRef,
+      handleCommitDotMouseDown
+    }),
+    [
+      draggingCommitSha,
+      draggedBranchCount,
+      targetLabel,
+      isRebaseLoading,
+      pendingRebase,
+      registerCommitRef,
+      unregisterCommitRef,
+      handleCommitDotMouseDown
+    ]
   )
+
+  return <DragContext.Provider value={contextValue}>{children}</DragContext.Provider>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

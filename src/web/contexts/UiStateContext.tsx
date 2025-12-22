@@ -11,10 +11,12 @@ interface UiStateContextValue {
   uiState: UiState | null
   repoError: string | null
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
-  commit: (params: { message: string }) => Promise<void>
+  commit: (params: { message: string; newBranchName?: string }) => Promise<void>
   amend: (params: { message?: string }) => Promise<void>
   discardStaged: () => Promise<void>
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
+  prefetchRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<UiState | null>
+  applyPrefetchedState: (state: UiState) => void
   confirmRebaseIntent: () => Promise<void>
   cancelRebaseIntent: () => Promise<void>
   continueRebase: () => Promise<void>
@@ -27,6 +29,7 @@ interface UiStateContextValue {
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string }) => Promise<void>
+  syncTrunk: () => Promise<void>
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
@@ -120,7 +123,7 @@ export function UiStateProvider({
   )
 
   const commit = useCallback(
-    async (params: { message: string }) => {
+    async (params: { message: string; newBranchName?: string }) => {
       if (!repoPath) return
       await callApi(window.api.commit({ repoPath, ...params }))
     },
@@ -147,6 +150,18 @@ export function UiStateProvider({
     },
     [repoPath, callApi]
   )
+
+  const prefetchRebaseIntent = useCallback(
+    async (params: { headSha: string; baseSha: string }): Promise<UiState | null> => {
+      if (!repoPath) return null
+      return window.api.submitRebaseIntent({ repoPath, ...params })
+    },
+    [repoPath]
+  )
+
+  const applyPrefetchedState = useCallback((state: UiState): void => {
+    setUiState(state)
+  }, [])
 
   const confirmRebaseIntent = useCallback(async () => {
     if (!repoPath) return
@@ -274,6 +289,27 @@ export function UiStateProvider({
     [repoPath, refreshForge]
   )
 
+  const syncTrunk = useCallback(async () => {
+    if (!repoPath) return
+    try {
+      const result = await window.api.syncTrunk({ repoPath })
+      if (result.uiState) setUiState(result.uiState)
+      if (result.status === 'success' && result.message) {
+        toast.success(result.message)
+      } else if (result.status === 'conflict' && result.message) {
+        toast.warning(result.message)
+      } else if (result.status === 'error' && result.message) {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      log.error('Sync trunk failed:', error)
+      toast.error('Sync trunk failed', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
+  }, [repoPath])
+
   const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
 
   // Check if any commit in the stack has 'conflicted' or 'resolved' status
@@ -294,6 +330,8 @@ export function UiStateProvider({
         amend,
         discardStaged,
         submitRebaseIntent,
+        prefetchRebaseIntent,
+        applyPrefetchedState,
         confirmRebaseIntent,
         cancelRebaseIntent,
         continueRebase,
@@ -306,6 +344,7 @@ export function UiStateProvider({
         updatePullRequest,
         uncommit,
         shipIt,
+        syncTrunk,
         isWorkingTreeDirty,
         isRebasingWithConflicts,
         isOnTrunk

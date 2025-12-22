@@ -35,7 +35,7 @@ export function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
       >
         <span
           onDoubleClick={handleDoubleClick}
-          className={`inline-flex cursor-pointer items-center rounded-lg px-2 py-1 text-xs font-medium select-none ${
+          className={`inline-flex items-center rounded-lg px-2 py-1 text-xs font-medium whitespace-nowrap select-none ${
             data.isCurrent
               ? 'bg-accent text-accent-foreground border-accent-border border'
               : data.isRemote

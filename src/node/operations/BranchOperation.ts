@@ -66,6 +66,16 @@ export class BranchOperation {
   }
 
   /**
+   * Creates a new branch at the specified commit.
+   * If branchName is not provided, generates one from the commit SHA.
+   */
+  static async create(repoPath: string, commitSha: string, branchName?: string): Promise<void> {
+    const git = getGitAdapter()
+    const name = branchName || `branch-${commitSha.slice(0, 7)}`
+    await git.branch(repoPath, name, { startPoint: commitSha, checkout: false })
+  }
+
+  /**
    * Deletes a local branch.
    */
   static async delete(repoPath: string, branchName: string): Promise<void> {

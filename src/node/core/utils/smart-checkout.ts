@@ -3,7 +3,7 @@
  *
  * Handles intelligent checkout behavior for both local and remote branches:
  * - Local branches: Direct checkout
- * - Remote branches: Fetch, create local tracking branch, fast-forward sync
+ * - Remote branches: Fetch, fast-forward/create local tracking branch, then checkout
  *
  * The goal is to provide a seamless UX when checking out remote branches
  * without leaving the user on a potentially stale local branch.
@@ -22,9 +22,8 @@ import { branchExists, canFastForward, parseRemoteBranch } from './branch-utils'
  * - Simple checkout
  *
  * For remote branches (e.g., origin/feature):
- * 1. If local branch exists and can fast-forward to remote → checkout + ff
- * 2. If local branch exists but diverged → just checkout (user decides)
- * 3. If local branch doesn't exist → create from remote and checkout
+ * - First pulls (fast-forwards or creates) the local branch from remote
+ * - Then checks out the local branch
  *
  * @param repoPath - Repository path
  * @param ref - Branch reference (local or remote)
@@ -39,7 +38,18 @@ export async function smartCheckout(
 
   if (parsed) {
     // This is a remote branch (e.g., origin/main)
-    return checkoutRemoteBranch(repoPath, ref, parsed.remote, parsed.localBranch)
+    // First pull (ff or create) the local branch, then checkout
+    const pullResult = await pullRemoteBranch(repoPath, ref, parsed.remote, parsed.localBranch)
+
+    if (pullResult.status !== 'success') {
+      return {
+        success: false,
+        error: pullResult.error ?? `Pull failed with status: ${pullResult.status}`
+      }
+    }
+
+    // Now checkout the local branch
+    return checkoutLocalBranch(repoPath, parsed.localBranch)
   }
 
   // Local branch checkout
@@ -48,8 +58,12 @@ export async function smartCheckout(
 
 /**
  * Checkout a local branch.
+ *
+ * @param repoPath - Repository path
+ * @param branchName - Name of the local branch to checkout
+ * @returns Result of the checkout operation
  */
-async function checkoutLocalBranch(
+export async function checkoutLocalBranch(
   repoPath: string,
   branchName: string
 ): Promise<RemoteBranchCheckoutResult> {
@@ -80,7 +94,7 @@ async function checkoutLocalBranch(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    log.error(`[smartCheckout] Failed to checkout ${branchName}:`, error)
+    log.error(`[checkoutLocalBranch] Failed to checkout ${branchName}:`, error)
 
     return {
       success: false,
@@ -89,16 +103,27 @@ async function checkoutLocalBranch(
   }
 }
 
+export type PullRemoteBranchResult = {
+  status: 'success' | 'conflict' | 'error'
+  error?: string
+}
+
 /**
- * Checkout a remote branch, optionally creating/updating local tracking branch.
- * Implements all-or-nothing: checks ff-ability BEFORE checkout and rolls back on failure.
+ * Pull a remote branch by fast-forwarding or creating the corresponding local branch.
+ *
+ * This function fetches from the remote and then either:
+ * - Creates the local branch if it doesn't exist
+ * - Fast-forwards the local branch if it can be safely updated
+ *
+ * If the local branch has diverged from the remote (cannot fast-forward), this is a no-op
+ * and returns a 'conflict' status. The caller can then decide how to handle it.
  */
-async function checkoutRemoteBranch(
+export async function pullRemoteBranch(
   repoPath: string,
   remoteRef: string,
   remote: string,
   localBranch: string
-): Promise<RemoteBranchCheckoutResult> {
+): Promise<PullRemoteBranchResult> {
   const git = getGitAdapter()
 
   try {
@@ -108,7 +133,7 @@ async function checkoutRemoteBranch(
     } catch (fetchError) {
       const fetchMessage = fetchError instanceof Error ? fetchError.message : String(fetchError)
       return {
-        success: false,
+        status: 'error',
         error: `Failed to fetch from ${remote}: ${fetchMessage}`
       }
     }
@@ -116,81 +141,95 @@ async function checkoutRemoteBranch(
     // 2. Check if local branch already exists
     const localExists = await branchExists(repoPath, localBranch)
 
-    // 3. If local exists, check ff-ability BEFORE checkout (all-or-nothing)
-    if (localExists) {
-      const canFF = await canFastForward(repoPath, localBranch, remoteRef)
-      if (!canFF) {
-        // Cannot fast-forward - abort entirely, don't leave user in partial state
-        return {
-          success: false,
-          error: `Cannot sync: ${localBranch} has local changes or has diverged from ${remoteRef}`
-        }
+    if (!localExists) {
+      // Local branch doesn't exist - create it from remote
+      await git.branch(repoPath, localBranch, {
+        checkout: false,
+        startPoint: remoteRef
+      })
+      return { status: 'success' }
+    }
+
+    // 3. Local branch exists - check if we can fast-forward
+    const canFF = await canFastForward(repoPath, localBranch, remoteRef)
+
+    if (!canFF) {
+      // Cannot fast-forward - this is a conflict (diverged branches)
+      return {
+        status: 'conflict',
+        error: `Cannot sync: ${localBranch} has diverged from ${remoteRef}`
       }
     }
 
-    // 4. Save state for rollback
-    const originalBranch = await git.currentBranch(repoPath)
-    const originalHead = await git.resolveRef(repoPath, 'HEAD')
+    // 4. Fast-forward the local branch to match remote
+    // We need to be on the branch to ff, or use update-ref
+    const currentBranch = await git.currentBranch(repoPath)
+    const wasOnTargetBranch = currentBranch === localBranch
 
-    // 5. Now safe to checkout
-    if (localExists) {
-      await git.checkout(repoPath, localBranch)
-
-      // 6. Fast-forward (should always succeed given our pre-check)
+    if (wasOnTargetBranch) {
+      // Already on target branch - can merge directly
       if (supportsMerge(git)) {
         const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
         if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-          // This shouldn't happen given our pre-check, but rollback
-          log.warn(`[smartCheckout] FF failed despite pre-check:`, mergeResult.error)
-          await rollbackCheckout(repoPath, originalBranch, originalHead)
           return {
-            success: false,
-            error: `Fast-forward failed unexpectedly: ${mergeResult.error}`
+            status: 'error',
+            error: `Fast-forward failed: ${mergeResult.error}`
           }
         }
       }
     } else {
-      // Local branch doesn't exist - create it from remote
-      await git.branch(repoPath, localBranch, {
-        checkout: true,
-        startPoint: remoteRef
-      })
+      // Not on target branch - checkout, ff, then go back
+      const originalHead = await git.resolveRef(repoPath, 'HEAD')
+
+      try {
+        await git.checkout(repoPath, localBranch)
+
+        if (supportsMerge(git)) {
+          const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
+          if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
+            // Rollback and return error
+            if (currentBranch) {
+              await git.checkout(repoPath, currentBranch)
+            } else {
+              await git.checkout(repoPath, originalHead)
+            }
+            return {
+              status: 'error',
+              error: `Fast-forward failed: ${mergeResult.error}`
+            }
+          }
+        }
+
+        // Go back to original branch
+        if (currentBranch) {
+          await git.checkout(repoPath, currentBranch)
+        } else {
+          await git.checkout(repoPath, originalHead)
+        }
+      } catch (error) {
+        // Try to rollback on any error
+        try {
+          if (currentBranch) {
+            await git.checkout(repoPath, currentBranch)
+          } else {
+            await git.checkout(repoPath, originalHead)
+          }
+        } catch {
+          log.error('[pullRemoteBranch] Rollback failed')
+        }
+        throw error
+      }
     }
 
-    return {
-      success: true,
-      localBranch
-    }
+    return { status: 'success' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    log.error(`[smartCheckout] Failed to checkout remote ${remoteRef}:`, error)
+    log.error(`[pullRemoteBranch] Failed to pull ${remoteRef}:`, error)
 
     return {
-      success: false,
-      error: `Remote checkout failed: ${message}`
+      status: 'error',
+      error: `Pull failed: ${message}`
     }
-  }
-}
-
-/**
- * Rollback to original state on failure.
- */
-async function rollbackCheckout(
-  repoPath: string,
-  originalBranch: string | null,
-  originalHead: string
-): Promise<void> {
-  const git = getGitAdapter()
-
-  try {
-    if (originalBranch) {
-      await git.checkout(repoPath, originalBranch)
-    } else {
-      // Was in detached HEAD, restore to original commit
-      await git.checkout(repoPath, originalHead)
-    }
-  } catch (rollbackError) {
-    log.error('[smartCheckout] Rollback failed:', rollbackError)
   }
 }
 

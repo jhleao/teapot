@@ -1,5 +1,5 @@
 import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useDragContext } from '../contexts/DragContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
@@ -15,6 +15,8 @@ interface StackProps {
   workingTree: UiWorkingTreeFile[]
   /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
   baseSha?: string
+  /** Whether this is the root/topmost stack (shows sync button) */
+  isRoot?: boolean
 }
 
 interface CommitProps {
@@ -29,13 +31,15 @@ export function StackView({
   data,
   className,
   workingTree,
-  baseSha = ''
+  baseSha = '',
+  isRoot = false
 }: StackProps): React.JSX.Element {
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('flex flex-col pt-5', className)}>
+      <SyncButton isRoot={isRoot} isTrunk={data.isTrunk} />
       {childrenFirst.map((commit, index) => (
         <CommitView
           key={`${commit.name}-${commit.timestampMs}-${index}`}
@@ -204,6 +208,53 @@ export function CommitView({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function SyncButton({
+  isRoot,
+  isTrunk
+}: {
+  isRoot: boolean
+  isTrunk: boolean
+}): React.JSX.Element | null {
+  const { syncTrunk } = useUiStateContext()
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  if (!isRoot || !isTrunk) return null
+
+  const handleSyncTrunk = async (): Promise<void> => {
+    if (isSyncing) return
+    setIsSyncing(true)
+    try {
+      await syncTrunk()
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
+  return (
+    <div className="mb-[-6px] flex items-center">
+      <div className="text-border">
+        <svg
+          className="mr-2 h-5 w-5"
+          fill="transparent"
+          stroke="currentColor"
+          strokeWidth={1.7}
+          viewBox="0 0 20 20"
+        >
+          <path d="M5.5 16a3.5 3.5 0 01-.369-6.98 4 4 0 117.753-1.977A4.5 4.5 0 1113.5 16h-8z" />
+        </svg>
+      </div>
+      <button
+        onClick={handleSyncTrunk}
+        disabled={isSyncing}
+        className="bg-muted/50 text-muted-foreground/80 border-border/50 hover:bg-muted hover:text-muted-foreground inline-flex cursor-pointer items-center rounded-lg border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-70"
+        title="Sync trunk with origin"
+      >
+        {isSyncing ? 'pulling...' : 'git pull'}
+      </button>
     </div>
   )
 }

@@ -46,6 +46,20 @@ export const api = {
     return (): void => {
       ipcRenderer.removeListener(IPC_EVENTS.repoError, subscription)
     }
+  },
+  onUpdateDownloading: (callback: (version: string) => void) => {
+    const subscription = (_event: any, version: string): void => callback(version)
+    ipcRenderer.on(IPC_EVENTS.updateDownloading, subscription)
+    return (): void => {
+      ipcRenderer.removeListener(IPC_EVENTS.updateDownloading, subscription)
+    }
+  },
+  onUpdateDownloaded: (callback: (version: string) => void) => {
+    const subscription = (_event: any, version: string): void => callback(version)
+    ipcRenderer.on(IPC_EVENTS.updateDownloaded, subscription)
+    return (): void => {
+      ipcRenderer.removeListener(IPC_EVENTS.updateDownloaded, subscription)
+    }
   }
 }
 

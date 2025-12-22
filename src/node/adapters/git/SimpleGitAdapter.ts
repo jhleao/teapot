@@ -384,6 +384,15 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  async renameBranch(dir: string, oldRef: string, newRef: string): Promise<void> {
+    try {
+      const git = this.createGit(dir)
+      await git.branch(['-m', oldRef, newRef])
+    } catch (error) {
+      throw this.createError('renameBranch', error)
+    }
+  }
+
   async checkout(dir: string, ref: string, options?: CheckoutOptions): Promise<void> {
     try {
       const git = this.createGit(dir)

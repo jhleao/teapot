@@ -84,6 +84,18 @@ export class BranchOperation {
   }
 
   /**
+   * Renames a local branch.
+   */
+  static async rename(
+    repoPath: string,
+    oldBranchName: string,
+    newBranchName: string
+  ): Promise<void> {
+    const git = getGitAdapter()
+    await git.renameBranch(repoPath, oldBranchName, newBranchName)
+  }
+
+  /**
    * Syncs the trunk branch with origin by fetching and fast-forwarding.
    * Detects the trunk branch automatically (main, master, etc.).
    * This is the ONLY operation that does fast-forwarding.

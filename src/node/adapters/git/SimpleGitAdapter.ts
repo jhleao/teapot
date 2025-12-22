@@ -596,9 +596,31 @@ export class SimpleGitAdapter implements GitAdapter {
    * @returns RebaseResult indicating success or new conflicts
    */
   async rebaseContinue(dir: string): Promise<RebaseResult> {
+    // Check for stale lock file
+    const lockCheck = await this.checkForLockFile(dir)
+    if (lockCheck.locked) {
+      return {
+        success: false,
+        conflicts: [],
+        currentCommit: await this.resolveRef(dir, 'HEAD'),
+        error: `Git index is locked. A '.git/index.lock' file exists, possibly from a crashed process. Remove it manually if no Git operation is running.`
+      }
+    }
+
     try {
       const git = this.createGit(dir)
-      await git.raw(['rebase', '--continue'])
+      // Set GIT_EDITOR to prevent editor popups during rebase continue
+      const gitWithEnv = git.env({
+        GIT_EDITOR: 'true',
+        GIT_SEQUENCE_EDITOR: 'true'
+      })
+
+      // Use 20-second timeout to prevent indefinite hangs
+      await this.withTimeout(
+        () => gitWithEnv.raw(['rebase', '--continue']),
+        20000,
+        'rebase --continue'
+      )
 
       return {
         success: true,
@@ -606,6 +628,16 @@ export class SimpleGitAdapter implements GitAdapter {
         currentCommit: await this.resolveRef(dir, 'HEAD')
       }
     } catch (error) {
+      // Check if it was a timeout
+      if (error instanceof Error && error.message.includes('timed out')) {
+        return {
+          success: false,
+          conflicts: [],
+          currentCommit: await this.resolveRef(dir, 'HEAD'),
+          error: error.message
+        }
+      }
+
       // Check for new conflicts
       const status = await this.getWorkingTreeStatus(dir)
 
@@ -776,6 +808,30 @@ export class SimpleGitAdapter implements GitAdapter {
         return false
       }
     }
+  }
+
+  private async checkForLockFile(dir: string): Promise<{ locked: boolean; lockPath?: string }> {
+    const indexLockPath = path.join(dir, '.git', 'index.lock')
+    try {
+      await fs.promises.access(indexLockPath)
+      return { locked: true, lockPath: indexLockPath }
+    } catch {
+      return { locked: false }
+    }
+  }
+
+  private async withTimeout<T>(
+    operation: () => Promise<T>,
+    timeoutMs: number,
+    operationName: string
+  ): Promise<T> {
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`Git '${operationName}' timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      )
+    })
+    return Promise.race([operation(), timeoutPromise])
   }
 
   // ============================================================================

@@ -14,7 +14,8 @@ import type {
   Configuration,
   IpcHandlerOf,
   RebaseOperationResponse,
-  RebaseStatusResponse
+  RebaseStatusResponse,
+  UiState
 } from '@shared/types'
 import { getGitAdapter, supportsGetRebaseState } from '../adapters/git'
 import { RebaseIntentBuilder, RebaseStateMachine, TrunkResolver, UiStateBuilder } from '../domain'
@@ -200,5 +201,40 @@ export class RebaseOperation {
     } catch {
       return { isRebasing: false, hasSession: false, conflicts: [] }
     }
+  }
+
+  /**
+   * Resume the rebase queue after an external continue.
+   */
+  static async resumeRebaseQueue(repoPath: string): Promise<RebaseOperationResponse> {
+    const session = await SessionService.getSession(repoPath)
+    if (!session) {
+      return { success: false, uiState: await UiStateOperation.getUiState(repoPath), error: 'No session found' }
+    }
+
+    const git = getGitAdapter()
+    const result = await RebaseExecutor.execute(
+      repoPath,
+      { intent: session.intent, state: session.state },
+      git
+    )
+
+    const uiState = await UiStateOperation.getUiState(repoPath)
+
+    if (result.status === 'error') {
+      return { success: false, uiState, error: result.message }
+    }
+    if (result.status === 'conflict') {
+      return { success: false, uiState, conflicts: result.conflicts }
+    }
+    return { success: true, uiState }
+  }
+
+  /**
+   * Dismiss the rebase queue without continuing.
+   */
+  static async dismissRebaseQueue(repoPath: string): Promise<UiState | null> {
+    await SessionService.clearSession(repoPath)
+    return UiStateOperation.getUiState(repoPath)
   }
 }

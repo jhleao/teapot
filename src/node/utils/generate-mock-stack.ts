@@ -335,7 +335,7 @@ function generateRebaseStatus(
     'idle',
     'running',
     'conflicted',
-    'scheduled'
+    'queued'
   ]
   const status = statuses[randomInt(0, statuses.length - 1)]
 

@@ -75,6 +75,8 @@ export type UiWorkingTreeFile = {
   stageStatus: 'staged' | 'unstaged' | 'partially-staged'
   path: string
   status: 'modified' | 'deleted' | 'renamed' | 'added' | 'conflicted'
+  /** For conflicted files: true if conflict markers have been removed from the file */
+  resolved?: boolean
 }
 
 export type UiCommitRebaseStatus =
@@ -88,8 +90,8 @@ export type UiCommitRebaseStatus =
   | 'conflicted'
   /** This commit's conflicts have been resolved and is waiting for user to click Continue. */
   | 'resolved'
-  /** This commit is part of a confirmed rebase plan that is running. It's just not its turn yet. */
-  | 'scheduled'
+  /** This branch is pending in queue after an external continue - waiting for user to resume. */
+  | 'queued'
   /** This commit is not being rebased or involved in a rebasing operation. */
   | null
 

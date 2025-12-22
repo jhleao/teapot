@@ -229,21 +229,9 @@ export async function continueRebase(
     // Job completed, mark it and continue with next jobs
     const newHeadSha = result.currentCommit ?? (await gitAdapter.resolveRef(repoPath, 'HEAD'))
 
-    // Check if Git is still rebasing - if not, the entire rebase is complete
-    const workingTreeStatus = await gitAdapter.getWorkingTreeStatus(repoPath)
-
     await completeCurrentJob(repoPath, session, newHeadSha)
 
-    if (!workingTreeStatus.isRebasing) {
-      // Git finished the entire rebase, finalize and return
-      const updatedSession = await rebaseSessionStore.getSession(repoPath)
-      if (updatedSession) {
-        await finalizeRebase(repoPath, updatedSession, gitAdapter)
-      }
-      return { status: 'completed', finalState: session.state }
-    }
-
-    // Continue executing remaining jobs
+    // Continue executing remaining jobs (executeJobs will finalize if no more jobs)
     return executeJobs(repoPath, gitAdapter, session.intent, options)
   }
 
@@ -502,6 +490,7 @@ async function executeJob(
 
 /**
  * Completes the current job after a successful continue.
+ * Also enqueues child branches if the job has any children in the rebase plan.
  */
 async function completeCurrentJob(
   repoPath: string,
@@ -521,13 +510,26 @@ async function completeCurrentJob(
     rewrites: [] // Rewrites already tracked
   })
 
-  const newState: RebaseState = {
+  let newState: RebaseState = {
     ...session.state,
     jobsById: { ...session.state.jobsById, [activeJob.id]: completionResult.job },
     queue: {
       ...session.state.queue,
       activeJobId: undefined
     }
+  }
+
+  // Enqueue child branches if any
+  const node = findNodeByBranch(session.intent, activeJob.branch)
+  if (node && node.children.length > 0) {
+    const generateJobId = createJobIdGenerator()
+    newState = enqueueDescendants({
+      state: newState,
+      parent: node,
+      parentNewHeadSha: newHeadSha,
+      timestampMs: Date.now(),
+      generateJobId
+    })
   }
 
   await updateSessionWithRetry(rebaseSessionStore, repoPath, () => ({

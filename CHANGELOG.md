@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/jhleao/teapot/compare/v0.4.0...v0.4.1) (2025-12-22)
+
+
+### Bug Fixes
+
+* temporary workaround for unsigned app ([2f8f875](https://github.com/jhleao/teapot/commit/2f8f875702e280fd254229b2137938a20d869f9e))
+
 ## [0.4.0](https://github.com/jhleao/teapot/compare/v0.3.1...v0.4.0) (2025-12-22)
 
 

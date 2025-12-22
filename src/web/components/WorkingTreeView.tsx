@@ -49,6 +49,8 @@ function SelectAllToggle({
 function CommitForm({
   message,
   onMessageChange,
+  newBranchName,
+  onNewBranchNameChange,
   onCommit,
   onAmend,
   onDiscard,
@@ -58,6 +60,8 @@ function CommitForm({
 }: {
   message: string
   onMessageChange: (message: string) => void
+  newBranchName: string
+  onNewBranchNameChange: (name: string) => void
   onCommit: () => void
   onAmend: () => void
   onDiscard: () => void
@@ -99,28 +103,37 @@ function CommitForm({
         placeholder="Commit message"
         className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-accent rounded border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
       />
-      <div className="ml-auto flex items-center">
-        <CommitFormButton
-          onClick={onCommit}
-          disabled={!canCommit}
-          className="z-10 rounded-l-md border-y border-l"
-        >
-          Commit
-        </CommitFormButton>
-        <CommitFormButton
-          onClick={onAmend}
-          disabled={!canAmend}
-          className="rounded-none border-l-0"
-        >
-          Amend
-        </CommitFormButton>
-        <CommitFormButton
-          onClick={onDiscard}
-          disabled={!canDiscard}
-          className="rounded-l-none rounded-r-md border-l-0"
-        >
-          Discard
-        </CommitFormButton>
+      <div className="ml-auto flex items-center gap-2">
+        <input
+          type="text"
+          value={newBranchName}
+          onChange={(e) => onNewBranchNameChange(e.target.value)}
+          placeholder="New branch name (optional)"
+          className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-accent w-60 rounded border px-2 py-2 text-sm focus:ring-2 focus:outline-none"
+        />
+        <div className="flex items-center">
+          <CommitFormButton
+            onClick={onCommit}
+            disabled={!canCommit}
+            className="z-10 rounded-l-md border-y border-l"
+          >
+            Commit
+          </CommitFormButton>
+          <CommitFormButton
+            onClick={onAmend}
+            disabled={!canAmend}
+            className="rounded-none border-l-0"
+          >
+            Amend
+          </CommitFormButton>
+          <CommitFormButton
+            onClick={onDiscard}
+            disabled={!canDiscard}
+            className="rounded-l-none rounded-r-md border-l-0"
+          >
+            Discard
+          </CommitFormButton>
+        </div>
       </div>
     </div>
   )
@@ -138,6 +151,7 @@ export function WorkingTreeView({
   className?: string
 }): React.JSX.Element {
   const [commitMessage, setCommitMessage] = useState('')
+  const [newBranchName, setNewBranchName] = useState('')
   const [isDiscardDialogOpen, setIsDiscardDialogOpen] = useState(false)
   const [isPending, setIsPending] = useState(false)
   const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts, isOnTrunk } =
@@ -194,8 +208,12 @@ export function WorkingTreeView({
     if (!commitMessage.trim() || isPending) return
     setIsPending(true)
     try {
-      await commit({ message: commitMessage })
+      await commit({
+        message: commitMessage,
+        newBranchName: newBranchName.trim() || undefined
+      })
       setCommitMessage('')
+      setNewBranchName('')
     } finally {
       setIsPending(false)
     }
@@ -207,6 +225,7 @@ export function WorkingTreeView({
     try {
       await amend({ message: commitMessage })
       setCommitMessage('')
+      setNewBranchName('')
     } finally {
       setIsPending(false)
     }
@@ -223,6 +242,7 @@ export function WorkingTreeView({
     try {
       await discardStaged()
       setCommitMessage('')
+      setNewBranchName('')
       setIsDiscardDialogOpen(false)
     } finally {
       setIsPending(false)
@@ -259,6 +279,8 @@ export function WorkingTreeView({
         <CommitForm
           message={commitMessage}
           onMessageChange={setCommitMessage}
+          newBranchName={newBranchName}
+          onNewBranchNameChange={setNewBranchName}
           onCommit={handleCommit}
           onAmend={handleAmend}
           onDiscard={handleDiscardClick}

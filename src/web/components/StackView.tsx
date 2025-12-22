@@ -1,5 +1,5 @@
 import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDragContext } from '../contexts/DragContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
@@ -53,7 +53,7 @@ export function StackView({
   )
 }
 
-export function CommitView({
+export const CommitView = memo(function CommitView({
   data,
   stack,
   workingTree,
@@ -90,23 +90,32 @@ export function CommitView({
     isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
-  const isBeingDragged =
-    draggingCommitSha && isPartOfDraggedStack(data.sha, draggingCommitSha, stack)
+  const isBeingDragged = useMemo(
+    () => draggingCommitSha && isPartOfDraggedStack(data.sha, draggingCommitSha, stack),
+    [data.sha, draggingCommitSha, stack]
+  )
 
   const hasSpinoffs = data.spinoffs.length > 0
 
-  const handleConfirmRebase = async (): Promise<void> => {
+  const handleConfirmRebase = useCallback(async (): Promise<void> => {
     await confirmRebaseIntent()
-  }
+  }, [confirmRebaseIntent])
 
-  const handleCancelRebase = async (): Promise<void> => {
+  const handleCancelRebase = useCallback(async (): Promise<void> => {
     await cancelRebaseIntent()
-  }
+  }, [cancelRebaseIntent])
 
-  const handleUncommit = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    await uncommit({ commitSha: data.sha })
-  }
+  const handleUncommit = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      await uncommit({ commitSha: data.sha })
+    },
+    [uncommit, data.sha]
+  )
+
+  const onCommitDotMouseDown = useCallback(() => {
+    handleCommitDotMouseDown(data.sha)
+  }, [handleCommitDotMouseDown, data.sha])
 
   return (
     <div className="w-full pl-2 whitespace-nowrap">
@@ -159,10 +168,7 @@ export function CommitView({
         {commitBelowMouse === data.sha && (
           <div className="bg-accent animate-in fade-in absolute -top-[1px] left-0 h-[3px] w-full duration-150" />
         )}
-        <div
-          className="flex items-center gap-2"
-          onMouseDown={() => handleCommitDotMouseDown(data.sha)}
-        >
+        <div className="flex items-center gap-2" onMouseDown={onCommitDotMouseDown}>
           <CommitDot
             top={showTopLine}
             bottom={showBottomLine}
@@ -203,7 +209,7 @@ export function CommitView({
           </button>
         )}
         {data.rebaseStatus === 'prompting' && (
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex gap-2 pr-4">
             <button
               onClick={handleCancelRebase}
               className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-xs transition-colors"
@@ -221,7 +227,7 @@ export function CommitView({
       </div>
     </div>
   )
-}
+})
 
 function SyncButton({
   isRoot,

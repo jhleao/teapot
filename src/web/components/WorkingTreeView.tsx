@@ -1,5 +1,5 @@
 import type { UiWorkingTreeFile } from '@shared/types'
-import React, { useState } from 'react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { Checkbox, type CheckboxState } from './Checkbox'
@@ -143,7 +143,7 @@ function CommitForm({
 // Main Component
 // ============================================================================
 
-export function WorkingTreeView({
+export const WorkingTreeView = memo(function WorkingTreeView({
   files,
   className
 }: {
@@ -157,24 +157,30 @@ export function WorkingTreeView({
   const { setFilesStageStatus, commit, amend, discardStaged, isRebasingWithConflicts, isOnTrunk } =
     useUiStateContext()
 
-  const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path))
+  const sortedFiles = useMemo(
+    () => [...files].sort((a, b) => a.path.localeCompare(b.path)),
+    [files]
+  )
 
   // ============================================================================
   // Staging Handlers
   // ============================================================================
 
-  const handleFileToggle = async (file: UiWorkingTreeFile): Promise<void> => {
-    // If it's staged (fully), we unstage.
-    // If it's unstaged or partially staged, we stage (fully).
-    const shouldStage = file.stageStatus !== 'staged'
+  const handleFileToggle = useCallback(
+    async (file: UiWorkingTreeFile): Promise<void> => {
+      // If it's staged (fully), we unstage.
+      // If it's unstaged or partially staged, we stage (fully).
+      const shouldStage = file.stageStatus !== 'staged'
 
-    await setFilesStageStatus({
-      staged: shouldStage,
-      files: [file.path]
-    })
-  }
+      await setFilesStageStatus({
+        staged: shouldStage,
+        files: [file.path]
+      })
+    },
+    [setFilesStageStatus]
+  )
 
-  const handleSelectAllToggle = async (): Promise<void> => {
+  const handleSelectAllToggle = useCallback(async (): Promise<void> => {
     const stagedCount = sortedFiles.filter(
       (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
     ).length
@@ -198,13 +204,13 @@ export function WorkingTreeView({
         files: filesToStage
       })
     }
-  }
+  }, [sortedFiles, setFilesStageStatus])
 
   // ============================================================================
   // Commit Handlers
   // ============================================================================
 
-  const handleCommit = async (): Promise<void> => {
+  const handleCommit = useCallback(async (): Promise<void> => {
     if (!commitMessage.trim() || isPending) return
     setIsPending(true)
     try {
@@ -217,9 +223,9 @@ export function WorkingTreeView({
     } finally {
       setIsPending(false)
     }
-  }
+  }, [commitMessage, isPending, commit, newBranchName])
 
-  const handleAmend = async (): Promise<void> => {
+  const handleAmend = useCallback(async (): Promise<void> => {
     if (isPending) return
     setIsPending(true)
     try {
@@ -229,14 +235,14 @@ export function WorkingTreeView({
     } finally {
       setIsPending(false)
     }
-  }
+  }, [isPending, amend, commitMessage])
 
-  const handleDiscardClick = (): void => {
+  const handleDiscardClick = useCallback((): void => {
     if (files.length === 0) return
     setIsDiscardDialogOpen(true)
-  }
+  }, [files.length])
 
-  const handleConfirmDiscard = async (): Promise<void> => {
+  const handleConfirmDiscard = useCallback(async (): Promise<void> => {
     if (isPending) return
     setIsPending(true)
     try {
@@ -247,10 +253,19 @@ export function WorkingTreeView({
     } finally {
       setIsPending(false)
     }
-  }
+  }, [isPending, discardStaged])
 
-  const hasStagedChanges = files.some(
-    (file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'
+  const handleDiscardDialogChange = useCallback((open: boolean) => {
+    setIsDiscardDialogOpen(open)
+  }, [])
+
+  const handleCancelDiscard = useCallback(() => {
+    setIsDiscardDialogOpen(false)
+  }, [])
+
+  const hasStagedChanges = useMemo(
+    () => files.some((file) => file.stageStatus === 'staged' || file.stageStatus === 'partially-staged'),
+    [files]
   )
   // Disable commit/amend during rebase, when operation is pending, or (for amend) when on trunk
   const canCommit =
@@ -290,7 +305,7 @@ export function WorkingTreeView({
         />
       </div>
 
-      <Dialog open={isDiscardDialogOpen} onOpenChange={setIsDiscardDialogOpen}>
+      <Dialog open={isDiscardDialogOpen} onOpenChange={handleDiscardDialogChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Discard Changes?</DialogTitle>
@@ -300,7 +315,7 @@ export function WorkingTreeView({
           </DialogHeader>
           <DialogFooter>
             <button
-              onClick={() => setIsDiscardDialogOpen(false)}
+              onClick={handleCancelDiscard}
               className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-sm transition-colors"
             >
               Cancel
@@ -316,4 +331,4 @@ export function WorkingTreeView({
       </Dialog>
     </div>
   )
-}
+})

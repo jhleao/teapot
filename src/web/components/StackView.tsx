@@ -60,7 +60,13 @@ export function CommitView({
   baseSha = ''
 }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
-  const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
+  const {
+    handleCommitDotMouseDown,
+    registerCommitRef,
+    unregisterCommitRef,
+    commitBelowMouse,
+    draggingCommitSha
+  } = useDragContext()
   const { confirmRebaseIntent, cancelRebaseIntent, uncommit, uiState, isRebasingWithConflicts } =
     useUiStateContext()
 
@@ -84,6 +90,8 @@ export function CommitView({
     isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
+  const isBeingDragged =
+    draggingCommitSha && isPartOfDraggedStack(data.sha, draggingCommitSha, stack)
 
   const hasSpinoffs = data.spinoffs.length > 0
 
@@ -101,7 +109,7 @@ export function CommitView({
   }
 
   return (
-    <div className="w-full pl-2">
+    <div className="w-full pl-2 whitespace-nowrap">
       {hasSpinoffs && (
         <div className="flex w-full">
           <div className="border-border h-auto w-[2px] border-r-2" />
@@ -140,14 +148,17 @@ export function CommitView({
         </div>
       )}
 
-      {/* Render the actual commit */}
       <div
         ref={commitRef}
         className={cn(
-          '-ml-[11px] flex items-center gap-2 transition-colors select-none',
-          isPartOfRebasePlan && 'bg-accent/30'
+          'relative -ml-[11px] flex items-center gap-2 transition-colors select-none',
+          isPartOfRebasePlan && 'bg-accent/30',
+          isBeingDragged && 'bg-accent/10'
         )}
       >
+        {commitBelowMouse === data.sha && (
+          <div className="bg-accent animate-in fade-in absolute -top-[1px] left-0 h-[3px] w-full duration-150" />
+        )}
         <div
           className="flex items-center gap-2"
           onMouseDown={() => handleCommitDotMouseDown(data.sha)}
@@ -168,7 +179,7 @@ export function CommitView({
         </div>
         <div
           className={cn(
-            'text-sm',
+            'text-sm whitespace-nowrap',
             isCurrent && 'font-semibold',
             data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
           )}
@@ -283,4 +294,18 @@ function getCommitDotLayout(
   if (isNewestCommit && !hasSpinoffs && !isCommitShowingFiles) showTopLine = false
 
   return { showTopLine, showBottomLine }
+}
+
+function isPartOfDraggedStack(
+  commitSha: string,
+  draggingCommitSha: string,
+  stack: UiStack
+): boolean {
+  const draggingIdx = stack.commits.findIndex((c) => c.sha === draggingCommitSha)
+  if (draggingIdx === -1) return false
+
+  const commitIdx = stack.commits.findIndex((c) => c.sha === commitSha)
+  if (commitIdx === -1) return false
+
+  return commitIdx >= draggingIdx
 }

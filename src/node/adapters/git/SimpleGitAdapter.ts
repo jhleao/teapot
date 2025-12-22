@@ -125,7 +125,7 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       const result = await git.revparse([ref])
       return result.trim()
-    } catch (error) {
+    } catch {
       // Return empty string for non-existent refs
       return ''
     }
@@ -136,7 +136,7 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       const status = await git.status()
       return status.current ?? null
-    } catch (error) {
+    } catch {
       return null
     }
   }
@@ -156,7 +156,7 @@ export class SimpleGitAdapter implements GitAdapter {
       }
 
       return value ?? undefined
-    } catch (error) {
+    } catch {
       return undefined
     }
   }

@@ -113,9 +113,9 @@ export function UiStateProvider({
     else html.classList.remove('dark')
   }, [isDark])
 
-  const toggleTheme = (): void => {
+  const toggleTheme = useCallback((): void => {
     setIsDark((prev) => !prev)
-  }
+  }, [])
 
   // Helper to call API and update state
   const callApi = useCallback(async (apiCall: Promise<UiState | null>) => {

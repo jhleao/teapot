@@ -3,7 +3,52 @@ import { app, BrowserWindow, shell } from 'electron'
 import electronUpdater from 'electron-updater'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
+import { log } from '../shared/logger'
+import { IPC_EVENTS } from '../shared/types'
 import { registerHandlers } from './handlers'
+
+function setupAutoUpdater(): void {
+  const { autoUpdater } = electronUpdater
+
+  autoUpdater.logger = {
+    info: (msg) => log.info(`[UPDATER] ${msg}`),
+    warn: (msg) => log.warn(`[UPDATER] ${msg}`),
+    error: (msg) => log.error(`[UPDATER] ${msg}`),
+    debug: (msg) => log.debug(`[UPDATER] ${msg}`)
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    log.info('[UPDATER] Checking for updates...')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    log.info('[UPDATER] Update available:', info)
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send(IPC_EVENTS.updateDownloading, info.version)
+    })
+  })
+
+  autoUpdater.on('update-not-available', (info) => {
+    log.info('[UPDATER] Update not available:', info)
+  })
+
+  autoUpdater.on('error', (err) => {
+    log.error('[UPDATER] Error in auto-updater:', err)
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    log.info(
+      `[UPDATER] Download progress: ${Math.round(progress.percent)}% (${progress.transferred}/${progress.total} bytes)`
+    )
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    log.info('[UPDATER] Update downloaded. Will install on quit:', info)
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send(IPC_EVENTS.updateDownloaded, info.version)
+    })
+  })
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -59,6 +104,7 @@ app.whenReady().then(() => {
 
   // Check for updates in production (silent download + OS notification when ready)
   if (!is.dev) {
+    setupAutoUpdater()
     electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   }
 

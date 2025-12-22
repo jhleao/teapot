@@ -12,12 +12,14 @@ import { ScrollArea, ScrollBar } from './components/ui/scroll-area'
 import { useForgeStateContext } from './contexts/ForgeStateContext'
 import { useLocalStateContext } from './contexts/LocalStateContext'
 import { useUiStateContext } from './contexts/UiStateContext'
+import { useUpdateNotifications } from './hooks/use-update-notifications'
 import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
 
 function App(): React.JSX.Element {
   const { uiState, repoError, isRebasingWithConflicts, queuedBranches } = useUiStateContext()
   const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
+  useUpdateNotifications()
 
   // Merge forge state (PR data) into the UI stack at render time
   // This allows local data to display immediately while forge state loads asynchronously

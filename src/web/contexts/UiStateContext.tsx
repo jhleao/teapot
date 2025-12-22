@@ -1,6 +1,6 @@
 import { log } from '@shared/logger'
 import type { UiStack, UiState } from '@shared/types'
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useGitWatcher } from '../hooks/use-git-watcher'
 import { useForgeStateContext } from './ForgeStateContext'
@@ -310,49 +310,85 @@ export function UiStateProvider({
     }
   }, [repoPath])
 
-  const isWorkingTreeDirty = (uiState?.workingTree?.length ?? 0) > 0
+  const isWorkingTreeDirty = useMemo(
+    () => (uiState?.workingTree?.length ?? 0) > 0,
+    [uiState?.workingTree?.length]
+  )
 
   // Check if any commit in the stack has 'conflicted' or 'resolved' status
-  const isRebasingWithConflicts = uiState?.stack ? hasRebaseConflictStatus(uiState.stack) : false
+  const isRebasingWithConflicts = useMemo(
+    () => (uiState?.stack ? hasRebaseConflictStatus(uiState.stack) : false),
+    [uiState?.stack]
+  )
 
   // Check if currently on a trunk branch (main/master) - amending on trunk is dangerous
-  const isOnTrunk = uiState?.stack ? isCurrentBranchTrunk(uiState.stack) : false
-
-  return (
-    <UiStateContext.Provider
-      value={{
-        toggleTheme,
-        isDark,
-        uiState,
-        repoError,
-        setFilesStageStatus,
-        commit,
-        amend,
-        discardStaged,
-        submitRebaseIntent,
-        prefetchRebaseIntent,
-        applyPrefetchedState,
-        confirmRebaseIntent,
-        cancelRebaseIntent,
-        continueRebase,
-        abortRebase,
-        skipRebaseCommit,
-        checkout,
-        deleteBranch,
-        cleanupBranch,
-        createPullRequest,
-        updatePullRequest,
-        uncommit,
-        shipIt,
-        syncTrunk,
-        isWorkingTreeDirty,
-        isRebasingWithConflicts,
-        isOnTrunk
-      }}
-    >
-      {children}
-    </UiStateContext.Provider>
+  const isOnTrunk = useMemo(
+    () => (uiState?.stack ? isCurrentBranchTrunk(uiState.stack) : false),
+    [uiState?.stack]
   )
+
+  const contextValue = useMemo<UiStateContextValue>(
+    () => ({
+      toggleTheme,
+      isDark,
+      uiState,
+      repoError,
+      setFilesStageStatus,
+      commit,
+      amend,
+      discardStaged,
+      submitRebaseIntent,
+      prefetchRebaseIntent,
+      applyPrefetchedState,
+      confirmRebaseIntent,
+      cancelRebaseIntent,
+      continueRebase,
+      abortRebase,
+      skipRebaseCommit,
+      checkout,
+      deleteBranch,
+      cleanupBranch,
+      createPullRequest,
+      updatePullRequest,
+      uncommit,
+      shipIt,
+      syncTrunk,
+      isWorkingTreeDirty,
+      isRebasingWithConflicts,
+      isOnTrunk
+    }),
+    [
+      toggleTheme,
+      isDark,
+      uiState,
+      repoError,
+      setFilesStageStatus,
+      commit,
+      amend,
+      discardStaged,
+      submitRebaseIntent,
+      prefetchRebaseIntent,
+      applyPrefetchedState,
+      confirmRebaseIntent,
+      cancelRebaseIntent,
+      continueRebase,
+      abortRebase,
+      skipRebaseCommit,
+      checkout,
+      deleteBranch,
+      cleanupBranch,
+      createPullRequest,
+      updatePullRequest,
+      uncommit,
+      shipIt,
+      syncTrunk,
+      isWorkingTreeDirty,
+      isRebasingWithConflicts,
+      isOnTrunk
+    ]
+  )
+
+  return <UiStateContext.Provider value={contextValue}>{children}</UiStateContext.Provider>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

@@ -1,24 +1,27 @@
 import type { UiBranch } from '@shared/types'
-import React from 'react'
+import React, { memo, useCallback } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 
-export function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
+export const BranchBadge = memo(function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
   const { checkout, deleteBranch, isWorkingTreeDirty } = useUiStateContext()
 
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    if (isWorkingTreeDirty) return
-    e.stopPropagation()
-    checkout({ ref: data.name })
-  }
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isWorkingTreeDirty) return
+      e.stopPropagation()
+      checkout({ ref: data.name })
+    },
+    [isWorkingTreeDirty, checkout, data.name]
+  )
 
-  const handleCopy = () => {
+  const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(data.name)
-  }
+  }, [data.name])
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     deleteBranch({ branchName: data.name })
-  }
+  }, [deleteBranch, data.name])
 
   return (
     <>
@@ -57,4 +60,4 @@ export function BranchBadge({ data }: { data: UiBranch }): React.JSX.Element {
       </ContextMenu>
     </>
   )
-}
+})

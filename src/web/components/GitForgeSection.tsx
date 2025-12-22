@@ -1,6 +1,6 @@
 import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
-import React, { useState } from 'react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
@@ -20,7 +20,7 @@ interface GitForgeSectionProps {
 /**
  * This component is about anything regarding git forge within a given commit.
  */
-export function GitForgeSection({
+export const GitForgeSection = memo(function GitForgeSection({
   branches,
   isTrunk,
   commitSha,
@@ -32,24 +32,109 @@ export function GitForgeSection({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Memoize derived values
+  const mergedBranchToCleanup = useMemo(() => getMergedBranchToCleanup(branches), [branches])
+  const branchWithPr = useMemo(() => branches.find((b) => b.pullRequest), [branches])
+  const pr = branchWithPr?.pullRequest
+  const isMerged = useMemo(() => branches.some((b) => b.isMerged), [branches])
+  const showRebaseButton = useMemo(
+    () => canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty }),
+    [baseSha, trunkHeadSha, isWorkingTreeDirty]
+  )
+
+  const handleCleanup = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || !mergedBranchToCleanup) return
+
+      setIsLoading(true)
+      try {
+        await cleanupBranch({ branchName: mergedBranchToCleanup.name })
+      } catch (error) {
+        log.error('Failed to cleanup branch:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, mergedBranchToCleanup, cleanupBranch]
+  )
+
+  const handleUpdatePr = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || !branchWithPr) return
+
+      setIsLoading(true)
+      try {
+        await updatePullRequest({ headBranch: branchWithPr.name })
+      } catch (error) {
+        log.error('Failed to update PR:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, branchWithPr, updatePullRequest]
+  )
+
+  const handleRebase = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || isWorkingTreeDirty) return
+
+      setIsLoading(true)
+      try {
+        await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
+      } catch (error) {
+        log.error('Failed to initiate rebase:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
+  )
+
+  const handleShipIt = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || !branchWithPr) return
+
+      setIsLoading(true)
+      try {
+        await shipIt({ branchName: branchWithPr.name })
+      } catch (error) {
+        log.error('Failed to ship it:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, branchWithPr, shipIt]
+  )
+
+  const handleCreatePr = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading) return
+
+      // Pick the first available branch on the commit as requested.
+      const branch = branches[0]
+      if (!branch) return
+
+      setIsLoading(true)
+      setError(null)
+      try {
+        await createPullRequest({ headBranch: branch.name })
+      } catch (error) {
+        log.error('Failed to create PR:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        setError(errorMessage)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, branches, createPullRequest]
+  )
+
   if (branches.length === 0) return null
-
-  // Find merged branch that can be cleaned up (not currently checked out)
-  const mergedBranchToCleanup = getMergedBranchToCleanup(branches)
-
-  const handleCleanup = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || !mergedBranchToCleanup) return
-
-    setIsLoading(true)
-    try {
-      await cleanupBranch({ branchName: mergedBranchToCleanup.name })
-    } catch (error) {
-      log.error('Failed to cleanup branch:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   // For trunk commits, only show cleanup button for merged branches
   if (isTrunk) {
@@ -65,59 +150,6 @@ export function GitForgeSection({
         {isLoading ? 'Cleaning...' : 'Clean up'}
       </button>
     )
-  }
-
-  // Pick the first PR associated with any branch associated with that commit.
-  // If there's more than one branch with a PR, ignore the other one.
-  // This is a known limitation where we only show one PR even if multiple branches on this commit have PRs.
-  const branchWithPr = branches.find((b) => b.pullRequest)
-  const pr = branchWithPr?.pullRequest
-
-  // Check if any branch on this commit is merged (either via PR state or local detection)
-  const isMerged = branches.some((b) => b.isMerged)
-
-  const handleUpdatePr = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || !branchWithPr) return
-
-    setIsLoading(true)
-    try {
-      await updatePullRequest({ headBranch: branchWithPr.name })
-    } catch (error) {
-      log.error('Failed to update PR:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleRebase = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || isWorkingTreeDirty) return
-
-    setIsLoading(true)
-    try {
-      await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
-    } catch (error) {
-      log.error('Failed to initiate rebase:', error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const showRebaseButton = canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty })
-
-  const handleShipIt = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading || !branchWithPr) return
-
-    setIsLoading(true)
-    try {
-      await shipIt({ branchName: branchWithPr.name })
-    } catch (error) {
-      log.error('Failed to ship it:', error)
-    } finally {
-      setIsLoading(false)
-    }
   }
 
   if (pr) {
@@ -213,28 +245,6 @@ export function GitForgeSection({
     )
   }
 
-  const handleCreatePr = async (e: React.MouseEvent): Promise<void> => {
-    e.stopPropagation()
-    if (isLoading) return
-
-    // Pick the first available branch on the commit as requested.
-    const branch = branches[0]
-    if (!branch) return
-
-    setIsLoading(true)
-    setError(null)
-    try {
-      await createPullRequest({ headBranch: branch.name })
-    } catch (error) {
-      log.error('Failed to create PR:', error)
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      setError(errorMessage)
-      // Error dialog will be shown by the backend handler
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   return (
     <div className="flex items-center gap-2">
       {showRebaseButton && (
@@ -268,4 +278,4 @@ export function GitForgeSection({
       )}
     </div>
   )
-}
+})

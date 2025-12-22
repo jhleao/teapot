@@ -39,10 +39,12 @@ const stageStatusToCheckboxState: Record<
 
 export function FileItem({
   file,
-  onToggle
+  onToggle,
+  isLoading
 }: {
   file: UiWorkingTreeFile
   onToggle: (file: UiWorkingTreeFile) => void
+  isLoading?: boolean
 }) {
   const lastSlashIndex = file.path.lastIndexOf('/')
   const directoryPath = lastSlashIndex >= 0 ? file.path.slice(0, lastSlashIndex + 1) : ''
@@ -52,7 +54,7 @@ export function FileItem({
 
   return (
     <div className="flex items-center gap-2 text-sm">
-      <Checkbox state={checkboxState} onClick={() => onToggle(file)} />
+      <Checkbox state={checkboxState} onClick={() => onToggle(file)} isLoading={isLoading} />
       <div className="ml-4 flex items-center gap-2">
         <FileStatusBadge status={file.status} />
         <span className="flex-1">

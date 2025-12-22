@@ -2,6 +2,7 @@ import { Settings } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
 import { ConflictResolutionDialog } from './components/ConflictResolutionDialog'
 import { EmptyState } from './components/EmptyState'
+import { ResumeQueueDialog } from './components/ResumeQueueDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
@@ -13,7 +14,7 @@ import { useUiStateContext } from './contexts/UiStateContext'
 import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
 
 function App(): React.JSX.Element {
-  const { uiState, repoError, isRebasingWithConflicts } = useUiStateContext()
+  const { uiState, repoError, isRebasingWithConflicts, queuedBranches } = useUiStateContext()
   const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
 
@@ -35,7 +36,7 @@ function App(): React.JSX.Element {
   return (
     <div className="flex flex-col">
       <TitleBar />
-      <div className="px-6 py-2">
+      <div className="px-6 pt-2 pb-32">
         <Topbar />
 
         <div className="">
@@ -61,6 +62,9 @@ function App(): React.JSX.Element {
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
       {isRebasingWithConflicts && <ConflictResolutionDialog />}
+      {queuedBranches.length > 0 && !isRebasingWithConflicts && (
+        <ResumeQueueDialog queuedBranches={queuedBranches} />
+      )}
       <Toaster />
     </div>
   )

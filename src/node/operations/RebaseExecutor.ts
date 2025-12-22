@@ -33,8 +33,7 @@ import type { ValidationResult } from '../domain/RebaseValidator'
 import { SessionService } from '../services'
 import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
-
-const { SessionNotFoundError } = SessionService
+import { checkConflictResolution } from '../utils/conflict-markers'
 
 export type RebaseExecutionResult =
   | { status: 'completed'; finalState: RebaseState }
@@ -110,6 +109,21 @@ export class RebaseExecutor {
    */
   static async continue(repoPath: string): Promise<RebaseExecutionResult> {
     const git = getGitAdapter()
+    const session = await SessionService.getSession(repoPath)
+
+    // Auto-stage resolved files before continuing
+    // Files are "resolved" when conflict markers have been removed from the file
+    const workingTreeStatus = await git.getWorkingTreeStatus(repoPath)
+    if (workingTreeStatus.conflicted.length > 0) {
+      const resolutionStatus = await checkConflictResolution(repoPath, workingTreeStatus.conflicted)
+      const resolvedFiles = workingTreeStatus.conflicted.filter(
+        (filePath) => resolutionStatus.get(filePath) === true
+      )
+
+      if (resolvedFiles.length > 0) {
+        await git.add(repoPath, resolvedFiles)
+      }
+    }
 
     const validation = await this.validateCanContinue(repoPath, git)
     if (!validation.valid) {
@@ -120,7 +134,6 @@ export class RebaseExecutor {
       return { status: 'error', message: 'Git adapter does not support rebase continue' }
     }
 
-    const session = await SessionService.getSession(repoPath)
     if (!session) {
       const result = await git.rebaseContinue(repoPath)
       if (result.error) {
@@ -162,7 +175,7 @@ export class RebaseExecutor {
           jobsById: { ...session.state.jobsById, [updatedJob.id]: updatedJob }
         }
 
-        await SessionService.updateSessionWithRetry(repoPath, () => ({ state: newState }))
+        SessionService.updateState(repoPath, newState)
         return { status: 'conflict', job: updatedJob, conflicts: result.conflicts, state: newState }
       }
 
@@ -400,7 +413,7 @@ export class RebaseExecutor {
     while (true) {
       const session = await SessionService.getSession(repoPath)
       if (!session) {
-        throw new SessionNotFoundError('Session disappeared during execution', repoPath)
+        throw new Error(`Session not found: ${repoPath}`)
       }
 
       const next = RebaseStateMachine.nextJob(session.state, Date.now())
@@ -410,7 +423,7 @@ export class RebaseExecutor {
       }
 
       const { job, state: stateWithActiveJob } = next
-      await SessionService.updateSessionWithRetry(repoPath, () => ({ state: stateWithActiveJob }))
+      SessionService.updateState(repoPath, stateWithActiveJob)
       options.onJobStart?.(job)
 
       const result = await this.executeJob(repoPath, job, git)
@@ -513,7 +526,7 @@ export class RebaseExecutor {
       jobsById: { ...state.jobsById, [job.id]: updatedJob }
     }
 
-    await SessionService.updateSessionWithRetry(repoPath, () => ({ state: conflictState }))
+    SessionService.updateState(repoPath, conflictState)
     options.onJobConflict?.(updatedJob, conflicts)
 
     return { status: 'conflict', job: updatedJob, conflicts, state: conflictState }
@@ -557,7 +570,7 @@ export class RebaseExecutor {
       })
     }
 
-    await SessionService.updateSessionWithRetry(repoPath, () => ({ state: newState }))
+    SessionService.updateState(repoPath, newState)
     options.onJobComplete?.(completionResult.job, newHeadSha)
   }
 
@@ -617,7 +630,7 @@ export class RebaseExecutor {
       }
     }
 
-    await SessionService.updateSessionWithRetry(repoPath, () => ({ state: finalState }))
+    SessionService.updateState(repoPath, finalState)
     await SessionService.clearSession(repoPath)
   }
 
@@ -656,7 +669,7 @@ export class RebaseExecutor {
       })
     }
 
-    await SessionService.updateSessionWithRetry(repoPath, () => ({ state: newState }))
+    SessionService.updateState(repoPath, newState)
   }
 
   private static createMinimalState(): RebaseState {

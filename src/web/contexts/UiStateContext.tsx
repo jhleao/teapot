@@ -284,8 +284,10 @@ export function UiStateProvider({
     async (params: { headBranch: string }) => {
       if (!repoPath) return
       await callApi(window.api.updatePullRequest({ repoPath, ...params }))
+      // Refresh forge state to get the updated PR status
+      await refreshForge()
     },
-    [repoPath, callApi]
+    [repoPath, callApi, refreshForge]
   )
 
   const uncommit = useCallback(

@@ -12,20 +12,6 @@ export class BranchUtils {
   // Prevent instantiation - use static methods
   private constructor() {}
 
-  private static containsInvalidGitBranchChars(name: string): boolean {
-    // Avoid regex control ranges (eslint `no-control-regex`) while keeping behavior equivalent.
-    // Matches the intent of: /[\x00-\x1f\x7f~^:?*\[\\]/
-    const forbidden = new Set(['~', '^', ':', '?', '*', '[', '\\'])
-
-    for (let i = 0; i < name.length; i++) {
-      const code = name.charCodeAt(i)
-      if (code <= 0x1f || code === 0x7f) return true
-      if (forbidden.has(name[i])) return true
-    }
-
-    return false
-  }
-
   /**
    * Parses a remote branch ref into remote name and local branch name.
    * Handles both 'origin/main' and 'refs/remotes/origin/main' formats,
@@ -197,5 +183,19 @@ export class BranchUtils {
     }
 
     return null
+  }
+
+  private static containsInvalidGitBranchChars(name: string): boolean {
+    // Avoid regex control ranges (eslint `no-control-regex`) while keeping behavior equivalent.
+    // Matches the intent of: /[\x00-\x1f\x7f~^:?*\[\\]/
+    const forbidden = new Set(['~', '^', ':', '?', '*', '[', '\\'])
+
+    for (let i = 0; i < name.length; i++) {
+      const code = name.charCodeAt(i)
+      if (code <= 0x1f || code === 0x7f) return true
+      if (forbidden.has(name[i])) return true
+    }
+
+    return false
   }
 }

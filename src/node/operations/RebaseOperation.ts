@@ -209,7 +209,11 @@ export class RebaseOperation {
   static async resumeRebaseQueue(repoPath: string): Promise<RebaseOperationResponse> {
     const session = await SessionService.getSession(repoPath)
     if (!session) {
-      return { success: false, uiState: await UiStateOperation.getUiState(repoPath), error: 'No session found' }
+      return {
+        success: false,
+        uiState: await UiStateOperation.getUiState(repoPath),
+        error: 'No session found'
+      }
     }
 
     const git = getGitAdapter()

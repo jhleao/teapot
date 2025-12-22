@@ -1,5 +1,6 @@
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import { app, BrowserWindow, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { registerHandlers } from './handlers'
@@ -55,6 +56,11 @@ app.whenReady().then(() => {
   registerHandlers()
 
   createWindow()
+
+  // Check for updates in production (silent download + OS notification when ready)
+  if (!is.dev) {
+    autoUpdater.checkForUpdatesAndNotify()
+  }
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

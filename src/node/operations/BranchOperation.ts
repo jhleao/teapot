@@ -2,13 +2,13 @@
  * BranchOperation - Orchestrates branch-related operations
  *
  * This module handles all branch operations including:
- * - Checkout (handles both local and remote branches)
+ * - Checkout (simple git checkout - no smart routing or fast-forwarding)
  * - Branch deletion (local only, or local + remote cleanup)
- * - Fast-forward sync with remote
+ * - Sync trunk with remote (fast-forward only)
  */
 
 import { log } from '@shared/logger'
-import type { RemoteBranchCheckoutResult } from '@shared/types/repo'
+import type { CheckoutResult } from '@shared/types/repo'
 import {
   branchExists,
   canFastForward,
@@ -17,13 +17,7 @@ import {
   supportsMerge,
   type GitAdapter
 } from '../adapters/git'
-import { BranchUtils } from '../domain'
 import { gitForgeService } from '../services/ForgeService'
-
-export type PullRemoteBranchResult = {
-  status: 'success' | 'conflict' | 'error'
-  error?: string
-}
 
 export type SyncTrunkResult = {
   status: 'success' | 'conflict' | 'error'
@@ -33,119 +27,19 @@ export type SyncTrunkResult = {
 
 export class BranchOperation {
   /**
-   * Smart checkout that handles both local and remote branches.
+   * Simple checkout - just checks out the given ref directly.
+   * Does not do any smart routing, fetching, or fast-forwarding.
    */
-  static async smartCheckout(repoPath: string, ref: string): Promise<RemoteBranchCheckoutResult> {
-    const parsed = BranchUtils.parseRemoteBranch(ref)
-
-    if (parsed) {
-      const pullResult = await this.pullRemoteBranch(
-        repoPath,
-        ref,
-        parsed.remote,
-        parsed.localBranch
-      )
-
-      if (pullResult.status !== 'success') {
-        return {
-          success: false,
-          error: pullResult.error ?? `Pull failed with status: ${pullResult.status}`
-        }
-      }
-
-      return this.checkoutLocal(repoPath, parsed.localBranch)
-    }
-
-    return this.checkoutLocal(repoPath, ref)
-  }
-
-  /**
-   * Checkout a local branch.
-   */
-  static async checkoutLocal(
-    repoPath: string,
-    branchName: string
-  ): Promise<RemoteBranchCheckoutResult> {
+  static async checkout(repoPath: string, ref: string): Promise<CheckoutResult> {
     const git = getGitAdapter()
 
     try {
-      const exists = await this.verifyBranchExists(repoPath, branchName, git)
-      if (!exists) {
-        return { success: false, error: `Branch '${branchName}' not found` }
-      }
-
-      await git.checkout(repoPath, branchName)
-      return { success: true, localBranch: branchName }
+      await git.checkout(repoPath, ref)
+      return { success: true }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      log.error(`[BranchOperation.checkoutLocal] Failed to checkout ${branchName}:`, error)
+      log.error(`[BranchOperation.checkout] Failed to checkout ${ref}:`, error)
       return { success: false, error: `Checkout failed: ${message}` }
-    }
-  }
-
-  /**
-   * Pull a remote branch by fast-forwarding or creating the corresponding local branch.
-   */
-  static async pullRemoteBranch(
-    repoPath: string,
-    remoteRef: string,
-    remote: string,
-    localBranch: string
-  ): Promise<PullRemoteBranchResult> {
-    const git = getGitAdapter()
-
-    try {
-      const fetchError = await this.fetchFromRemote(repoPath, remote, git)
-      if (fetchError) {
-        return { status: 'error', error: `Failed to fetch from ${remote}: ${fetchError}` }
-      }
-
-      const localExists = await branchExists(repoPath, localBranch)
-
-      if (!localExists) {
-        await this.createBranchFromRemote(repoPath, localBranch, remoteRef, git)
-        return { status: 'success' }
-      }
-
-      const canFF = await canFastForward(repoPath, localBranch, remoteRef)
-      if (!canFF) {
-        return {
-          status: 'conflict',
-          error: `Cannot sync: ${localBranch} has diverged from ${remoteRef}`
-        }
-      }
-
-      const ffResult = await this.fastForwardBranch(repoPath, localBranch, remoteRef, git)
-      if (!ffResult.success) {
-        return { status: 'error', error: `Fast-forward failed: ${ffResult.error}` }
-      }
-
-      return { status: 'success' }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.error(`[BranchOperation.pullRemoteBranch] Failed to pull ${remoteRef}:`, error)
-      return { status: 'error', error: `Pull failed: ${message}` }
-    }
-  }
-
-  /**
-   * Fetch and checkout a remote branch in one operation.
-   */
-  static async fetchAndCheckout(
-    repoPath: string,
-    remoteRef: string,
-    remote: string = 'origin'
-  ): Promise<RemoteBranchCheckoutResult> {
-    const git = getGitAdapter()
-
-    try {
-      log.info(`[BranchOperation.fetchAndCheckout] Fetching from ${remote}...`)
-      await git.fetch(repoPath, remote)
-      return this.smartCheckout(repoPath, remoteRef)
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      log.warn(`[BranchOperation.fetchAndCheckout] Fetch failed, trying checkout anyway:`, message)
-      return this.smartCheckout(repoPath, remoteRef)
     }
   }
 
@@ -180,8 +74,9 @@ export class BranchOperation {
   }
 
   /**
-   * Syncs the trunk branch with origin by fast-forwarding.
+   * Syncs the trunk branch with origin by fetching and fast-forwarding.
    * Detects the trunk branch automatically (main, master, etc.).
+   * This is the ONLY operation that does fast-forwarding.
    */
   static async syncTrunk(repoPath: string): Promise<SyncTrunkResult> {
     const git = getGitAdapter()
@@ -197,147 +92,119 @@ export class BranchOperation {
       }
     }
 
-    // Use pullRemoteBranch to sync trunk with origin
     const remoteRef = `origin/${trunkName}`
-    const result = await this.pullRemoteBranch(repoPath, remoteRef, 'origin', trunkName)
 
-    if (result.status === 'success') {
+    try {
+      // Fetch from origin first
+      await git.fetch(repoPath, 'origin')
+
+      // Check if local trunk exists
+      const localExists = await branchExists(repoPath, trunkName)
+
+      if (!localExists) {
+        // Create local trunk from remote
+        await git.branch(repoPath, trunkName, {
+          checkout: false,
+          startPoint: remoteRef
+        })
+        return {
+          status: 'success',
+          message: `Created ${trunkName} from origin`,
+          trunkName
+        }
+      }
+
+      // Check if we can fast-forward
+      const canFF = await canFastForward(repoPath, trunkName, remoteRef)
+      if (!canFF) {
+        return {
+          status: 'conflict',
+          message: `${trunkName} has diverged from origin`,
+          trunkName
+        }
+      }
+
+      // Perform fast-forward
+      const ffResult = await this.fastForwardTrunk(repoPath, trunkName, remoteRef, git)
+      if (!ffResult.success) {
+        return {
+          status: 'error',
+          message: ffResult.error ?? 'Fast-forward failed',
+          trunkName
+        }
+      }
+
       return {
         status: 'success',
         message: `Synced ${trunkName} with origin`,
         trunkName
       }
-    }
-
-    if (result.status === 'conflict') {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[BranchOperation.syncTrunk] Failed to sync trunk:`, error)
       return {
-        status: 'conflict',
-        message: result.error ?? `${trunkName} has diverged from origin`,
+        status: 'error',
+        message: `Sync failed: ${message}`,
         trunkName
       }
     }
-
-    return {
-      status: 'error',
-      message: result.error ?? 'Sync failed',
-      trunkName
-    }
   }
 
-  private static async verifyBranchExists(
+  /**
+   * Fast-forwards the trunk branch to match the remote ref.
+   * Handles both the case where we're on trunk and where we're on another branch.
+   */
+  private static async fastForwardTrunk(
     repoPath: string,
-    branchName: string,
-    git: GitAdapter
-  ): Promise<boolean> {
-    const exists = await branchExists(repoPath, branchName)
-    if (exists) return true
-
-    try {
-      await git.resolveRef(repoPath, branchName)
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  private static async fetchFromRemote(
-    repoPath: string,
-    remote: string,
-    git: GitAdapter
-  ): Promise<string | null> {
-    try {
-      await git.fetch(repoPath, remote)
-      return null
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error)
-    }
-  }
-
-  private static async createBranchFromRemote(
-    repoPath: string,
-    localBranch: string,
-    remoteRef: string,
-    git: GitAdapter
-  ): Promise<void> {
-    await git.branch(repoPath, localBranch, {
-      checkout: false,
-      startPoint: remoteRef
-    })
-  }
-
-  private static async fastForwardBranch(
-    repoPath: string,
-    localBranch: string,
+    trunkName: string,
     remoteRef: string,
     git: GitAdapter
   ): Promise<{ success: boolean; error?: string }> {
     const currentBranch = await git.currentBranch(repoPath)
-    const wasOnTargetBranch = currentBranch === localBranch
+    const isOnTrunk = currentBranch === trunkName
 
-    if (wasOnTargetBranch) {
-      return this.fastForwardCurrentBranch(repoPath, remoteRef, git)
-    }
-
-    return this.fastForwardOtherBranch(repoPath, localBranch, remoteRef, currentBranch, git)
-  }
-
-  private static async fastForwardCurrentBranch(
-    repoPath: string,
-    remoteRef: string,
-    git: GitAdapter
-  ): Promise<{ success: boolean; error?: string }> {
-    if (!supportsMerge(git)) {
+    if (isOnTrunk) {
+      // Simple case: we're on trunk, just merge --ff-only
+      if (!supportsMerge(git)) {
+        return { success: true }
+      }
+      const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
+      if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
+        return { success: false, error: mergeResult.error }
+      }
       return { success: true }
     }
 
-    const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
-    if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-      return { success: false, error: mergeResult.error }
-    }
-
-    return { success: true }
-  }
-
-  private static async fastForwardOtherBranch(
-    repoPath: string,
-    localBranch: string,
-    remoteRef: string,
-    currentBranch: string | null,
-    git: GitAdapter
-  ): Promise<{ success: boolean; error?: string }> {
+    // We're on a different branch - need to checkout trunk, FF, then return
     const originalHead = await git.resolveRef(repoPath, 'HEAD')
 
     try {
-      await git.checkout(repoPath, localBranch)
+      await git.checkout(repoPath, trunkName)
 
       if (supportsMerge(git)) {
         const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
         if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-          await this.restoreOriginalBranch(repoPath, currentBranch, originalHead, git)
+          await this.restoreBranch(repoPath, currentBranch, originalHead, git)
           return { success: false, error: mergeResult.error }
         }
       }
 
-      await this.restoreOriginalBranch(repoPath, currentBranch, originalHead, git)
+      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
       return { success: true }
     } catch (error) {
-      await this.restoreOriginalBranch(repoPath, currentBranch, originalHead, git)
+      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
       throw error
     }
   }
 
-  private static async restoreOriginalBranch(
+  private static async restoreBranch(
     repoPath: string,
-    currentBranch: string | null,
-    originalHead: string,
+    branchName: string | null,
+    fallbackRef: string,
     git: GitAdapter
   ): Promise<void> {
     try {
-      if (currentBranch) {
-        await git.checkout(repoPath, currentBranch)
-      } else {
-        await git.checkout(repoPath, originalHead)
-      }
+      await git.checkout(repoPath, branchName ?? fallbackRef)
     } catch {
       log.error('[BranchOperation] Failed to restore original branch')
     }

@@ -113,14 +113,6 @@ export type CheckoutResult = {
 }
 
 /**
- * Result of a remote branch checkout with fetch and fast-forward.
- */
-export type RemoteBranchCheckoutResult = CheckoutResult & {
-  /** The local branch that was checked out */
-  localBranch?: string
-}
-
-/**
  * Parsed representation of a remote branch reference.
  */
 export type RemoteBranchRef = {

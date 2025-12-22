@@ -41,8 +41,6 @@ export type RebaseStatusResponse = {
  */
 export type CheckoutResponse = {
   uiState: UiState | null
-  /** Message to display to user (for remote checkouts) */
-  message?: string
 }
 
 /**

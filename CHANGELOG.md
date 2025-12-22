@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/jhleao/teapot/compare/teapot-v0.2.2...teapot-v0.2.3) (2025-12-22)
+
+
+### Bug Fixes
+
+* force release ([1052d71](https://github.com/jhleao/teapot/commit/1052d718e00d497d09be7e92b14b8cc35e8eb207))
+
 ## [0.2.2](https://github.com/jhleao/teapot/compare/teapot-v0.2.1...teapot-v0.2.2) (2025-12-22)
 
 

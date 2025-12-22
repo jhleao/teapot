@@ -36,7 +36,9 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:mac -- --publish always
+      - run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -54,7 +56,9 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:win -- --publish always
+      - run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,6 +76,8 @@ jobs:
           node-version: '22'
           cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build:linux -- --publish always
+      - run: |
+          pnpm exec electron-vite build
+          pnpm exec electron-builder --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

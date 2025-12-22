@@ -6,6 +6,7 @@ import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { BranchBadge } from './BranchBadge'
+import { CreateBranchButton } from './CreateBranchButton'
 import { GitForgeSection } from './GitForgeSection'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
@@ -198,6 +199,9 @@ export const CommitView = memo(function CommitView({
                 <BranchBadge key={`${branch.name}-${index}`} data={branch} />
               ))}
             </div>
+          )}
+          {data.branches.length === 0 && !stack.isTrunk && (
+            <CreateBranchButton commitSha={data.sha} />
           )}
         </div>
         <div

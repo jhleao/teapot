@@ -98,7 +98,8 @@ export const IPC_CHANNELS = {
   uncommit: 'uncommit',
   updatePullRequest: 'updatePullRequest',
   shipIt: 'shipIt',
-  syncTrunk: 'syncTrunk'
+  syncTrunk: 'syncTrunk',
+  createBranch: 'createBranch'
 } as const
 
 export const IPC_EVENTS = {
@@ -239,6 +240,10 @@ export interface IpcContract {
   [IPC_CHANNELS.syncTrunk]: {
     request: { repoPath: string }
     response: SyncTrunkResponse
+  }
+  [IPC_CHANNELS.createBranch]: {
+    request: { repoPath: string; branchName?: string; commitSha: string }
+    response: UiState | null
   }
 }
 

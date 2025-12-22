@@ -1,5 +1,6 @@
 import { Settings } from 'lucide-react'
 import React, { useMemo, useState } from 'react'
+import { ConflictResolutionDialog } from './components/ConflictResolutionDialog'
 import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
@@ -11,7 +12,7 @@ import { useUiStateContext } from './contexts/UiStateContext'
 import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
 
 function App(): React.JSX.Element {
-  const { uiState, repoError } = useUiStateContext()
+  const { uiState, repoError, isRebasingWithConflicts } = useUiStateContext()
   const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
 
@@ -120,6 +121,7 @@ function App(): React.JSX.Element {
       </button>
 
       <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+      {isRebasingWithConflicts && <ConflictResolutionDialog />}
       <Toaster />
     </div>
   )

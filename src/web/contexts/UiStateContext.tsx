@@ -77,6 +77,12 @@ export function UiStateProvider({
     }
   }, [repoPath])
 
+  // Clear state immediately when repo path changes to show loading state
+  useEffect(() => {
+    setUiState(null)
+    setRepoError(null)
+  }, [repoPath])
+
   useEffect(() => {
     refreshRepo()
   }, [refreshRepo])
@@ -200,9 +206,6 @@ export function UiStateProvider({
       try {
         const result = await window.api.checkout({ repoPath, ...params })
         if (result.uiState) setUiState(result.uiState)
-        if (result.message) {
-          toast.success(result.message)
-        }
       } catch (error) {
         log.error('Checkout failed:', error)
         toast.error('Checkout failed', {

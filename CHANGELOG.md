@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.0](https://github.com/jhleao/teapot/compare/v0.4.1...v0.5.0) (2025-12-23)
+
+
+### Features
+
+* command+enter shortcut for committing ([67fb11d](https://github.com/jhleao/teapot/commit/67fb11d87cd57e5875d5d58facbd755787d9ffc6))
+* restore git watcher functionality with rebase intent lock ([5a1538b](https://github.com/jhleao/teapot/commit/5a1538be76e039767985cd4133eae5e9ebdfcb28))
+* uncommit loading state ([a9d6907](https://github.com/jhleao/teapot/commit/a9d690751b3ea2b63d96a47d09371a55adf29f41))
+
 ## [0.4.1](https://github.com/jhleao/teapot/compare/v0.4.0...v0.4.1) (2025-12-22)
 
 

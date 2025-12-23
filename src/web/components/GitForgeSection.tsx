@@ -32,7 +32,6 @@ export const GitForgeSection = memo(function GitForgeSection({
     updatePullRequest,
     submitRebaseIntent,
     cleanupBranch,
-    shipIt,
     isWorkingTreeDirty
   } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
@@ -99,22 +98,22 @@ export const GitForgeSection = memo(function GitForgeSection({
     [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
   )
 
-  const _handleShipIt = useCallback(
-    async (e: React.MouseEvent): Promise<void> => {
-      e.stopPropagation()
-      if (isLoading || !branchWithPr) return
+  // const _handleShipIt = useCallback(
+  //   async (e: React.MouseEvent): Promise<void> => {
+  //     e.stopPropagation()
+  //     if (isLoading || !branchWithPr) return
 
-      setIsLoading(true)
-      try {
-        await shipIt({ branchName: branchWithPr.name })
-      } catch (error) {
-        log.error('Failed to ship it:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [isLoading, branchWithPr, shipIt]
-  )
+  //     setIsLoading(true)
+  //     try {
+  //       await shipIt({ branchName: branchWithPr.name })
+  //     } catch (error) {
+  //       log.error('Failed to ship it:', error)
+  //     } finally {
+  //       setIsLoading(false)
+  //     }
+  //   },
+  //   [isLoading, branchWithPr, shipIt]
+  // )
 
   const handleCreatePr = useCallback(
     async (e: React.MouseEvent): Promise<void> => {

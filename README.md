@@ -16,11 +16,11 @@
 
 ## About
 
-Teapot makes stacked diff workflows so easy you barely have to thing about it. It shows your branches as a visual tree, helps you reshape stacks with drag and drop, and keeps frequent Git and GitHub actions handy, while being transparent enough so that nothing feels like incomprehensible magic (don't we all hate that?!).
+Teapot makes stacked diff workflows so easy you barely have to think about it. It shows your branches as a visual tree, helps you reshape stacks with drag and drop, and keeps frequent Git and GitHub actions handy, while being transparent enough so that nothing feels like incomprehensible magic (don't we all hate that?!).
 
-Large rebases often fail halfway through. Teapot runs rebases as an interactive durable queue. Pauses on conflicts, and lets you resolve and resume without losing the large stack-wide rebasing plan.
+Large rebases often fail/conflict halfway through. Teapot runs rebases as an interactive durable queue. Pauses on conflicts, and lets you resolve and resume without losing the large stack-wide rebasing plan. Most of the time, this means a couple of mouse clicks and less than 3 seconds.
 
-Also includes GitHub pull requests. Create a PR with base branch detection, update a PR after amends with a force push, and merge PRs from the UI. Teapot highlights out of sync branches and stale targets, everything stays obvious.
+For each branch in the stack, Tepot trackes the remote PR linked to it. Offers to create a PR with base branch detection, and to update a PR after amends with a force push. Teapot highlights out of sync branches and stale targets. No more half-rebased stacks, no more commits pointing at stale parents (bogus stack bifurcation). Stacks stay healthy and the whole state stays obvious.
 
 ## Installation
 

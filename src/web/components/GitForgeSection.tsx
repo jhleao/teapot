@@ -99,7 +99,7 @@ export const GitForgeSection = memo(function GitForgeSection({
     [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
   )
 
-  const handleShipIt = useCallback(
+  const _handleShipIt = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
       e.stopPropagation()
       if (isLoading || !branchWithPr) return
@@ -196,7 +196,8 @@ export const GitForgeSection = memo(function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {!prIsMerged &&
+        {/* Temporarily hidden until issues with this are fixed */}
+        {/* {!prIsMerged &&
           pr.isInSync &&
           pr.isMergeable &&
           !isWorkingTreeDirty &&
@@ -209,7 +210,7 @@ export const GitForgeSection = memo(function GitForgeSection({
             >
               {isLoading ? 'Shipping...' : 'Ship it!'}
             </button>
-          )}
+          )} */}
         {!prIsMerged && branchWithPr?.hasStaleTarget && (
           <span
             className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"
@@ -278,7 +279,7 @@ export const GitForgeSection = memo(function GitForgeSection({
         {isLoading ? 'Creating PR...' : error ? 'Failed - Retry' : 'Create PR'}
       </button>
       {error && (
-        <span className="max-w-[200px] text-[10px] break-words text-red-500" title={error}>
+        <span className="max-w-[200px] text-[10px] wrap-break-word text-red-500" title={error}>
           {error.length > 50 ? `${error.substring(0, 50)}...` : error}
         </span>
       )}

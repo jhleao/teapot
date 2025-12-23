@@ -1,7 +1,6 @@
 <div align="center">
-  <img src="resources/icon.png" alt="Teapot" width="128" />
   <h1>Teapot</h1>
-  <p><strong>View & manage your stacked diffs like Lego blocks</strong></p>
+  <p><strong>View & manage your stacked diffs like Lego bricks</strong></p>
 
 [![Checks](https://img.shields.io/github/actions/workflow/status/jhleao/teapot/release.yml?branch=main&style=flat-square)](https://github.com/jhleao/teapot/actions/workflows/release.yml)
 [![Latest Release](https://img.shields.io/github/v/release/jhleao/teapot?style=flat-square)](https://github.com/jhleao/teapot/releases)
@@ -10,6 +9,8 @@
 [![License](https://img.shields.io/github/license/jhleao/teapot?style=flat-square)](LICENSE)
 
 </div>
+
+---
 
 <p align="center"><img src="resources/teapot-demo.gif" alt="Teapot Demo" width="800" /></p>
 

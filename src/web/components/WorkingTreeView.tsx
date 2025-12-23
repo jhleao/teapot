@@ -71,6 +71,12 @@ function CommitForm({
   canAmend: boolean
   canDiscard: boolean
 }) {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canCommit) {
+      e.preventDefault()
+      onCommit()
+    }
+  }
   function CommitFormButton({
     onClick,
     children,
@@ -102,6 +108,7 @@ function CommitForm({
         type="text"
         value={message}
         onChange={(e) => onMessageChange(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder="Commit message"
         className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-accent rounded border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
       />
@@ -110,8 +117,9 @@ function CommitForm({
           type="text"
           value={newBranchName}
           onChange={(e) => onNewBranchNameChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="New branch name (optional)"
-          className="border-border bg-background text-foreground placeholder:text-muted-foreground focus:ring-accent w-60 rounded border px-2 py-2 text-sm focus:ring-2 focus:outline-none"
+          className="text-foreground placeholder:text-muted-foreground/50 bg-background focus:ring-accent border-muted w-60 rounded border px-2 py-2 text-sm focus:ring-2 focus:outline-none"
         />
         <div className="flex items-center">
           <CommitFormButton

@@ -107,6 +107,7 @@ export const CommitView = memo(function CommitView({
   const hasSpinoffs = data.spinoffs.length > 0
 
   const [isCanceling, setIsCanceling] = useState(false)
+  const [isUncommitting, setIsUncommitting] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
     await confirmRebaseIntent()
@@ -124,9 +125,15 @@ export const CommitView = memo(function CommitView({
   const handleUncommit = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
       e.stopPropagation()
-      await uncommit({ commitSha: data.sha })
+      if (isUncommitting) return
+      setIsUncommitting(true)
+      try {
+        await uncommit({ commitSha: data.sha })
+      } finally {
+        setIsUncommitting(false)
+      }
     },
-    [uncommit, data.sha]
+    [uncommit, data.sha, isUncommitting]
   )
 
   const onCommitDotMouseDown = useCallback(
@@ -214,23 +221,28 @@ export const CommitView = memo(function CommitView({
           {data.name}
         </div>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
-        <GitForgeSection
-          branches={data.branches}
-          isTrunk={stack.isTrunk}
-          commitSha={data.sha}
-          trunkHeadSha={trunkHeadSha}
-          baseSha={baseSha}
-        />
-        {!stack.isTrunk && isCurrent && (
-          <button
-            onClick={handleUncommit}
-            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors"
-          >
-            Uncommit
-          </button>
+        {data.rebaseStatus !== 'prompting' && data.rebaseStatus !== 'queued' && (
+          <>
+            <GitForgeSection
+              branches={data.branches}
+              isTrunk={stack.isTrunk}
+              commitSha={data.sha}
+              trunkHeadSha={trunkHeadSha}
+              baseSha={baseSha}
+            />
+            {!stack.isTrunk && isCurrent && (
+              <button
+                onClick={handleUncommit}
+                disabled={isUncommitting}
+                className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+              >
+                {isUncommitting ? 'Uncommitting...' : 'Uncommit'}
+              </button>
+            )}
+          </>
         )}
         {data.rebaseStatus === 'prompting' && (
-          <div className="ml-auto flex gap-2 pr-4">
+          <div className="flex gap-2">
             <button
               onClick={handleCancelRebase}
               disabled={isCanceling}

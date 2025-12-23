@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from 'react'
@@ -62,6 +63,7 @@ export function UiStateProvider({
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
+  const skipWatcherUpdatesRef = useRef(false)
 
   const refreshRepo = useCallback(async () => {
     if (!repoPath) {
@@ -100,7 +102,10 @@ export function UiStateProvider({
 
   useGitWatcher({
     repoPath,
-    onRepoChange: refreshRepo,
+    onRepoChange: () => {
+      if (skipWatcherUpdatesRef.current) return
+      refreshRepo()
+    },
     onRepoError: (error) => {
       setRepoError(error)
       setUiState(null)
@@ -164,6 +169,7 @@ export function UiStateProvider({
   const submitRebaseIntent = useCallback(
     async (params: { headSha: string; baseSha: string }) => {
       if (!repoPath) return
+      skipWatcherUpdatesRef.current = true
       await callApi(window.api.submitRebaseIntent({ repoPath, ...params }))
     },
     [repoPath, callApi]
@@ -171,12 +177,20 @@ export function UiStateProvider({
 
   const confirmRebaseIntent = useCallback(async () => {
     if (!repoPath) return
-    await callApi(window.api.confirmRebaseIntent({ repoPath }))
+    try {
+      await callApi(window.api.confirmRebaseIntent({ repoPath }))
+    } finally {
+      skipWatcherUpdatesRef.current = false
+    }
   }, [repoPath, callApi])
 
   const cancelRebaseIntent = useCallback(async () => {
     if (!repoPath) return
-    await callApi(window.api.cancelRebaseIntent({ repoPath }))
+    try {
+      await callApi(window.api.cancelRebaseIntent({ repoPath }))
+    } finally {
+      skipWatcherUpdatesRef.current = false
+    }
   }, [repoPath, callApi])
 
   const continueRebase = useCallback(async () => {

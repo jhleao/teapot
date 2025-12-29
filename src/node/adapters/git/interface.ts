@@ -24,7 +24,8 @@ import type {
   RebaseResult,
   Remote,
   ResetOptions,
-  WorkingTreeStatus
+  WorkingTreeStatus,
+  WorktreeInfo
 } from './types'
 
 /**
@@ -113,6 +114,14 @@ export interface GitAdapter {
    * @returns Complete working tree status
    */
   getWorkingTreeStatus(dir: string): Promise<WorkingTreeStatus>
+
+  /**
+   * List all worktrees in the repository
+   *
+   * @param dir - Repository directory path (any worktree path works)
+   * @returns Array of worktree information
+   */
+  listWorktrees(dir: string): Promise<WorktreeInfo[]>
 
   // ============================================================================
   // Repository Mutation

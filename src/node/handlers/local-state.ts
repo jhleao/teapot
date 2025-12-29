@@ -41,6 +41,14 @@ const setGithubPatHandler: IpcHandlerOf<'setGithubPat'> = (_event, { token }) =>
   gitForgeService.invalidateAll()
 }
 
+const getPreferredEditorHandler: IpcHandlerOf<'getPreferredEditor'> = () => {
+  return configStore.getPreferredEditor() ?? null
+}
+
+const setPreferredEditorHandler: IpcHandlerOf<'setPreferredEditor'> = (_event, { editor }) => {
+  configStore.setPreferredEditor(editor)
+}
+
 export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getLocalRepos, getLocalReposHandler)
   ipcMain.handle(IPC_CHANNELS.selectLocalRepo, selectLocalRepoHandler)
@@ -49,4 +57,6 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.showFolderPicker, showFolderPickerHandler)
   ipcMain.handle(IPC_CHANNELS.getGithubPat, getGithubPatHandler)
   ipcMain.handle(IPC_CHANNELS.setGithubPat, setGithubPatHandler)
+  ipcMain.handle(IPC_CHANNELS.getPreferredEditor, getPreferredEditorHandler)
+  ipcMain.handle(IPC_CHANNELS.setPreferredEditor, setPreferredEditorHandler)
 }

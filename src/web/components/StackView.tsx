@@ -1,7 +1,8 @@
-import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
+import type { UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
 import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDragContext } from '../contexts/DragContext'
+import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
@@ -10,6 +11,7 @@ import { CreateBranchButton } from './CreateBranchButton'
 import { GitForgeSection } from './GitForgeSection'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
+import { WorktreeBadge } from './WorktreeBadge'
 
 interface StackProps {
   data: UiStack
@@ -75,8 +77,16 @@ export const CommitView = memo(function CommitView({
     draggingCommitSha,
     pendingRebase
   } = useDragContext()
-  const { confirmRebaseIntent, cancelRebaseIntent, uncommit, uiState, isRebasingWithConflicts } =
-    useUiStateContext()
+  const {
+    confirmRebaseIntent,
+    cancelRebaseIntent,
+    uncommit,
+    uiState,
+    isRebasingWithConflicts,
+    switchWorktree,
+    repoPath
+  } = useUiStateContext()
+  const { refreshRepos } = useLocalStateContext()
 
   const trunkHeadSha = uiState?.trunkHeadSha ?? ''
 
@@ -134,6 +144,14 @@ export const CommitView = memo(function CommitView({
       }
     },
     [uncommit, data.sha, isUncommitting]
+  )
+
+  const handleSwitchWorktree = useCallback(
+    async (worktreePath: string) => {
+      await switchWorktree({ worktreePath })
+      await refreshRepos()
+    },
+    [switchWorktree, refreshRepos]
   )
 
   const onCommitDotMouseDown = useCallback(
@@ -239,6 +257,17 @@ export const CommitView = memo(function CommitView({
                 {isUncommitting ? 'Uncommitting...' : 'Uncommit'}
               </button>
             )}
+            {/* Worktree badges - show for branches checked out in other worktrees */}
+            {data.branches
+              .filter((b): b is typeof b & { worktree: UiWorktreeBadge } => b.worktree != null)
+              .map((branch, index) => (
+                <WorktreeBadge
+                  key={`wt-${branch.name}-${index}`}
+                  data={branch.worktree}
+                  onSwitch={handleSwitchWorktree}
+                  repoPath={repoPath ?? undefined}
+                />
+              ))}
           </>
         )}
         {data.rebaseStatus === 'prompting' && (

@@ -8,7 +8,7 @@
  * - Building the full repo model
  */
 
-import type { Branch, Commit, Configuration, Repo } from '@shared/types'
+import type { Branch, Commit, Configuration, Repo, Worktree } from '@shared/types'
 import { isTrunk as isTrunkBranchName } from '@shared/types'
 import type { GitAdapter, LogOptions } from '../adapters/git'
 import { getGitAdapter, resolveTrunkRef } from '../adapters/git'
@@ -42,6 +42,11 @@ export type BuildRepoOptions = {
    * Default: 1000
    */
   maxCommitsPerBranch?: number
+  /**
+   * Active worktree path. If set, workingTreeStatus will reflect this worktree.
+   * If null/undefined, uses the main worktree (repoPath).
+   */
+  activeWorktreePath?: string | null
 }
 
 const DEFAULT_OPTIONS: BuildRepoOptions = {
@@ -61,12 +66,14 @@ export async function buildRepoModel(
   config: Configuration,
   options: BuildRepoOptions = {}
 ): Promise<Repo> {
-  const { trunkDepth, loadRemotes, maxCommitsPerBranch } = {
+  const { trunkDepth, loadRemotes, maxCommitsPerBranch, activeWorktreePath } = {
     ...DEFAULT_OPTIONS,
     ...options
   }
 
   const dir = config.repoPath
+  // Use active worktree for working tree status, or main repo path if not set
+  const effectiveWorktreePath = activeWorktreePath ?? dir
   const git = getGitAdapter()
 
   const localBranches = await git.listBranches(dir)
@@ -88,13 +95,44 @@ export async function buildRepoModel(
       maxCommitsPerBranch: maxCommitsPerBranch!
     }
   )
-  const workingTreeStatus = await git.getWorkingTreeStatus(dir)
+  // Get working tree status from the active worktree
+  const workingTreeStatus = await git.getWorkingTreeStatus(effectiveWorktreePath)
+
+  // Load worktrees
+  const worktrees = await loadWorktrees(dir)
 
   return {
     path: dir,
+    activeWorktreePath: activeWorktreePath ?? null,
     commits,
     branches,
-    workingTreeStatus
+    workingTreeStatus,
+    worktrees
+  }
+}
+
+/**
+ * Loads all worktrees for the repository.
+ *
+ * @param dir - Repository directory path (any worktree path works)
+ * @returns Array of worktree information
+ */
+async function loadWorktrees(dir: string): Promise<Worktree[]> {
+  const git = getGitAdapter()
+
+  try {
+    const worktreeInfos = await git.listWorktrees(dir)
+    return worktreeInfos.map((info) => ({
+      path: info.path,
+      headSha: info.headSha,
+      branch: info.branch,
+      isMain: info.isMain,
+      isStale: info.isStale,
+      isDirty: info.isDirty
+    }))
+  } catch {
+    // If worktree listing fails (e.g., old git version), return empty array
+    return []
   }
 }
 

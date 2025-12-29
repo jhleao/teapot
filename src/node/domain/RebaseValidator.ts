@@ -8,8 +8,8 @@
  * helpers in the operations layer.
  */
 
-import type { RebaseIntent, RebaseTarget } from '@shared/types'
-import type { WorkingTreeStatus } from '@shared/types/repo'
+import type { RebaseIntent, RebaseTarget, StackNodeState, WorktreeConflict } from '@shared/types'
+import type { WorkingTreeStatus, Worktree } from '@shared/types/repo'
 
 // ============================================================================
 // Validation Result Types
@@ -36,6 +36,14 @@ export type ValidationErrorCode =
   | 'INVALID_INTENT'
   | 'DETACHED_HEAD'
   | 'CONFLICTS_UNRESOLVED'
+  | 'WORKTREE_CONFLICT'
+
+/**
+ * Extended validation result that includes worktree conflicts
+ */
+export type WorktreeValidationResult =
+  | { valid: true }
+  | { valid: false; code: 'WORKTREE_CONFLICT'; message: string; conflicts: WorktreeConflict[] }
 
 // ============================================================================
 // RebaseValidator Class
@@ -224,5 +232,92 @@ export class RebaseValidator {
       }
     }
     return { valid: true }
+  }
+
+  /**
+   * Validates that no branches in the rebase intent are checked out in other worktrees.
+   *
+   * When a branch is checked out in a worktree, git cannot update the branch ref
+   * during rebase (git error: "cannot rebase onto <branch>: checked out in worktree").
+   *
+   * @param intent - The rebase intent to validate
+   * @param worktrees - All worktrees in the repository
+   * @param activeWorktreePath - The currently active worktree path (or main repo path)
+   * @returns Validation result with conflicts if any branches are checked out elsewhere
+   */
+  static validateNoWorktreeConflicts(
+    intent: RebaseIntent,
+    worktrees: Worktree[],
+    activeWorktreePath: string
+  ): WorktreeValidationResult {
+    const conflicts: WorktreeConflict[] = []
+
+    // Build a map of branch -> worktree for quick lookup
+    // Only include worktrees that are NOT the active worktree
+    const branchToWorktree = new Map<string, Worktree>()
+    for (const worktree of worktrees) {
+      if (worktree.path === activeWorktreePath) continue
+      if (!worktree.branch) continue
+      branchToWorktree.set(worktree.branch, worktree)
+    }
+
+    // If no other worktrees have branches, no conflicts possible
+    if (branchToWorktree.size === 0) {
+      return { valid: true }
+    }
+
+    // Collect all branches that will be affected by the rebase
+    const affectedBranches = RebaseValidator.collectAffectedBranches(intent)
+
+    // Check each affected branch for worktree conflicts
+    for (const branch of affectedBranches) {
+      const worktree = branchToWorktree.get(branch)
+      if (worktree) {
+        conflicts.push({
+          branch,
+          worktreePath: worktree.path,
+          isDirty: worktree.isDirty
+        })
+      }
+    }
+
+    if (conflicts.length > 0) {
+      // Dedupe conflicts by worktree path (same worktree may block multiple branches)
+      const uniqueWorktrees = new Set(conflicts.map((c) => c.worktreePath))
+      const conflictCount = conflicts.length
+      const worktreeCount = uniqueWorktrees.size
+
+      const message =
+        conflictCount === 1
+          ? `Cannot rebase: branch "${conflicts[0].branch}" is checked out in another worktree`
+          : worktreeCount === 1
+            ? `Cannot rebase: ${conflictCount} branches are checked out in another worktree`
+            : `Cannot rebase: ${conflictCount} branches are checked out in ${worktreeCount} other worktrees`
+
+      return { valid: false, code: 'WORKTREE_CONFLICT', message, conflicts }
+    }
+
+    return { valid: true }
+  }
+
+  /**
+   * Recursively collects all branch names that will be affected by a rebase intent.
+   * This includes the target branches and all their child branches.
+   */
+  private static collectAffectedBranches(intent: RebaseIntent): Set<string> {
+    const branches = new Set<string>()
+
+    const collectFromNode = (node: StackNodeState): void => {
+      branches.add(node.branch)
+      for (const child of node.children) {
+        collectFromNode(child)
+      }
+    }
+
+    for (const target of intent.targets) {
+      collectFromNode(target.node)
+    }
+
+    return branches
   }
 }

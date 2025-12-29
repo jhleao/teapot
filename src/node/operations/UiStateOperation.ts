@@ -11,6 +11,7 @@ import { RebaseStateMachine, StackAnalyzer, TrunkResolver, UiStateBuilder } from
 import { RepoModelService, SessionService } from '../services'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
 import { createJobIdGenerator } from '../shared/job-id'
+import { configStore } from '../store'
 import { checkConflictResolution } from '../utils/conflict-markers'
 
 export type GetUiStateOptions = {
@@ -31,9 +32,12 @@ export class UiStateOperation {
     const config: Configuration = { repoPath }
     const gitAdapter = getGitAdapter()
 
+    // Get the active worktree for this repo (null = main worktree)
+    const activeWorktreePath = configStore.getActiveWorktree(repoPath)
+
     // Only fetch local git data - no network calls here
     const [repo, session] = await Promise.all([
-      RepoModelService.buildRepoModel(config),
+      RepoModelService.buildRepoModel(config, { activeWorktreePath }),
       SessionService.getSession(repoPath)
     ])
 

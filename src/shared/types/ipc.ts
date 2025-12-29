@@ -1,7 +1,7 @@
 import { IpcMainInvokeEvent } from 'electron'
 import type { ForgeStateResult } from './git-forge'
-import type { RebaseState } from './rebase'
-import type { UiState } from './ui'
+import type { RebaseState, WorktreeConflict } from './rebase'
+import type { LocalRepo, UiState } from './ui'
 
 /**
  * Response type for rebase operations (continue, abort, skip)
@@ -66,6 +66,23 @@ export type SyncTrunkResponse = {
 }
 
 /**
+ * Response type for submitRebaseIntent.
+ * Returns either the rebase preview or worktree conflicts that block the rebase.
+ */
+export type SubmitRebaseIntentResponse =
+  | {
+      success: true
+      uiState: UiState
+    }
+  | {
+      success: false
+      error: 'WORKTREE_CONFLICT'
+      worktreeConflicts: WorktreeConflict[]
+      message: string
+    }
+  | null
+
+/**
  * IPC Channel names - single source of truth for channel identifiers
  */
 export const IPC_CHANNELS = {
@@ -102,7 +119,20 @@ export const IPC_CHANNELS = {
   createBranch: 'createBranch',
   renameBranch: 'renameBranch',
   resumeRebaseQueue: 'resumeRebaseQueue',
-  dismissRebaseQueue: 'dismissRebaseQueue'
+  dismissRebaseQueue: 'dismissRebaseQueue',
+  // Settings
+  getPreferredEditor: 'getPreferredEditor',
+  setPreferredEditor: 'setPreferredEditor',
+  // Worktree
+  getActiveWorktree: 'getActiveWorktree',
+  switchWorktree: 'switchWorktree',
+  removeWorktree: 'removeWorktree',
+  discardWorktreeChanges: 'discardWorktreeChanges',
+  checkoutWorktreeBranch: 'checkoutWorktreeBranch',
+  openWorktreeInEditor: 'openWorktreeInEditor',
+  openWorktreeInTerminal: 'openWorktreeInTerminal',
+  copyWorktreePath: 'copyWorktreePath',
+  createWorktree: 'createWorktree'
 } as const
 
 export const IPC_EVENTS = {
@@ -127,7 +157,7 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.submitRebaseIntent]: {
     request: { repoPath: string; headSha: string; baseSha: string }
-    response: UiState | null
+    response: SubmitRebaseIntentResponse
   }
   [IPC_CHANNELS.confirmRebaseIntent]: {
     request: { repoPath: string }
@@ -171,19 +201,19 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.getLocalRepos]: {
     request: void
-    response: Array<{ path: string; isSelected: boolean }>
+    response: LocalRepo[]
   }
   [IPC_CHANNELS.selectLocalRepo]: {
     request: { path: string }
-    response: Array<{ path: string; isSelected: boolean }>
+    response: LocalRepo[]
   }
   [IPC_CHANNELS.addLocalRepo]: {
     request: { path: string }
-    response: Array<{ path: string; isSelected: boolean }>
+    response: LocalRepo[]
   }
   [IPC_CHANNELS.removeLocalRepo]: {
     request: { path: string }
-    response: Array<{ path: string; isSelected: boolean }>
+    response: LocalRepo[]
   }
   [IPC_CHANNELS.showFolderPicker]: {
     request: void
@@ -215,6 +245,14 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.setGithubPat]: {
     request: { token: string }
+    response: void
+  }
+  [IPC_CHANNELS.getPreferredEditor]: {
+    request: void
+    response: string | null
+  }
+  [IPC_CHANNELS.setPreferredEditor]: {
+    request: { editor: string }
     response: void
   }
   [IPC_CHANNELS.createPullRequest]: {
@@ -261,6 +299,42 @@ export interface IpcContract {
   [IPC_CHANNELS.dismissRebaseQueue]: {
     request: { repoPath: string }
     response: UiState | null
+  }
+  [IPC_CHANNELS.getActiveWorktree]: {
+    request: { repoPath: string }
+    response: string | null
+  }
+  [IPC_CHANNELS.switchWorktree]: {
+    request: { repoPath: string; worktreePath: string }
+    response: UiState | null
+  }
+  [IPC_CHANNELS.removeWorktree]: {
+    request: { repoPath: string; worktreePath: string; force?: boolean }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.discardWorktreeChanges]: {
+    request: { worktreePath: string }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.checkoutWorktreeBranch]: {
+    request: { worktreePath: string; branch: string }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.openWorktreeInEditor]: {
+    request: { worktreePath: string }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.openWorktreeInTerminal]: {
+    request: { worktreePath: string }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.copyWorktreePath]: {
+    request: { worktreePath: string }
+    response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.createWorktree]: {
+    request: { repoPath: string; branch: string }
+    response: { success: boolean; error?: string; worktreePath?: string }
   }
 }
 

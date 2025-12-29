@@ -1,5 +1,5 @@
 import { log } from '@shared/logger'
-import type { UiStack, UiState } from '@shared/types'
+import type { UiStack, UiState, WorktreeConflict } from '@shared/types'
 import {
   createContext,
   useCallback,
@@ -11,14 +11,17 @@ import {
   type ReactNode
 } from 'react'
 import { toast } from 'sonner'
+import { WorktreeConflictDialog } from '../components/WorktreeConflictDialog'
 import { useGitWatcher } from '../hooks/use-git-watcher'
 import { useForgeStateContext } from './ForgeStateContext'
+import { useLocalStateContext } from './LocalStateContext'
 
 interface UiStateContextValue {
   toggleTheme: () => void
   isDark: boolean
   uiState: UiState | null
   repoError: string | null
+  repoPath: string | null
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
   commit: (params: { message: string; newBranchName?: string }) => Promise<void>
   amend: (params: { message?: string }) => Promise<void>
@@ -41,6 +44,7 @@ interface UiStateContextValue {
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string }) => Promise<void>
   syncTrunk: () => Promise<void>
+  switchWorktree: (params: { worktreePath: string }) => Promise<void>
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
@@ -60,10 +64,17 @@ export function UiStateProvider({
   selectedRepoPath: string | null
 }): React.JSX.Element {
   const { refreshForge } = useForgeStateContext()
+  const { refreshRepos } = useLocalStateContext()
   const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
   const skipWatcherUpdatesRef = useRef(false)
+
+  // Worktree conflict state for blocking rebase operations
+  const [worktreeConflicts, setWorktreeConflicts] = useState<{
+    conflicts: WorktreeConflict[]
+    message: string
+  } | null>(null)
 
   const refreshRepo = useCallback(async () => {
     if (!repoPath) {
@@ -170,9 +181,39 @@ export function UiStateProvider({
     async (params: { headSha: string; baseSha: string }) => {
       if (!repoPath) return
       skipWatcherUpdatesRef.current = true
-      await callApi(window.api.submitRebaseIntent({ repoPath, ...params }))
+
+      try {
+        const result = await window.api.submitRebaseIntent({ repoPath, ...params })
+
+        if (result === null) {
+          // Invalid intent (e.g., invalid head/base)
+          skipWatcherUpdatesRef.current = false
+          return
+        }
+
+        if (!result.success && result.error === 'WORKTREE_CONFLICT') {
+          // Worktree conflict - show dialog instead of proceeding
+          skipWatcherUpdatesRef.current = false
+          setWorktreeConflicts({
+            conflicts: result.worktreeConflicts,
+            message: result.message
+          })
+          return
+        }
+
+        if (result.success && result.uiState) {
+          setUiState(result.uiState)
+        }
+      } catch (error) {
+        skipWatcherUpdatesRef.current = false
+        log.error('Submit rebase intent failed:', error)
+        toast.error('Failed to start rebase', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
     },
-    [repoPath, callApi]
+    [repoPath]
   )
 
   const confirmRebaseIntent = useCallback(async () => {
@@ -242,10 +283,17 @@ export function UiStateProvider({
         const result = await window.api.checkout({ repoPath, ...params })
         if (result.uiState) setUiState(result.uiState)
       } catch (error) {
+        const errorStr = String(error)
+        // Show info toast for worktree conflicts (not a real error, just can't checkout)
+        // Extract the user-friendly part from Electron's wrapped error message
+        const worktreeMatch = errorStr.match(/Cannot checkout '[^']+' - already checked out in .+/)
+        if (worktreeMatch) {
+          toast.info(worktreeMatch[0])
+          return
+        }
+        const message = error instanceof Error ? error.message : errorStr
         log.error('Checkout failed:', error)
-        toast.error('Checkout failed', {
-          description: error instanceof Error ? error.message : String(error)
-        })
+        toast.error('Checkout failed', { description: message })
         throw error
       }
     },
@@ -360,6 +408,20 @@ export function UiStateProvider({
     }
   }, [repoPath])
 
+  const switchWorktree = useCallback(
+    async (params: { worktreePath: string }) => {
+      if (!repoPath) return
+      await callApi(window.api.switchWorktree({ repoPath, ...params }))
+      await refreshRepos()
+    },
+    [repoPath, callApi, refreshRepos]
+  )
+
+  // Handler for closing the worktree conflict dialog
+  const handleWorktreeConflictClose = useCallback(() => {
+    setWorktreeConflicts(null)
+  }, [])
+
   const isWorkingTreeDirty = useMemo(
     () => (uiState?.workingTree?.length ?? 0) > 0,
     [uiState?.workingTree?.length]
@@ -389,6 +451,7 @@ export function UiStateProvider({
       isDark,
       uiState,
       repoError,
+      repoPath,
       setFilesStageStatus,
       commit,
       amend,
@@ -411,6 +474,7 @@ export function UiStateProvider({
       uncommit,
       shipIt,
       syncTrunk,
+      switchWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,
@@ -421,6 +485,7 @@ export function UiStateProvider({
       isDark,
       uiState,
       repoError,
+      repoPath,
       setFilesStageStatus,
       commit,
       amend,
@@ -443,6 +508,7 @@ export function UiStateProvider({
       uncommit,
       shipIt,
       syncTrunk,
+      switchWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,
@@ -450,7 +516,19 @@ export function UiStateProvider({
     ]
   )
 
-  return <UiStateContext.Provider value={contextValue}>{children}</UiStateContext.Provider>
+  return (
+    <UiStateContext.Provider value={contextValue}>
+      {children}
+      {worktreeConflicts && (
+        <WorktreeConflictDialog
+          open={true}
+          conflicts={worktreeConflicts.conflicts}
+          message={worktreeConflicts.message}
+          onClose={handleWorktreeConflictClose}
+        />
+      )}
+    </UiStateContext.Provider>
+  )
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

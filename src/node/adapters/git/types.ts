@@ -235,3 +235,21 @@ export class GitError extends Error {
     this.name = 'GitError'
   }
 }
+
+/**
+ * Information about a git worktree
+ */
+export type WorktreeInfo = {
+  /** Absolute path to the worktree directory */
+  path: string
+  /** SHA of the commit HEAD points to */
+  headSha: string
+  /** Branch name (without refs/heads/) or null if detached HEAD */
+  branch: string | null
+  /** True if this is the main worktree (original clone location) */
+  isMain: boolean
+  /** True if the worktree path no longer exists (prunable) */
+  isStale: boolean
+  /** True if the worktree has uncommitted changes */
+  isDirty: boolean
+}

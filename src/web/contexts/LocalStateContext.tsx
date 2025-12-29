@@ -9,6 +9,7 @@ interface LocalStateContextValue {
   selectRepo: (path: string) => Promise<void>
   addRepo: (path: string) => Promise<void>
   removeRepo: (path: string) => Promise<void>
+  refreshRepos: () => Promise<void>
   isLoading: boolean
 }
 
@@ -92,6 +93,10 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
     [safeApiCall]
   )
 
+  const refreshRepos = useCallback(async () => {
+    await safeApiCall(window.api.getLocalRepos(), 'Failed to refresh repositories', setRepos)
+  }, [safeApiCall])
+
   return (
     <LocalStateContext.Provider
       value={{
@@ -100,6 +105,7 @@ export function LocalStateProvider({ children }: { children: ReactNode }): React
         selectRepo,
         addRepo,
         removeRepo,
+        refreshRepos,
         isLoading
       }}
     >

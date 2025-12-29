@@ -1,8 +1,32 @@
 export type Repo = {
+  /** Main repository path (never changes, used as identifier) */
   path: string
+  /** Currently active worktree path. Null means using main worktree. */
+  activeWorktreePath: string | null
   commits: Commit[]
   branches: Branch[]
+  /** Working tree status for the active worktree */
   workingTreeStatus: WorkingTreeStatus
+  /** All worktrees associated with this repository */
+  worktrees: Worktree[]
+}
+
+/**
+ * Information about a git worktree
+ */
+export type Worktree = {
+  /** Absolute path to the worktree directory */
+  path: string
+  /** SHA of the commit HEAD points to */
+  headSha: string
+  /** Branch name or null if detached HEAD */
+  branch: string | null
+  /** True if this is the main worktree (original clone location) */
+  isMain: boolean
+  /** True if the worktree path no longer exists (prunable) */
+  isStale: boolean
+  /** True if the worktree has uncommitted changes */
+  isDirty: boolean
 }
 
 export type Branch = {

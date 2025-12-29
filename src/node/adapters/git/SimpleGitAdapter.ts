@@ -26,7 +26,8 @@ import type {
   RebaseResult,
   Remote,
   ResetOptions,
-  WorkingTreeStatus
+  WorkingTreeStatus,
+  WorktreeInfo
 } from './types'
 
 const execAsync = promisify(exec)
@@ -293,6 +294,96 @@ export class SimpleGitAdapter implements GitAdapter {
       }
     } catch (error) {
       throw this.createError('getWorkingTreeStatus', error)
+    }
+  }
+
+  /**
+   * List all worktrees in the repository.
+   *
+   * Parses output from `git worktree list --porcelain` which looks like:
+   * ```
+   * worktree /path/to/main
+   * HEAD abc123...
+   * branch refs/heads/main
+   *
+   * worktree /path/to/feature
+   * HEAD def456...
+   * branch refs/heads/feature
+   * ```
+   *
+   * For bare worktrees (detached HEAD), there's no "branch" line.
+   * For prunable (stale) worktrees, there's a "prunable" line.
+   */
+  async listWorktrees(dir: string): Promise<WorktreeInfo[]> {
+    try {
+      const git = this.createGit(dir)
+      const output = await git.raw(['worktree', 'list', '--porcelain'])
+
+      const worktrees: WorktreeInfo[] = []
+      const blocks = output.trim().split('\n\n')
+
+      for (const block of blocks) {
+        if (!block.trim()) continue
+
+        const lines = block.split('\n')
+        let worktreePath = ''
+        let headSha = ''
+        let branch: string | null = null
+        let isStale = false
+
+        for (const line of lines) {
+          if (line.startsWith('worktree ')) {
+            worktreePath = line.slice('worktree '.length)
+          } else if (line.startsWith('HEAD ')) {
+            headSha = line.slice('HEAD '.length)
+          } else if (line.startsWith('branch ')) {
+            // Strip refs/heads/ prefix
+            branch = line.slice('branch '.length).replace('refs/heads/', '')
+          } else if (line === 'prunable') {
+            isStale = true
+          }
+        }
+
+        if (!worktreePath) continue
+
+        // First worktree in the list is always the main worktree
+        const isMain = worktrees.length === 0
+
+        // Check if worktree is dirty (has uncommitted changes)
+        let isDirty = false
+        if (!isStale) {
+          isDirty = await this.isWorktreeDirty(worktreePath)
+        }
+
+        worktrees.push({
+          path: worktreePath,
+          headSha,
+          branch,
+          isMain,
+          isStale,
+          isDirty
+        })
+      }
+
+      return worktrees
+    } catch (error) {
+      throw this.createError('listWorktrees', error)
+    }
+  }
+
+  /**
+   * Check if a worktree has uncommitted changes.
+   */
+  private async isWorktreeDirty(worktreePath: string): Promise<boolean> {
+    try {
+      // Use git status --porcelain - any output means dirty
+      const { stdout } = await execAsync('git status --porcelain', {
+        cwd: worktreePath
+      })
+      return stdout.trim().length > 0
+    } catch {
+      // If we can't check, assume clean (will show error state via isStale)
+      return false
     }
   }
 

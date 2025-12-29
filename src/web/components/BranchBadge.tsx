@@ -1,7 +1,8 @@
 import type { UiBranch } from '@shared/types'
 import React, { memo, useCallback, useState } from 'react'
+import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
-import { ContextMenu, ContextMenuItem } from './ContextMenu'
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 import { RenameBranchDialog } from './RenameBranchDialog'
 
 export const BranchBadge = memo(function BranchBadge({
@@ -9,8 +10,9 @@ export const BranchBadge = memo(function BranchBadge({
 }: {
   data: UiBranch
 }): React.JSX.Element {
-  const { checkout, deleteBranch, isWorkingTreeDirty } = useUiStateContext()
+  const { checkout, deleteBranch, isWorkingTreeDirty, repoPath } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -33,6 +35,25 @@ export const BranchBadge = memo(function BranchBadge({
     setIsRenameDialogOpen(true)
   }, [])
 
+  const handleCreateWorktree = useCallback(async () => {
+    if (!repoPath || isCreatingWorktree) return
+
+    setIsCreatingWorktree(true)
+    try {
+      const result = await window.api.createWorktree({ repoPath, branch: data.name })
+      if (result.success) {
+        toast.success(`Worktree created at ${result.worktreePath}`)
+      } else {
+        toast.error('Failed to create worktree', { description: result.error })
+      }
+    } finally {
+      setIsCreatingWorktree(false)
+    }
+  }, [repoPath, data.name, isCreatingWorktree])
+
+  // Can't create worktree for branch that already has one
+  const hasWorktree = data.worktree != null
+
   return (
     <>
       <ContextMenu
@@ -46,6 +67,17 @@ export const BranchBadge = memo(function BranchBadge({
             <ContextMenuItem onClick={handleDelete} disabled={data.isCurrent}>
               Delete branch
             </ContextMenuItem>
+            {!data.isRemote && !data.isTrunk && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={handleCreateWorktree}
+                  disabled={hasWorktree || isCreatingWorktree}
+                >
+                  {isCreatingWorktree ? 'Creating...' : 'New worktree here'}
+                </ContextMenuItem>
+              </>
+            )}
           </>
         }
       >

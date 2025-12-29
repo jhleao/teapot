@@ -499,9 +499,25 @@ export class RebaseExecutor {
 
       return { status: 'completed', newHeadSha, rewrites }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      // Detect worktree conflict errors from git
+      // Git errors look like: "fatal: 'branch' is already used by worktree at '/path'"
+      // or "fatal: cannot checkout 'branch': checked out in worktree at '/path'"
+      const worktreeMatch = errorMessage.match(
+        /(?:already used by|checked out in) worktree at '([^']+)'/i
+      )
+      if (worktreeMatch) {
+        const worktreePath = worktreeMatch[1]
+        return {
+          status: 'error',
+          message: `Cannot rebase: branch "${job.branch}" is checked out in worktree at ${worktreePath}. Switch to that worktree and checkout a different branch first.`
+        }
+      }
+
       return {
         status: 'error',
-        message: `Rebase failed: ${error instanceof Error ? error.message : String(error)}`
+        message: `Rebase failed: ${errorMessage}`
       }
     }
   }

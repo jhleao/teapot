@@ -1,6 +1,8 @@
 export type LocalRepo = {
   path: string
   isSelected: boolean
+  /** Active worktree path, or null to use main worktree. */
+  activeWorktreePath: string | null
 }
 
 export type UiState = {
@@ -53,6 +55,30 @@ export type UiBranch = {
    * Ship It should be disabled when true.
    */
   hasStaleTarget?: boolean
+  /**
+   * If this branch is checked out in a worktree (other than the current one),
+   * this contains information about that worktree.
+   */
+  worktree?: UiWorktreeBadge
+}
+
+/**
+ * Information about a worktree that has this branch checked out.
+ * Used for displaying worktree badges on branches.
+ */
+export type UiWorktreeBadge = {
+  /** Absolute path to the worktree */
+  path: string
+  /**
+   * Status of the worktree:
+   * - 'clean': No uncommitted changes
+   * - 'dirty': Has uncommitted changes (branch is blocked)
+   * - 'active': This is the currently active worktree in Teapot
+   * - 'stale': Worktree path no longer exists
+   */
+  status: 'clean' | 'dirty' | 'active' | 'stale'
+  /** True if this is the main worktree (original clone location) */
+  isMain: boolean
 }
 
 export type UiPullRequest = {

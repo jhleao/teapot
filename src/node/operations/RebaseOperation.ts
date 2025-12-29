@@ -12,16 +12,23 @@
 
 import type {
   Configuration,
-  IpcHandlerOf,
   RebaseOperationResponse,
   RebaseStatusResponse,
+  SubmitRebaseIntentResponse,
   UiState
 } from '@shared/types'
 import { getGitAdapter, supportsGetRebaseState } from '../adapters/git'
-import { RebaseIntentBuilder, RebaseStateMachine, TrunkResolver, UiStateBuilder } from '../domain'
+import {
+  RebaseIntentBuilder,
+  RebaseStateMachine,
+  RebaseValidator,
+  TrunkResolver,
+  UiStateBuilder
+} from '../domain'
 import { RepoModelService, SessionService } from '../services'
 import { gitForgeService } from '../services/ForgeService'
 import { createJobIdGenerator } from '../shared/job-id'
+import { configStore } from '../store'
 import { RebaseExecutor } from './RebaseExecutor'
 import { UiStateOperation } from './UiStateOperation'
 
@@ -29,12 +36,13 @@ export class RebaseOperation {
   /**
    * Build a rebase plan, store it in session, and return the preview UI payload.
    * Returns null when no rebase intent can be built (e.g., invalid head/base).
+   * Returns worktree conflicts if any branches are checked out in other worktrees.
    */
   static async submitRebaseIntent(
     repoPath: string,
     headSha: string,
     baseSha: string
-  ): Promise<Awaited<ReturnType<IpcHandlerOf<'submitRebaseIntent'>>>> {
+  ): Promise<SubmitRebaseIntentResponse> {
     const config: Configuration = { repoPath }
     const gitAdapter = getGitAdapter()
     const [repo, forgeState, currentBranch] = await Promise.all([
@@ -46,6 +54,23 @@ export class RebaseOperation {
     const rebaseIntent = RebaseIntentBuilder.build(repo, headSha, baseSha)
     if (!rebaseIntent) {
       return null
+    }
+
+    // Check for worktree conflicts before proceeding
+    const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+    const worktreeValidation = RebaseValidator.validateNoWorktreeConflicts(
+      rebaseIntent,
+      repo.worktrees,
+      activeWorktreePath
+    )
+
+    if (!worktreeValidation.valid) {
+      return {
+        success: false,
+        error: 'WORKTREE_CONFLICT',
+        worktreeConflicts: worktreeValidation.conflicts,
+        message: worktreeValidation.message
+      }
     }
 
     const plan = RebaseStateMachine.createRebasePlan({
@@ -68,13 +93,16 @@ export class RebaseOperation {
       rebaseIntent,
       gitForgeState: forgeState
     })
+
     const stack = fullUiState.projectedStack ?? fullUiState.stack
     if (!stack) {
       return null
     }
 
     const trunkHeadSha = TrunkResolver.getTrunkHeadSha(repo.branches, repo.commits)
-    return { stack, workingTree: [], trunkHeadSha }
+    const uiState: UiState = { stack, workingTree: [], trunkHeadSha }
+
+    return { success: true, uiState }
   }
 
   /**

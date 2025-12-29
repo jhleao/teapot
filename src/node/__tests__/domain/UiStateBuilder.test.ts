@@ -985,9 +985,11 @@ function expectTrunkStack(repo: Repo, options: { declutterTrunk?: boolean } = {}
 function createRepo(overrides: Partial<Repo> = {}): Repo {
   return {
     path: '/tmp/repo',
+    activeWorktreePath: null,
     commits: [],
     branches: [],
     workingTreeStatus: createWorkingTreeStatus(),
+    worktrees: [],
     ...overrides
   }
 }

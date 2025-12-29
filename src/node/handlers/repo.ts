@@ -26,15 +26,32 @@ import {
   PullRequestOperation,
   RebaseOperation,
   UiStateOperation,
-  WorkingTreeOperation
+  WorkingTreeOperation,
+  WorktreeOperation
 } from '../operations'
+import { configStore } from '../store'
+
+// ============================================================================
+// Path Resolution
+// ============================================================================
+
+/**
+ * Resolves the effective working path for git operations.
+ * Returns the active worktree path if one is set, otherwise the main repo path.
+ *
+ * Use this for operations that work on the working tree (checkout, commit, stage, etc.)
+ * Use repoPath directly for repo-level operations (listing worktrees, getting UI state, etc.)
+ */
+function resolveWorkingPath(repoPath: string): string {
+  return configStore.getActiveWorktree(repoPath) ?? repoPath
+}
 
 // ============================================================================
 // Repository Handlers
 // ============================================================================
 
 const watchRepo: IpcHandlerOf<'watchRepo'> = (event, { repoPath }) => {
-  GitWatcher.getInstance().watch(repoPath, event.sender)
+  GitWatcher.getInstance().watch(resolveWorkingPath(repoPath), event.sender)
 }
 
 const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {
@@ -57,15 +74,18 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
   _event,
   { repoPath, headSha, baseSha }
 ) => {
-  return RebaseOperation.submitRebaseIntent(repoPath, headSha, baseSha)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha)
 }
 
 const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, { repoPath }) => {
-  return RebaseOperation.confirmRebaseIntent(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.confirmRebaseIntent(workingPath)
 }
 
 const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = async (_event, { repoPath }) => {
-  return RebaseOperation.cancelRebaseIntent(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.cancelRebaseIntent(workingPath)
 }
 
 // ============================================================================
@@ -76,39 +96,45 @@ const continueRebase: IpcHandlerOf<'continueRebase'> = async (
   _event,
   { repoPath }
 ): Promise<RebaseOperationResponse> => {
-  return RebaseOperation.continueRebase(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.continueRebase(workingPath)
 }
 
 const abortRebase: IpcHandlerOf<'abortRebase'> = async (
   _event,
   { repoPath }
 ): Promise<RebaseOperationResponse> => {
-  return RebaseOperation.abortRebase(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.abortRebase(workingPath)
 }
 
 const skipRebaseCommit: IpcHandlerOf<'skipRebaseCommit'> = async (
   _event,
   { repoPath }
 ): Promise<RebaseOperationResponse> => {
-  return RebaseOperation.skipRebaseCommit(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.skipRebaseCommit(workingPath)
 }
 
 const getRebaseStatus: IpcHandlerOf<'getRebaseStatus'> = async (
   _event,
   { repoPath }
 ): Promise<RebaseStatusResponse> => {
-  return RebaseOperation.getRebaseStatus(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.getRebaseStatus(workingPath)
 }
 
 const resumeRebaseQueue: IpcHandlerOf<'resumeRebaseQueue'> = async (
   _event,
   { repoPath }
 ): Promise<RebaseOperationResponse> => {
-  return RebaseOperation.resumeRebaseQueue(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.resumeRebaseQueue(workingPath)
 }
 
 const dismissRebaseQueue: IpcHandlerOf<'dismissRebaseQueue'> = async (_event, { repoPath }) => {
-  return RebaseOperation.dismissRebaseQueue(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  return RebaseOperation.dismissRebaseQueue(workingPath)
 }
 
 // ============================================================================
@@ -116,17 +142,20 @@ const dismissRebaseQueue: IpcHandlerOf<'dismissRebaseQueue'> = async (_event, { 
 // ============================================================================
 
 const discardStaged: IpcHandlerOf<'discardStaged'> = async (_event, { repoPath }) => {
-  await WorkingTreeOperation.discardChanges(repoPath)
+  const workingPath = resolveWorkingPath(repoPath)
+  await WorkingTreeOperation.discardChanges(workingPath)
   return UiStateOperation.getUiState(repoPath)
 }
 
 const amend: IpcHandlerOf<'amend'> = async (_event, { repoPath, message }) => {
-  await CommitOperation.amend(repoPath, message)
+  const workingPath = resolveWorkingPath(repoPath)
+  await CommitOperation.amend(workingPath, message)
   return UiStateOperation.getUiState(repoPath)
 }
 
 const commit: IpcHandlerOf<'commit'> = async (_event, { repoPath, message, newBranchName }) => {
-  await CommitOperation.commitToNewBranch(repoPath, message, newBranchName)
+  const workingPath = resolveWorkingPath(repoPath)
+  await CommitOperation.commitToNewBranch(workingPath, message, newBranchName)
   return UiStateOperation.getUiState(repoPath)
 }
 
@@ -134,7 +163,8 @@ const setFilesStageStatus: IpcHandlerOf<'setFilesStageStatus'> = async (
   _event,
   { repoPath, staged, files }
 ) => {
-  await WorkingTreeOperation.updateFileStageStatus(repoPath, files, staged)
+  const workingPath = resolveWorkingPath(repoPath)
+  await WorkingTreeOperation.updateFileStageStatus(workingPath, files, staged)
   return UiStateOperation.getUiState(repoPath)
 }
 
@@ -146,8 +176,14 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (
   _event,
   { repoPath, ref }
 ): Promise<CheckoutResponse> => {
-  const result = await BranchOperation.checkout(repoPath, ref)
+  const result = await BranchOperation.checkout(resolveWorkingPath(repoPath), ref)
   if (!result.success) {
+    // Parse worktree conflict error for a friendlier message
+    const worktreeMatch = result.error?.match(/already used by worktree at '([^']+)'/)
+    if (worktreeMatch) {
+      const worktreePath = worktreeMatch[1]
+      throw new Error(`Cannot checkout '${ref}' - already checked out in ${worktreePath}`)
+    }
     throw new Error(result.error || 'Checkout failed')
   }
 
@@ -272,8 +308,70 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
 // ============================================================================
 
 const uncommit: IpcHandlerOf<'uncommit'> = async (_event, { repoPath, commitSha }) => {
-  await CommitOperation.uncommit(repoPath, commitSha)
+  const workingPath = resolveWorkingPath(repoPath)
+  await CommitOperation.uncommit(workingPath, commitSha)
   return UiStateOperation.getUiState(repoPath)
+}
+
+// ============================================================================
+// Worktree Handlers
+// ============================================================================
+
+const getActiveWorktree: IpcHandlerOf<'getActiveWorktree'> = (_event, { repoPath }) => {
+  return configStore.getActiveWorktree(repoPath)
+}
+
+const switchWorktree: IpcHandlerOf<'switchWorktree'> = async (
+  event,
+  { repoPath, worktreePath }
+) => {
+  configStore.setActiveWorktree(repoPath, worktreePath)
+  // Re-initialize watcher for the new worktree directory
+  GitWatcher.getInstance().watch(worktreePath, event.sender)
+  return UiStateOperation.getUiState(repoPath)
+}
+
+const removeWorktree: IpcHandlerOf<'removeWorktree'> = async (
+  _event,
+  { repoPath, worktreePath, force }
+) => {
+  return WorktreeOperation.remove(repoPath, worktreePath, force)
+}
+
+const discardWorktreeChanges: IpcHandlerOf<'discardWorktreeChanges'> = async (
+  _event,
+  { worktreePath }
+) => {
+  return WorktreeOperation.discardAllChanges(worktreePath)
+}
+
+const checkoutWorktreeBranch: IpcHandlerOf<'checkoutWorktreeBranch'> = async (
+  _event,
+  { worktreePath, branch }
+) => {
+  return WorktreeOperation.checkoutBranch(worktreePath, branch)
+}
+
+const openWorktreeInEditor: IpcHandlerOf<'openWorktreeInEditor'> = async (
+  _event,
+  { worktreePath }
+) => {
+  return WorktreeOperation.openInEditor(worktreePath)
+}
+
+const openWorktreeInTerminal: IpcHandlerOf<'openWorktreeInTerminal'> = async (
+  _event,
+  { worktreePath }
+) => {
+  return WorktreeOperation.openInTerminal(worktreePath)
+}
+
+const copyWorktreePath: IpcHandlerOf<'copyWorktreePath'> = async (_event, { worktreePath }) => {
+  return WorktreeOperation.copyPath(worktreePath)
+}
+
+const createWorktree: IpcHandlerOf<'createWorktree'> = async (_event, { repoPath, branch }) => {
+  return WorktreeOperation.create(repoPath, branch)
 }
 
 // ============================================================================
@@ -321,4 +419,15 @@ export function registerRepoHandlers(): void {
   // History
   ipcMain.handle(IPC_CHANNELS.uncommit, uncommit)
   ipcMain.handle(IPC_CHANNELS.updatePullRequest, updatePullRequest)
+
+  // Worktree
+  ipcMain.handle(IPC_CHANNELS.getActiveWorktree, getActiveWorktree)
+  ipcMain.handle(IPC_CHANNELS.switchWorktree, switchWorktree)
+  ipcMain.handle(IPC_CHANNELS.removeWorktree, removeWorktree)
+  ipcMain.handle(IPC_CHANNELS.discardWorktreeChanges, discardWorktreeChanges)
+  ipcMain.handle(IPC_CHANNELS.checkoutWorktreeBranch, checkoutWorktreeBranch)
+  ipcMain.handle(IPC_CHANNELS.openWorktreeInEditor, openWorktreeInEditor)
+  ipcMain.handle(IPC_CHANNELS.openWorktreeInTerminal, openWorktreeInTerminal)
+  ipcMain.handle(IPC_CHANNELS.copyWorktreePath, copyWorktreePath)
+  ipcMain.handle(IPC_CHANNELS.createWorktree, createWorktree)
 }

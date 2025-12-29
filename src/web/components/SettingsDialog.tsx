@@ -12,21 +12,26 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): React.JSX.Element {
   const { toggleTheme, isDark } = useUiStateContext()
   const [pat, setPat] = useState('')
+  const [editor, setEditor] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     if (open) {
-      loadPat()
+      loadSettings()
     }
   }, [open])
 
-  const loadPat = async () => {
+  const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const storedPat = await window.api.getGithubPat()
+      const [storedPat, storedEditor] = await Promise.all([
+        window.api.getGithubPat(),
+        window.api.getPreferredEditor()
+      ])
       setPat(storedPat || '')
+      setEditor(storedEditor || '')
     } catch (error) {
-      log.error('Failed to load PAT:', error)
+      log.error('Failed to load settings:', error)
     } finally {
       setIsLoading(false)
     }
@@ -39,6 +44,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
       await window.api.setGithubPat({ token: newValue })
     } catch (error) {
       log.error('Failed to save PAT:', error)
+    }
+  }
+
+  const handleEditorChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value
+    setEditor(newValue)
+    try {
+      await window.api.setPreferredEditor({ editor: newValue })
+    } catch (error) {
+      log.error('Failed to save editor preference:', error)
     }
   }
 
@@ -65,6 +80,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
                 <Moon className="text-foreground h-5 w-5" />
               )}
             </button>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm leading-none font-medium">Preferred Editor</h4>
+            <p className="text-muted-foreground text-sm">
+              Command to open worktrees in your editor. Leave empty for VS Code.
+            </p>
+            <input
+              type="text"
+              value={editor}
+              onChange={handleEditorChange}
+              disabled={isLoading}
+              placeholder="code, cursor, subl, vim..."
+              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            />
           </div>
 
           <div className="space-y-2">

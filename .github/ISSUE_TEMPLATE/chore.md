@@ -7,10 +7,13 @@ assignees: ''
 ---
 
 ## Description
+
 <!-- What needs to be done? -->
 
 ## Details
+
 <!-- Any additional context or requirements -->
 
 ## Estimated Effort
+
 <!-- XS / S / M / L / XL -->

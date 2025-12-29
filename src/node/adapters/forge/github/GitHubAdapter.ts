@@ -1,4 +1,9 @@
-import { ForgePullRequest, GitForgeAdapter, GitForgeState } from '@shared/types/git-forge'
+import {
+  ForgePullRequest,
+  GitForgeAdapter,
+  GitForgeState,
+  MergeStrategy
+} from '@shared/types/git-forge'
 import { Agent, request } from 'undici'
 
 /**
@@ -207,14 +212,11 @@ export class GitHubAdapter implements GitForgeAdapter {
   }
 
   /**
-   * Merges a pull request using the specified merge method.
+   * Merges a pull request using the specified merge strategy.
    *
    * Docs: https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request
    */
-  async mergePullRequest(
-    number: number,
-    mergeMethod: 'squash' | 'merge' | 'rebase'
-  ): Promise<void> {
+  async mergePullRequest(number: number, mergeMethod: MergeStrategy): Promise<void> {
     const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls/${number}/merge`
 
     const { body, statusCode } = await request(url, {

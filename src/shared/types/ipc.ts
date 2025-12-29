@@ -1,5 +1,5 @@
 import { IpcMainInvokeEvent } from 'electron'
-import type { ForgeStateResult } from './git-forge'
+import type { ForgeStateResult, MergeStrategy } from './git-forge'
 import type { RebaseState, WorktreeConflict } from './rebase'
 import type { LocalRepo, UiState } from './ui'
 
@@ -111,6 +111,8 @@ export const IPC_CHANNELS = {
   cleanupBranch: 'cleanupBranch',
   getGithubPat: 'getGithubPat',
   setGithubPat: 'setGithubPat',
+  getMergeStrategy: 'getMergeStrategy',
+  setMergeStrategy: 'setMergeStrategy',
   createPullRequest: 'createPullRequest',
   uncommit: 'uncommit',
   updatePullRequest: 'updatePullRequest',
@@ -247,12 +249,21 @@ export interface IpcContract {
     request: { token: string }
     response: void
   }
+
   [IPC_CHANNELS.getPreferredEditor]: {
     request: void
     response: string | null
   }
   [IPC_CHANNELS.setPreferredEditor]: {
     request: { editor: string }
+    response: void
+  }
+  [IPC_CHANNELS.getMergeStrategy]: {
+    request: void
+    response: MergeStrategy
+  }
+  [IPC_CHANNELS.setMergeStrategy]: {
+    request: { strategy: MergeStrategy }
     response: void
   }
   [IPC_CHANNELS.createPullRequest]: {

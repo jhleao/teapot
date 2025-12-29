@@ -1,3 +1,9 @@
+/**
+ * Merge strategy for pull requests.
+ * Maps directly to GitHub API merge_method values.
+ */
+export type MergeStrategy = 'squash' | 'merge' | 'rebase'
+
 export type GitForgeState = {
   pullRequests: ForgePullRequest[]
   /**
@@ -93,7 +99,7 @@ export interface GitForgeAdapter {
    * @param mergeMethod - 'squash' | 'merge' | 'rebase'
    * @throws Error if merge fails (conflicts, branch protection, etc.)
    */
-  mergePullRequest(number: number, mergeMethod: 'squash' | 'merge' | 'rebase'): Promise<void>
+  mergePullRequest(number: number, mergeMethod: MergeStrategy): Promise<void>
 
   /**
    * Fetches detailed information about a specific pull request.

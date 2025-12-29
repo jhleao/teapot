@@ -19,6 +19,7 @@ import {
 
 import { gitForgeService } from '../services/ForgeService'
 import { GitWatcher } from '../services/GitWatcherService'
+import { configStore } from '../store'
 
 import {
   BranchOperation,
@@ -29,7 +30,6 @@ import {
   WorkingTreeOperation,
   WorktreeOperation
 } from '../operations'
-import { configStore } from '../store'
 
 // ============================================================================
 // Path Resolution
@@ -276,7 +276,8 @@ const shipIt: IpcHandlerOf<'shipIt'> = async (
   { repoPath, branchName }
 ): Promise<ShipItResponse> => {
   try {
-    const result = await PullRequestOperation.shipIt(repoPath, branchName)
+    const mergeStrategy = configStore.getMergeStrategy()
+    const result = await PullRequestOperation.shipIt(repoPath, branchName, mergeStrategy)
 
     if (!result.success) {
       throw new Error(result.error)

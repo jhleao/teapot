@@ -1,4 +1,5 @@
 import type { LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
+import type { MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
 // Rebase session type - defined here to avoid circular imports with SessionService
@@ -15,6 +16,7 @@ interface StoreSchema {
   repos: LocalRepo[]
   githubPat?: string
   preferredEditor?: string
+  mergeStrategy?: MergeStrategy
   rebaseSessions: Record<string, StoredRebaseSession>
 }
 
@@ -54,6 +56,14 @@ export class ConfigStore {
 
   setPreferredEditor(editor: string): void {
     this.store.set('preferredEditor', editor)
+  }
+
+  getMergeStrategy(): MergeStrategy {
+    return this.store.get('mergeStrategy', 'rebase')
+  }
+
+  setMergeStrategy(strategy: MergeStrategy): void {
+    this.store.set('mergeStrategy', strategy)
   }
 
   private setRepos(repos: LocalRepo[]): void {

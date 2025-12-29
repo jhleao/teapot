@@ -14,6 +14,7 @@ export type StoredRebaseSession = {
 interface StoreSchema {
   repos: LocalRepo[]
   githubPat?: string
+  preferredEditor?: string
   rebaseSessions: Record<string, StoredRebaseSession>
 }
 
@@ -31,7 +32,12 @@ export class ConfigStore {
   }
 
   getLocalRepos(): LocalRepo[] {
-    return this.store.get('repos', [])
+    const repos = this.store.get('repos', [])
+    // Normalize old repos that may not have activeWorktreePath
+    return repos.map((repo) => ({
+      ...repo,
+      activeWorktreePath: repo.activeWorktreePath ?? null
+    }))
   }
 
   getGithubPat(): string | undefined {
@@ -40,6 +46,14 @@ export class ConfigStore {
 
   setGithubPat(token: string): void {
     this.store.set('githubPat', token)
+  }
+
+  getPreferredEditor(): string | undefined {
+    return this.store.get('preferredEditor')
+  }
+
+  setPreferredEditor(editor: string): void {
+    this.store.set('preferredEditor', editor)
   }
 
   private setRepos(repos: LocalRepo[]): void {
@@ -57,7 +71,7 @@ export class ConfigStore {
     // Add new repo and select it (deselecting all others)
     const newRepos = [
       ...repos.map((repo) => ({ ...repo, isSelected: false })),
-      { path, isSelected: true }
+      { path, isSelected: true, activeWorktreePath: null }
     ]
     this.setRepos(newRepos)
     return newRepos
@@ -78,6 +92,33 @@ export class ConfigStore {
     const filteredRepos = repos.filter((repo) => repo.path !== path)
     this.setRepos(filteredRepos)
     return filteredRepos
+  }
+
+  // Active worktree methods
+
+  /**
+   * Get the active worktree path for a repo.
+   * Returns null if using the main worktree (default).
+   */
+  getActiveWorktree(repoPath: string): string | null {
+    const repos = this.getLocalRepos()
+    const repo = repos.find((r) => r.path === repoPath)
+    return repo?.activeWorktreePath ?? null
+  }
+
+  /**
+   * Set the active worktree for a repo.
+   * Pass null to switch back to main worktree.
+   */
+  setActiveWorktree(repoPath: string, worktreePath: string | null): void {
+    const repos = this.getLocalRepos()
+    const updatedRepos = repos.map((repo) => {
+      if (repo.path !== repoPath) return repo
+      // Set to null if switching to main worktree (same as repo path)
+      const effectivePath = worktreePath === repoPath ? null : worktreePath
+      return { ...repo, activeWorktreePath: effectivePath }
+    })
+    this.setRepos(updatedRepos)
   }
 
   // Rebase session persistence methods

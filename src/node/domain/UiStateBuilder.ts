@@ -17,7 +17,9 @@ import type {
   UiPullRequest,
   UiStack,
   UiWorkingTreeFile,
-  WorkingTreeStatus
+  UiWorktreeBadge,
+  WorkingTreeStatus,
+  Worktree
 } from '@shared/types'
 import type { GitForgeState } from '../../shared/types/git-forge'
 import { RebaseStateMachine } from './RebaseStateMachine'
@@ -32,6 +34,10 @@ type BuildState = {
   currentCommitSha: string
   trunkShas: Set<string>
   UiStackMembership: Map<string, UiStack>
+  /** Map from branch name to worktree info (for branches checked out in worktrees) */
+  worktreeByBranch: Map<string, Worktree>
+  /** The path of the current/active worktree */
+  currentWorktreePath: string
 }
 
 type TrunkBuildResult = {
@@ -88,13 +94,26 @@ export class UiStateBuilder {
       return null
     }
 
+    // Build worktree lookup: branch name -> worktree
+    const worktreeByBranch = new Map<string, Worktree>()
+    for (const worktree of repo.worktrees) {
+      if (worktree.branch) {
+        worktreeByBranch.set(worktree.branch, worktree)
+      }
+    }
+
+    // Determine the current worktree path for badge status comparison
+    const currentWorktreePath = repo.activeWorktreePath ?? repo.path
+
     const state: BuildState = {
       commitMap,
       commitNodes: new Map(),
       currentBranch: repo.workingTreeStatus.currentBranch,
       currentCommitSha: repo.workingTreeStatus.currentCommitSha,
       trunkShas: new Set(),
-      UiStackMembership: new Map()
+      UiStackMembership: new Map(),
+      worktreeByBranch,
+      currentWorktreePath
     }
 
     if (!trunk) {
@@ -516,6 +535,33 @@ export class UiStateBuilder {
         }
       }
 
+      // Check if this branch is checked out in a worktree
+      let worktree: UiWorktreeBadge | undefined
+      const worktreeInfo = state.worktreeByBranch.get(branch.ref)
+      if (worktreeInfo) {
+        // Determine worktree status
+        let status: UiWorktreeBadge['status']
+        if (worktreeInfo.isStale) {
+          status = 'stale'
+        } else if (worktreeInfo.path === state.currentWorktreePath) {
+          status = 'active'
+        } else if (worktreeInfo.isDirty) {
+          status = 'dirty'
+        } else {
+          status = 'clean'
+        }
+
+        // Only show worktree badge for non-active worktrees
+        // (the current worktree's branch uses the regular blue highlight)
+        if (status !== 'active') {
+          worktree = {
+            path: worktreeInfo.path,
+            status,
+            isMain: worktreeInfo.isMain
+          }
+        }
+      }
+
       commitNode.branches.push({
         name: branch.ref,
         isCurrent: branch.ref === state.currentBranch,
@@ -523,7 +569,8 @@ export class UiStateBuilder {
         isTrunk: branch.isTrunk,
         pullRequest,
         isMerged,
-        hasStaleTarget: hasStaleTarget || undefined
+        hasStaleTarget: hasStaleTarget || undefined,
+        worktree
       })
     })
   }

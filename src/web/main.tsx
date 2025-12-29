@@ -9,6 +9,7 @@ import { DragProvider } from './contexts/DragContext'
 import { ForgeStateProvider } from './contexts/ForgeStateContext'
 import { LocalStateProvider, useLocalStateContext } from './contexts/LocalStateContext'
 import { UiStateProvider } from './contexts/UiStateContext'
+import { UtilityModalsProvider } from './contexts/UtilityModalsContext'
 
 // eslint-disable-next-line react-refresh/only-export-components
 function AppWithProviders(): React.JSX.Element {
@@ -18,10 +19,12 @@ function AppWithProviders(): React.JSX.Element {
   return (
     <ForgeStateProvider repoPath={repoPath}>
       <UiStateProvider selectedRepoPath={repoPath}>
-        <DragProvider>
-          <App />
-          <DragCursor />
-        </DragProvider>
+        <UtilityModalsProvider>
+          <DragProvider>
+            <App />
+            <DragCursor />
+          </DragProvider>
+        </UtilityModalsProvider>
       </UiStateProvider>
     </ForgeStateProvider>
   )

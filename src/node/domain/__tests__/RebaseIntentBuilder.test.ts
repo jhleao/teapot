@@ -312,9 +312,11 @@ function createRepo(
 ): Repo {
   return {
     path: '/test/repo',
+    activeWorktreePath: null,
     commits: overrides.commits ?? [],
     branches: overrides.branches ?? [],
-    workingTreeStatus: overrides.workingTreeStatus ?? createWorkingTreeStatus()
+    workingTreeStatus: overrides.workingTreeStatus ?? createWorkingTreeStatus(),
+    worktrees: []
   }
 }
 

@@ -271,12 +271,14 @@ function createSampleRepo(): Repo {
 
   return {
     path: '/tmp/sample',
+    activeWorktreePath: null,
     commits,
     branches,
     workingTreeStatus: createWorkingTreeStatus({
       currentBranch: 'spr-dd0a8a',
       currentCommitSha: COMMITS.stack647
-    })
+    }),
+    worktrees: []
   }
 }
 

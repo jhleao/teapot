@@ -213,3 +213,20 @@ export type RebaseProjection =
       kind: 'rebasing'
       session: RebaseState
     }
+
+// ============================================================================
+// Worktree Conflict Types (for rebase operations)
+// ============================================================================
+
+/**
+ * Represents a worktree that blocks a rebase operation.
+ * A rebase cannot update a branch that's checked out in another worktree.
+ */
+export type WorktreeConflict = {
+  /** The branch that would be rebased but is checked out elsewhere */
+  branch: string
+  /** Path to the worktree where the branch is checked out */
+  worktreePath: string
+  /** Whether the worktree has uncommitted changes */
+  isDirty: boolean
+}

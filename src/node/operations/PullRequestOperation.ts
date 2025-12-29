@@ -9,6 +9,7 @@
 
 import { log } from '@shared/logger'
 import type { Branch, Repo } from '@shared/types'
+import type { MergeStrategy } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
 import { PrTargetResolver } from '../domain'
@@ -75,7 +76,11 @@ export class PullRequestOperation {
    * Ships a PR by merging it via GitHub API and handling post-merge navigation.
    * If the user was on the shipped branch, switches to the target branch.
    */
-  static async shipIt(repoPath: string, branchName: string): Promise<ShipItResult> {
+  static async shipIt(
+    repoPath: string,
+    branchName: string,
+    mergeStrategy: MergeStrategy
+  ): Promise<ShipItResult> {
     const git = getGitAdapter()
 
     // Get forge state to find PR number and target branch
@@ -98,8 +103,8 @@ export class PullRequestOperation {
       (p) => p.baseRefName === branchName && p.state === 'open'
     )
 
-    // Merge via GitHub API (squash merge)
-    await gitForgeService.mergePullRequest(repoPath, pr.number)
+    // Merge via GitHub API
+    await gitForgeService.mergePullRequest(repoPath, pr.number, mergeStrategy)
 
     // Fetch to update remote refs
     await git.fetch(repoPath)

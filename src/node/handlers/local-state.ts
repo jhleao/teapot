@@ -49,6 +49,14 @@ const setPreferredEditorHandler: IpcHandlerOf<'setPreferredEditor'> = (_event, {
   configStore.setPreferredEditor(editor)
 }
 
+const getMergeStrategyHandler: IpcHandlerOf<'getMergeStrategy'> = () => {
+  return configStore.getMergeStrategy()
+}
+
+const setMergeStrategyHandler: IpcHandlerOf<'setMergeStrategy'> = (_event, { strategy }) => {
+  configStore.setMergeStrategy(strategy)
+}
+
 export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getLocalRepos, getLocalReposHandler)
   ipcMain.handle(IPC_CHANNELS.selectLocalRepo, selectLocalRepoHandler)
@@ -59,4 +67,6 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.setGithubPat, setGithubPatHandler)
   ipcMain.handle(IPC_CHANNELS.getPreferredEditor, getPreferredEditorHandler)
   ipcMain.handle(IPC_CHANNELS.setPreferredEditor, setPreferredEditorHandler)
+  ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
+  ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)
 }

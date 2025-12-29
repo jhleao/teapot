@@ -3,11 +3,12 @@ import {
   ForgeStateResult,
   ForgeStatus,
   GitForgeAdapter,
-  GitForgeState
+  GitForgeState,
+  MergeStrategy
 } from '@shared/types/git-forge'
 
 // Re-exporting shared types here for convenience if needed by consumers in node/
-export type { ForgeStateResult, ForgeStatus, GitForgeAdapter, GitForgeState }
+export type { ForgeStateResult, ForgeStatus, GitForgeAdapter, GitForgeState, MergeStrategy }
 
 /**
  * This class handles caching and periodic fetching of the forge state.
@@ -94,14 +95,14 @@ export class GitForgeClient {
   }
 
   /**
-   * Merges a pull request using the specified merge method.
+   * Merges a pull request using the specified merge strategy.
    * After merging, refreshes the state to reflect the merged status.
    */
   async mergePullRequest(
     number: number,
-    mergeMethod: 'squash' | 'merge' | 'rebase'
+    strategy: MergeStrategy
   ): Promise<ForgeStateResult> {
-    await this.adapter.mergePullRequest(number, mergeMethod)
+    await this.adapter.mergePullRequest(number, strategy)
     return this.refreshWithStatus()
   }
 }

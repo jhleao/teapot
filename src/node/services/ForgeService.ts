@@ -6,7 +6,7 @@
  */
 
 import { log } from '@shared/logger'
-import { ForgeStateResult } from '@shared/types/git-forge'
+import { ForgeStateResult, MergeStrategy } from '@shared/types/git-forge'
 import { GitForgeClient, GitHubAdapter } from '../adapters/forge'
 import { getGitAdapter } from '../adapters/git'
 import { configStore } from '../store'
@@ -166,16 +166,20 @@ export class GitForgeService {
   }
 
   /**
-   * Merges a pull request using squash merge.
+   * Merges a pull request using the specified merge strategy.
    *
    * @throws Error if no PAT configured or merge fails
    */
-  async mergePullRequest(repoPath: string, number: number): Promise<void> {
+  async mergePullRequest(
+    repoPath: string,
+    number: number,
+    strategy: MergeStrategy
+  ): Promise<void> {
     const client = await this.getClient(repoPath)
     if (!client) {
       throw new Error('No GitHub client available. Please configure your GitHub PAT in settings.')
     }
-    await client.mergePullRequest(number, 'squash')
+    await client.mergePullRequest(number, strategy)
   }
 
   invalidateCache(repoPath: string) {

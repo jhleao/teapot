@@ -1,4 +1,5 @@
 import { log } from '@shared/logger'
+import type { MergeStrategy } from '@shared/types/git-forge'
 import { Moon, Sun } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -13,6 +14,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const { toggleTheme, isDark } = useUiStateContext()
   const [pat, setPat] = useState('')
   const [editor, setEditor] = useState('')
+  const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -24,12 +26,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor] = await Promise.all([
+      const [storedPat, storedEditor, storedStrategy] = await Promise.all([
         window.api.getGithubPat(),
-        window.api.getPreferredEditor()
+        window.api.getPreferredEditor(),
+        window.api.getMergeStrategy()
       ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
+      setMergeStrategy(storedStrategy)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -54,6 +58,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
       await window.api.setPreferredEditor({ editor: newValue })
     } catch (error) {
       log.error('Failed to save editor preference:', error)
+    }
+  }
+
+  const handleMergeStrategyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newStrategy = e.target.value as MergeStrategy
+    setMergeStrategy(newStrategy)
+    try {
+      await window.api.setMergeStrategy({ strategy: newStrategy })
+    } catch (error) {
+      log.error('Failed to save merge strategy:', error)
     }
   }
 
@@ -121,6 +135,23 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
               placeholder="ghp_..."
               className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm leading-none font-medium">PR Merge Strategy</h4>
+            <p className="text-muted-foreground text-sm">
+              How pull requests are merged when using Ship It
+            </p>
+            <select
+              value={mergeStrategy}
+              onChange={handleMergeStrategyChange}
+              disabled={isLoading}
+              className="border-input bg-background ring-offset-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="rebase">Rebase and merge</option>
+              <option value="squash">Squash and merge</option>
+              <option value="merge">Create a merge commit</option>
+            </select>
           </div>
         </div>
       </DialogContent>

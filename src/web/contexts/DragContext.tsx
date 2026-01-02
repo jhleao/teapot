@@ -1,3 +1,4 @@
+import { log } from '@shared/logger'
 import type { UiStack } from '@shared/types'
 import {
   createContext,
@@ -130,6 +131,16 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       cursorPos: { x: number; y: number }
     ): void => {
       const targetBranchName = findBranchNameForCommit(baseSha, stack)
+      const sourceBranchName = findBranchNameForCommit(headSha, stack)
+      const originalParent = dragState.current.originalParentSha
+      log.debug('[DragContext.commitDrop] Dropping commit', {
+        headSha: headSha.slice(0, 8),
+        baseSha: baseSha.slice(0, 8),
+        sourceBranch: sourceBranchName,
+        targetBranch: targetBranchName,
+        originalParentSha: originalParent?.slice(0, 8),
+        branchCount
+      })
       setIsRebaseLoading(true)
       setPendingRebase({
         headSha,

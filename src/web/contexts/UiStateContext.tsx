@@ -181,9 +181,20 @@ export function UiStateProvider({
     async (params: { headSha: string; baseSha: string }) => {
       if (!repoPath) return
       skipWatcherUpdatesRef.current = true
+      log.debug('[UiStateContext.submitRebaseIntent] Starting', {
+        repoPath,
+        headSha: params.headSha.slice(0, 8),
+        baseSha: params.baseSha.slice(0, 8)
+      })
 
       try {
         const result = await window.api.submitRebaseIntent({ repoPath, ...params })
+        log.debug('[UiStateContext.submitRebaseIntent] Result received', {
+          repoPath,
+          resultIsNull: result === null,
+          success: result?.success,
+          hasUiState: result?.success && !!result.uiState
+        })
 
         if (result === null) {
           // Invalid intent (e.g., invalid head/base)
@@ -218,12 +229,25 @@ export function UiStateProvider({
 
   const confirmRebaseIntent = useCallback(async () => {
     if (!repoPath) return
+    log.debug('[UiStateContext.confirmRebaseIntent] Starting', { repoPath })
     try {
-      await callApi(window.api.confirmRebaseIntent({ repoPath }))
+      const result = await window.api.confirmRebaseIntent({ repoPath })
+      log.debug('[UiStateContext.confirmRebaseIntent] Result received', {
+        repoPath,
+        resultIsNull: result === null,
+        hasStack: !!result?.stack
+      })
+      if (result) setUiState(result)
+    } catch (error) {
+      log.error('[UiStateContext.confirmRebaseIntent] Failed:', error)
+      toast.error('Operation failed', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+      throw error
     } finally {
       skipWatcherUpdatesRef.current = false
     }
-  }, [repoPath, callApi])
+  }, [repoPath])
 
   const cancelRebaseIntent = useCallback(async () => {
     if (!repoPath) return

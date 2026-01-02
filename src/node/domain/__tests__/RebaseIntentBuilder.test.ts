@@ -56,7 +56,11 @@ describe('RebaseIntentBuilder', () => {
     expect(intent?.targets[0]?.node.baseSha).toBe('trunk-base')
   })
 
-  it('calculates correct baseSha for multi-commit branch', () => {
+  it('calculates correct baseSha as immediate parent (branch owns only head commit)', () => {
+    // Graph: A → B → D → E → F (feature-branch)
+    //            ↘ C (main/trunk)
+    // baseSha should be immediate parent E, NOT fork point B
+    // This allows orphaning branchless commits D, E when rebasing F
     const commits = [
       createCommit('A', ''),
       createCommit('B', 'A'),
@@ -76,10 +80,13 @@ describe('RebaseIntentBuilder', () => {
     expect(intent).not.toBeNull()
     expect(intent?.targets[0]?.node.branch).toBe('feature-branch')
     expect(intent?.targets[0]?.node.headSha).toBe('F')
-    expect(intent?.targets[0]?.node.baseSha).toBe('B')
+    // baseSha is immediate parent, not fork point
+    expect(intent?.targets[0]?.node.baseSha).toBe('E')
   })
 
   it('includes child branches in the tree', () => {
+    // Graph: A → B (main) → C → D (feature-1) → E → F (feature-2)
+    // feature-2's baseSha should be E (immediate parent), not D (fork point)
     const commits = [
       createCommit('A', ''),
       createCommit('B', 'A'),
@@ -102,7 +109,8 @@ describe('RebaseIntentBuilder', () => {
     expect(node?.branch).toBe('feature-1')
     expect(node?.children).toHaveLength(1)
     expect(node?.children[0]?.branch).toBe('feature-2')
-    expect(node?.children[0]?.baseSha).toBe('D')
+    // baseSha is immediate parent, not fork point
+    expect(node?.children[0]?.baseSha).toBe('E')
   })
 
   it('handles stacked diffs (multiple levels of child branches)', () => {

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/jhleao/teapot/compare/v0.5.0...v0.6.0) (2026-01-02)
+
+
+### Features
+
+* add configurable merge strategy with rebase default ([116d2d2](https://github.com/jhleao/teapot/commit/116d2d211234f6b5399fa56e55944491042cabf8))
+* add context menu to copy commit SHA ([97f6909](https://github.com/jhleao/teapot/commit/97f6909c76c38d10a76ae2d516d6be076e449430))
+* add loading state for rebase confirm button ([2c5fb84](https://github.com/jhleao/teapot/commit/2c5fb84d3fe3846f17601e104e98ca4b41e9e6b6))
+* worktree support ([34c99ba](https://github.com/jhleao/teapot/commit/34c99ba9c687d2529242a1cc8143dd58179918a0))
+
+
+### Bug Fixes
+
+* rebase uses immediate parent as base, not fork point ([feac365](https://github.com/jhleao/teapot/commit/feac365ce22bd7816c5726dd408fabe4c7ad014a))
+
 ## [0.5.0](https://github.com/jhleao/teapot/compare/v0.4.1...v0.5.0) (2025-12-23)
 
 ### Features

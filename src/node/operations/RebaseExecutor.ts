@@ -489,12 +489,14 @@ export class RebaseExecutor {
       }
 
       const newHeadSha = await git.resolveRef(repoPath, job.branch)
+
       const commitsAfter = await this.getCommitsInRange(
         repoPath,
         job.targetBaseSha,
         newHeadSha,
         git
       )
+
       const rewrites = this.buildCommitRewrites(job.branch, commitsBefore, commitsAfter)
 
       return { status: 'completed', newHeadSha, rewrites }
@@ -634,7 +636,7 @@ export class RebaseExecutor {
     try {
       await git.checkout(repoPath, session.originalBranch)
     } catch {
-      // Original branch might not exist anymore
+      // Original branch might not exist anymore; ignore checkout failure
     }
 
     const finalState: RebaseState = {

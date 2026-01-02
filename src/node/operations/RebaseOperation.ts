@@ -129,7 +129,7 @@ export class RebaseOperation {
         throw new Error(result.message)
       }
 
-      return UiStateOperation.getUiState(repoPath)
+      return await UiStateOperation.getUiState(repoPath)
     } catch (error) {
       await SessionService.clearSession(repoPath)
       throw error

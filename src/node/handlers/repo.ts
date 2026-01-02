@@ -7,6 +7,7 @@
 
 import { dialog, ipcMain, IpcMainEvent } from 'electron'
 
+import { log } from '@shared/logger'
 import {
   IPC_CHANNELS,
   IpcHandlerOf,
@@ -75,11 +76,21 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
   { repoPath, headSha, baseSha }
 ) => {
   const workingPath = resolveWorkingPath(repoPath)
+  log.debug('[handler.submitRebaseIntent] Path resolution', {
+    originalRepoPath: repoPath,
+    resolvedWorkingPath: workingPath,
+    arePathsSame: repoPath === workingPath
+  })
   return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha)
 }
 
 const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, { repoPath }) => {
   const workingPath = resolveWorkingPath(repoPath)
+  log.debug('[handler.confirmRebaseIntent] Path resolution', {
+    originalRepoPath: repoPath,
+    resolvedWorkingPath: workingPath,
+    arePathsSame: repoPath === workingPath
+  })
   return RebaseOperation.confirmRebaseIntent(workingPath)
 }
 

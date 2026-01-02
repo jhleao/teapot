@@ -7,6 +7,7 @@ import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { BranchBadge } from './BranchBadge'
+import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
 import { GitForgeSection } from './GitForgeSection'
 import { CommitDot, SineCurve } from './SvgPaths'
@@ -167,6 +168,10 @@ export const CommitView = memo(function CommitView({
     [handleCommitDotMouseDown, data.sha]
   )
 
+  const handleCopyCommitSha = useCallback(() => {
+    navigator.clipboard.writeText(data.sha)
+  }, [data.sha])
+
   return (
     <div className={cn('w-full pl-2 whitespace-nowrap')}>
       {hasSpinoffs && (
@@ -235,15 +240,19 @@ export const CommitView = memo(function CommitView({
             <CreateBranchButton commitSha={data.sha} />
           )}
         </div>
-        <div
-          className={cn(
-            'text-sm whitespace-nowrap',
-            isCurrent && 'font-semibold',
-            data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
-          )}
+        <ContextMenu
+          content={<ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>}
         >
-          {data.name}
-        </div>
+          <div
+            className={cn(
+              'text-sm whitespace-nowrap',
+              isCurrent && 'font-semibold',
+              data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
+            )}
+          >
+            {data.name}
+          </div>
+        </ContextMenu>
         <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
         {data.rebaseStatus !== 'prompting' && data.rebaseStatus !== 'queued' && (
           <>

@@ -117,10 +117,16 @@ export const CommitView = memo(function CommitView({
   const hasSpinoffs = data.spinoffs.length > 0
 
   const [isCanceling, setIsCanceling] = useState(false)
+  const [isConfirming, setIsConfirming] = useState(false)
   const [isUncommitting, setIsUncommitting] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
-    await confirmRebaseIntent()
+    setIsConfirming(true)
+    try {
+      await confirmRebaseIntent()
+    } finally {
+      setIsConfirming(false)
+    }
   }, [confirmRebaseIntent])
 
   const handleCancelRebase = useCallback(async (): Promise<void> => {
@@ -274,7 +280,7 @@ export const CommitView = memo(function CommitView({
           <div className="flex gap-2">
             <button
               onClick={handleCancelRebase}
-              disabled={isCanceling}
+              disabled={isCanceling || isConfirming}
               className="border-border bg-muted text-foreground hover:bg-muted/80 flex items-center gap-1 rounded border px-3 py-1 text-xs transition-colors disabled:opacity-50"
             >
               {isCanceling && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -282,9 +288,10 @@ export const CommitView = memo(function CommitView({
             </button>
             <button
               onClick={handleConfirmRebase}
-              disabled={isCanceling}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
+              disabled={isCanceling || isConfirming}
+              className="bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
             >
+              {isConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
               Confirm
             </button>
           </div>

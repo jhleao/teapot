@@ -46,6 +46,13 @@ interface UiStateContextValue {
   shipIt: (params: { branchName: string }) => Promise<void>
   syncTrunk: () => Promise<void>
   switchWorktree: (params: { worktreePath: string }) => Promise<void>
+  createWorktree: (params: {
+    branch: string
+  }) => Promise<{ success: boolean; worktreePath?: string }>
+  removeWorktree: (params: {
+    worktreePath: string
+    force?: boolean
+  }) => Promise<{ success: boolean }>
   isWorkingTreeDirty: boolean
   /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
@@ -453,6 +460,30 @@ export function UiStateProvider({
     [repoPath, callApi, refreshRepos]
   )
 
+  const createWorktree = useCallback(
+    async (params: { branch: string }): Promise<{ success: boolean; worktreePath?: string }> => {
+      if (!repoPath) return { success: false }
+      const result = await window.api.createWorktree({ repoPath, ...params })
+      if (result.success && result.uiState) {
+        setUiState(result.uiState)
+      }
+      return { success: result.success, worktreePath: result.worktreePath }
+    },
+    [repoPath]
+  )
+
+  const removeWorktree = useCallback(
+    async (params: { worktreePath: string; force?: boolean }): Promise<{ success: boolean }> => {
+      if (!repoPath) return { success: false }
+      const result = await window.api.removeWorktree({ repoPath, ...params })
+      if (result.success && result.uiState) {
+        setUiState(result.uiState)
+      }
+      return { success: result.success }
+    },
+    [repoPath]
+  )
+
   // Handler for closing the worktree conflict dialog
   const handleWorktreeConflictClose = useCallback(() => {
     setWorktreeConflicts(null)
@@ -511,6 +542,8 @@ export function UiStateProvider({
       shipIt,
       syncTrunk,
       switchWorktree,
+      createWorktree,
+      removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,
@@ -545,6 +578,8 @@ export function UiStateProvider({
       shipIt,
       syncTrunk,
       switchWorktree,
+      createWorktree,
+      removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,

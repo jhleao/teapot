@@ -10,7 +10,7 @@ export const BranchBadge = memo(function BranchBadge({
 }: {
   data: UiBranch
 }): React.JSX.Element {
-  const { checkout, deleteBranch, isWorkingTreeDirty, repoPath } = useUiStateContext()
+  const { checkout, deleteBranch, isWorkingTreeDirty, createWorktree } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
 
@@ -36,20 +36,20 @@ export const BranchBadge = memo(function BranchBadge({
   }, [])
 
   const handleCreateWorktree = useCallback(async () => {
-    if (!repoPath || isCreatingWorktree) return
+    if (isCreatingWorktree) return
 
     setIsCreatingWorktree(true)
     try {
-      const result = await window.api.createWorktree({ repoPath, branch: data.name })
+      const result = await createWorktree({ branch: data.name })
       if (result.success) {
         toast.success(`Worktree created at ${result.worktreePath}`)
       } else {
-        toast.error('Failed to create worktree', { description: result.error })
+        toast.error('Failed to create worktree')
       }
     } finally {
       setIsCreatingWorktree(false)
     }
-  }, [repoPath, data.name, isCreatingWorktree])
+  }, [createWorktree, data.name, isCreatingWorktree])
 
   // Can't create worktree for branch that already has one
   const hasWorktree = data.worktree != null

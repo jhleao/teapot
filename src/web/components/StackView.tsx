@@ -84,8 +84,7 @@ export const CommitView = memo(function CommitView({
     uncommit,
     uiState,
     isRebasingWithConflicts,
-    switchWorktree,
-    repoPath
+    switchWorktree
   } = useUiStateContext()
   const { refreshRepos } = useLocalStateContext()
 
@@ -280,7 +279,6 @@ export const CommitView = memo(function CommitView({
                   key={`wt-${branch.name}-${index}`}
                   data={branch.worktree}
                   onSwitch={handleSwitchWorktree}
-                  repoPath={repoPath ?? undefined}
                 />
               ))}
           </>

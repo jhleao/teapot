@@ -325,7 +325,7 @@ export const WorkingTreeView = memo(function WorkingTreeView({
               key={`${file.path}-${index}`}
               file={file}
               onToggle={handleFileToggle}
-              isLoading={loadingFiles.has(file.path) || isSelectAllLoading}
+              isLoading={loadingFiles.has(file.path)}
             />
           ))}
         </div>

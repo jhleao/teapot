@@ -347,7 +347,12 @@ const removeWorktree: IpcHandlerOf<'removeWorktree'> = async (
   _event,
   { repoPath, worktreePath, force }
 ) => {
-  return WorktreeOperation.remove(repoPath, worktreePath, force)
+  const result = await WorktreeOperation.remove(repoPath, worktreePath, force)
+  if (result.success) {
+    const uiState = await UiStateOperation.getUiState(repoPath)
+    return { ...result, uiState }
+  }
+  return result
 }
 
 const discardWorktreeChanges: IpcHandlerOf<'discardWorktreeChanges'> = async (
@@ -383,7 +388,12 @@ const copyWorktreePath: IpcHandlerOf<'copyWorktreePath'> = async (_event, { work
 }
 
 const createWorktree: IpcHandlerOf<'createWorktree'> = async (_event, { repoPath, branch }) => {
-  return WorktreeOperation.create(repoPath, branch)
+  const result = await WorktreeOperation.create(repoPath, branch)
+  if (result.success) {
+    const uiState = await UiStateOperation.getUiState(repoPath)
+    return { ...result, uiState }
+  }
+  return result
 }
 
 // ============================================================================

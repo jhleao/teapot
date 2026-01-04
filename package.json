@@ -15,6 +15,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
     "test": "vitest run",
+    "test:perf": "LOG_LEVEL=trace vitest run src/node/__tests__/performance --reporter=verbose",
     "test:watch": "vitest watch",
     "test:ui": "vitest --ui",
     "start": "electron-vite preview",

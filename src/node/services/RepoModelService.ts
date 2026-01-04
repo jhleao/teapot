@@ -8,6 +8,7 @@
  * - Building the full repo model
  */
 
+import { log } from '@shared/logger'
 import type { Branch, Commit, Configuration, Repo, Worktree } from '@shared/types'
 import { isTrunk as isTrunkBranchName } from '@shared/types'
 import type { GitAdapter, LogOptions } from '../adapters/git'
@@ -37,6 +38,12 @@ export type BuildRepoOptions = {
    */
   loadRemotes?: boolean
   /**
+   * Skip dirty checking for worktrees.
+   * Dirty status is only used for UI badges, so skipping it improves performance.
+   * Default: true (skip for performance)
+   */
+  skipWorktreeDirtyCheck?: boolean
+  /**
    * Maximum commits to load for any single branch (safety limit).
    * Prevents crashes from pathological cases like circular history.
    * Default: 1000
@@ -52,7 +59,8 @@ export type BuildRepoOptions = {
 const DEFAULT_OPTIONS: BuildRepoOptions = {
   trunkDepth: 200,
   loadRemotes: false,
-  maxCommitsPerBranch: 1000
+  maxCommitsPerBranch: 1000,
+  skipWorktreeDirtyCheck: true
 }
 
 /**
@@ -66,7 +74,15 @@ export async function buildRepoModel(
   config: Configuration,
   options: BuildRepoOptions = {}
 ): Promise<Repo> {
-  const { trunkDepth, loadRemotes, maxCommitsPerBranch, activeWorktreePath } = {
+  const buildStart = log.trace('[RepoModelService] buildRepoModel START')
+
+  const {
+    trunkDepth,
+    loadRemotes,
+    maxCommitsPerBranch,
+    activeWorktreePath,
+    skipWorktreeDirtyCheck
+  } = {
     ...DEFAULT_OPTIONS,
     ...options
   }
@@ -76,15 +92,37 @@ export async function buildRepoModel(
   const effectiveWorktreePath = activeWorktreePath ?? dir
   const git = getGitAdapter()
 
+  const listBranchesStart = log.trace('[RepoModelService] listBranches START')
   const localBranches = await git.listBranches(dir)
+  log.trace('[RepoModelService] listBranches END', {
+    startMs: listBranchesStart,
+    count: localBranches.length
+  })
 
+  const collectDescStart = log.trace('[RepoModelService] collectBranchDescriptors START')
   const branchDescriptors = await collectBranchDescriptors(dir, localBranches, loadRemotes!)
+  log.trace('[RepoModelService] collectBranchDescriptors END', {
+    startMs: collectDescStart,
+    count: branchDescriptors.length
+  })
+
   const branchNameSet = new Set<string>(localBranches)
   branchDescriptors.forEach((descriptor) => {
     branchNameSet.add(getBranchName(descriptor))
   })
+
+  const trunkRefStart = log.trace('[RepoModelService] resolveTrunkRef START')
   const trunkBranch = await resolveTrunkRef(dir, Array.from(branchNameSet))
+  log.trace('[RepoModelService] resolveTrunkRef END', { startMs: trunkRefStart, trunkBranch })
+
+  const buildBranchesStart = log.trace('[RepoModelService] buildBranchesFromDescriptors START')
   const branches = await buildBranchesFromDescriptors(dir, branchDescriptors, trunkBranch)
+  log.trace('[RepoModelService] buildBranchesFromDescriptors END', {
+    startMs: buildBranchesStart,
+    count: branches.length
+  })
+
+  const collectCommitsStart = log.trace('[RepoModelService] collectCommitsFromDescriptors START')
   const commits = await collectCommitsFromDescriptors(
     dir,
     branchDescriptors,
@@ -95,11 +133,30 @@ export async function buildRepoModel(
       maxCommitsPerBranch: maxCommitsPerBranch!
     }
   )
+  log.trace('[RepoModelService] collectCommitsFromDescriptors END', {
+    startMs: collectCommitsStart,
+    count: commits.length
+  })
+
   // Get working tree status from the active worktree
+  const statusStart = log.trace('[RepoModelService] getWorkingTreeStatus START')
   const workingTreeStatus = await git.getWorkingTreeStatus(effectiveWorktreePath)
+  log.trace('[RepoModelService] getWorkingTreeStatus END', { startMs: statusStart })
 
   // Load worktrees
-  const worktrees = await loadWorktrees(dir)
+  const worktreesStart = log.trace('[RepoModelService] loadWorktrees START')
+  const worktrees = await loadWorktrees(dir, { skipDirtyCheck: skipWorktreeDirtyCheck })
+  log.trace('[RepoModelService] loadWorktrees END', {
+    startMs: worktreesStart,
+    count: worktrees.length
+  })
+
+  log.trace('[RepoModelService] buildRepoModel END', {
+    startMs: buildStart,
+    branches: branches.length,
+    commits: commits.length,
+    worktrees: worktrees.length
+  })
 
   return {
     path: dir,
@@ -115,13 +172,19 @@ export async function buildRepoModel(
  * Loads all worktrees for the repository.
  *
  * @param dir - Repository directory path (any worktree path works)
+ * @param options - Optional settings for worktree loading
  * @returns Array of worktree information
  */
-async function loadWorktrees(dir: string): Promise<Worktree[]> {
+async function loadWorktrees(
+  dir: string,
+  options?: { skipDirtyCheck?: boolean }
+): Promise<Worktree[]> {
   const git = getGitAdapter()
 
   try {
-    const worktreeInfos = await git.listWorktrees(dir)
+    const worktreeInfos = await git.listWorktrees(dir, {
+      skipDirtyCheck: options?.skipDirtyCheck
+    })
     return worktreeInfos.map((info) => ({
       path: info.path,
       headSha: info.headSha,
@@ -338,20 +401,24 @@ async function buildBranchesFromDescriptors(
   trunkBranch: string | null
 ): Promise<Branch[]> {
   const git = getGitAdapter()
-  const branches: Branch[] = []
 
-  for (const descriptor of branchDescriptors) {
-    const headSha = await git.resolveRef(dir, descriptor.fullRef)
+  // Batch resolve all refs in a single git call (much faster than 86 individual calls)
+  const refs = branchDescriptors.map((d) => d.fullRef)
+  const shaMap = await git.resolveRefs(dir, refs)
+
+  // Build branch objects using the resolved SHAs
+  const branches = branchDescriptors.map((descriptor) => {
+    const headSha = shaMap.get(descriptor.fullRef) ?? ''
     const normalizedRef = getBranchName(descriptor)
     const isTrunk =
       (trunkBranch && normalizedRef === trunkBranch) || isTrunkBranchName(normalizedRef)
-    branches.push({
+    return {
       ref: descriptor.ref,
       isTrunk,
       isRemote: descriptor.isRemote,
       headSha
-    })
-  }
+    }
+  })
 
   return branches
 }
@@ -376,10 +443,12 @@ async function collectCommitsFromDescriptors(
   if (trunkBranch?.headSha) {
     const trunkDescriptor = branchDescriptors.find((d) => d.ref === trunkBranch.ref)
     if (trunkDescriptor) {
+      const trunkStart = log.trace('[collectCommits] trunk START')
       await collectCommitsForRef(dir, trunkDescriptor.fullRef, commitsMap, {
         depth: trunkDepth,
         maxCommits: maxCommitsPerBranch
       })
+      log.trace('[collectCommits] trunk END', { startMs: trunkStart, commits: commitsMap.size })
     }
   }
 
@@ -387,31 +456,46 @@ async function collectCommitsFromDescriptors(
   if (remoteTrunkBranch?.headSha) {
     const remoteTrunkDescriptor = branchDescriptors.find((d) => d.ref === remoteTrunkBranch.ref)
     if (remoteTrunkDescriptor) {
+      const remoteTrunkStart = log.trace('[collectCommits] remoteTrunk START')
       await collectCommitsUntilKnown(dir, remoteTrunkDescriptor.fullRef, commitsMap, {
         maxCommits: maxCommitsPerBranch
+      })
+      log.trace('[collectCommits] remoteTrunk END', {
+        startMs: remoteTrunkStart,
+        commits: commitsMap.size
       })
     }
   }
 
   // Step 2: Load all non-trunk branches until they meet known commits
+  // Parallelize git log calls for better performance (commits may be fetched redundantly
+  // for overlapping branches, but wall-clock time is much better than sequential)
+  const featureBranchesStart = log.trace('[collectCommits] featureBranches START')
+
+  // Collect all feature branch headShas
+  const featureBranchShas: string[] = []
   for (let i = 0; i < branchDescriptors.length; i += 1) {
     const descriptor = branchDescriptors[i]
-    if (!descriptor) {
-      continue
-    }
+    if (!descriptor) continue
     const branch = branches[i]
-    if (!branch?.headSha) {
-      continue
-    }
-
-    if (branch.isTrunk) {
-      continue
-    }
-
-    await collectCommitsUntilKnown(dir, descriptor.fullRef, commitsMap, {
-      maxCommits: maxCommitsPerBranch
-    })
+    if (!branch?.headSha || branch.isTrunk) continue
+    featureBranchShas.push(branch.headSha)
   }
+
+  // Load all feature branches in parallel
+  await Promise.all(
+    featureBranchShas.map((headSha) =>
+      collectCommitsFromSha(dir, headSha, commitsMap, {
+        maxCommits: maxCommitsPerBranch
+      })
+    )
+  )
+
+  log.trace('[collectCommits] featureBranches END', {
+    startMs: featureBranchesStart,
+    branches: featureBranchShas.length,
+    commits: commitsMap.size
+  })
 
   return Array.from(commitsMap.values()).sort((a, b) => b.timeMs - a.timeMs)
 }
@@ -425,13 +509,32 @@ async function collectCommitsUntilKnown(
   } = {}
 ): Promise<void> {
   const git = getGitAdapter()
-  const cache = CacheService.getRepoCache(dir)
-  const { maxCommits = 1000 } = options
-
   const headSha = await git.resolveRef(dir, ref)
   if (!headSha) {
     return
   }
+  await collectCommitsFromSha(dir, headSha, commitsMap, options)
+}
+
+/**
+ * Collect commits starting from a known SHA (avoids ref resolution).
+ * More efficient when the head SHA is already known.
+ */
+async function collectCommitsFromSha(
+  dir: string,
+  headSha: string,
+  commitsMap: Map<string, Commit>,
+  options: {
+    maxCommits?: number
+  } = {}
+): Promise<void> {
+  if (!headSha) {
+    return
+  }
+
+  const git = getGitAdapter()
+  const cache = CacheService.getRepoCache(dir)
+  const { maxCommits = 1000 } = options
 
   // Phase 1: Walk the cache
   let currentSha: string | null = headSha

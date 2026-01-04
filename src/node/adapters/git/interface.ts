@@ -80,6 +80,16 @@ export interface GitAdapter {
   resolveRef(dir: string, ref: string): Promise<string>
 
   /**
+   * Batch resolve multiple refs in a single git call.
+   * Much more efficient than calling resolveRef multiple times.
+   *
+   * @param dir - Repository directory path
+   * @param refs - Array of refs to resolve
+   * @returns Map of ref -> sha (empty string if ref doesn't exist)
+   */
+  resolveRefs(dir: string, refs: string[]): Promise<Map<string, string>>
+
+  /**
    * Get the current branch name
    *
    * @param dir - Repository directory path
@@ -119,9 +129,10 @@ export interface GitAdapter {
    * List all worktrees in the repository
    *
    * @param dir - Repository directory path (any worktree path works)
+   * @param options - Optional settings for worktree listing
    * @returns Array of worktree information
    */
-  listWorktrees(dir: string): Promise<WorktreeInfo[]>
+  listWorktrees(dir: string, options?: { skipDirtyCheck?: boolean }): Promise<WorktreeInfo[]>
 
   // ============================================================================
   // Repository Mutation

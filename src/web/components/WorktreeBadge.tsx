@@ -1,6 +1,7 @@
 import type { UiWorktreeBadge } from '@shared/types'
 import React, { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
+import { useUiStateContext } from '../contexts/UiStateContext'
 import { useUtilityModals } from '../contexts/UtilityModalsContext'
 import { cn } from '../utils/cn'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
@@ -21,14 +22,13 @@ import { TreeIcon } from './icons'
 export const WorktreeBadge = memo(function WorktreeBadge({
   data,
   onSwitch,
-  repoPath,
   variant = 'default'
 }: {
   data: UiWorktreeBadge
   onSwitch?: (worktreePath: string) => void
-  repoPath?: string
   variant?: 'default' | 'compact'
 }): React.JSX.Element {
+  const { removeWorktree } = useUiStateContext()
   const { confirmationModal } = useUtilityModals()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDiscarding, setIsDiscarding] = useState(false)
@@ -84,7 +84,7 @@ export const WorktreeBadge = memo(function WorktreeBadge({
   }, [data.path])
 
   const handleDeleteClick = useCallback(async () => {
-    if (!repoPath || isDeleting) return
+    if (isDeleting) return
 
     const confirmed = await confirmationModal({
       title: isDirty ? 'Force Delete Worktree?' : 'Delete Worktree?',
@@ -99,20 +99,19 @@ export const WorktreeBadge = memo(function WorktreeBadge({
 
     setIsDeleting(true)
     try {
-      const result = await window.api.removeWorktree({
-        repoPath,
+      const result = await removeWorktree({
         worktreePath: data.path,
         force: isDirty
       })
       if (result.success) {
         toast.success('Worktree deleted')
       } else {
-        toast.error('Failed to delete worktree', { description: result.error })
+        toast.error('Failed to delete worktree')
       }
     } finally {
       setIsDeleting(false)
     }
-  }, [repoPath, data.path, isDeleting, isDirty, confirmationModal])
+  }, [removeWorktree, data.path, isDeleting, isDirty, confirmationModal])
 
   const handleDiscardClick = useCallback(async () => {
     if (isDiscarding) return

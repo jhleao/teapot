@@ -57,7 +57,6 @@ export const BranchBadge = memo(function BranchBadge({
   return (
     <>
       <ContextMenu
-        disabled={isWorkingTreeDirty}
         content={
           <>
             <ContextMenuItem onClick={handleCopy}>Copy branch name</ContextMenuItem>

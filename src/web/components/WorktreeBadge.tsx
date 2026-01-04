@@ -21,11 +21,13 @@ import { TreeIcon } from './icons'
 export const WorktreeBadge = memo(function WorktreeBadge({
   data,
   onSwitch,
-  repoPath
+  repoPath,
+  variant = 'default'
 }: {
   data: UiWorktreeBadge
   onSwitch?: (worktreePath: string) => void
   repoPath?: string
+  variant?: 'default' | 'compact'
 }): React.JSX.Element {
   const { confirmationModal } = useUtilityModals()
   const [isDeleting, setIsDeleting] = useState(false)
@@ -33,7 +35,7 @@ export const WorktreeBadge = memo(function WorktreeBadge({
 
   // Determine styling based on status
   const statusStyles = {
-    active: 'bg-green-500/20 text-green-600 border-green-500/50',
+    active: 'bg-muted/50 text-muted-foreground/70 border-border/50',
     dirty: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/50',
     clean: 'bg-muted/50 text-muted-foreground/70 border-border/50',
     stale: 'bg-destructive/20 text-destructive border-destructive/50'
@@ -176,13 +178,15 @@ export const WorktreeBadge = memo(function WorktreeBadge({
     <ContextMenu content={menuContent} disabled={isStale}>
       <span
         className={cn(
-          'inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium',
+          'inline-flex items-center gap-1 rounded-md border',
+          variant === 'compact' ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-1 text-xs font-medium',
           statusStyles[data.status],
           canSwitch && 'cursor-pointer hover:brightness-110'
         )}
         title={tooltipText}
         onDoubleClick={handleDoubleClick}
       >
+        {variant === 'compact' && 'Using worktree '}
         <TreeIcon className="h-3.5 w-3.5" />
         {displayPath}
         {data.isMain && ' (main)'}

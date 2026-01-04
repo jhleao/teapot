@@ -15,6 +15,8 @@ interface GitForgeSectionProps {
   trunkHeadSha: string
   /** The SHA of the trunk commit this spinoff branches off from. Used to determine if rebase is needed. */
   baseSha: string
+  /** Whether this commit is at the tail of the stack (closest to trunk). Ship It only shown when true. */
+  isTailOfStack?: boolean
 }
 
 /**
@@ -25,14 +27,16 @@ export const GitForgeSection = memo(function GitForgeSection({
   isTrunk,
   commitSha,
   trunkHeadSha,
-  baseSha
+  baseSha,
+  isTailOfStack = false
 }: GitForgeSectionProps): React.JSX.Element | null {
   const {
     createPullRequest,
     updatePullRequest,
     submitRebaseIntent,
     cleanupBranch,
-    isWorkingTreeDirty
+    isWorkingTreeDirty,
+    shipIt
   } = useUiStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -98,22 +102,22 @@ export const GitForgeSection = memo(function GitForgeSection({
     [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
   )
 
-  // const _handleShipIt = useCallback(
-  //   async (e: React.MouseEvent): Promise<void> => {
-  //     e.stopPropagation()
-  //     if (isLoading || !branchWithPr) return
+  const handleShipIt = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || !branchWithPr) return
 
-  //     setIsLoading(true)
-  //     try {
-  //       await shipIt({ branchName: branchWithPr.name })
-  //     } catch (error) {
-  //       log.error('Failed to ship it:', error)
-  //     } finally {
-  //       setIsLoading(false)
-  //     }
-  //   },
-  //   [isLoading, branchWithPr, shipIt]
-  // )
+      setIsLoading(true)
+      try {
+        await shipIt({ branchName: branchWithPr.name })
+      } catch (error) {
+        log.error('Failed to ship it:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, branchWithPr, shipIt]
+  )
 
   const handleCreatePr = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
@@ -159,6 +163,10 @@ export const GitForgeSection = memo(function GitForgeSection({
 
   if (pr) {
     const prIsMerged = pr.state === 'merged'
+
+    const shouldShowShipIt =
+      !prIsMerged && pr.isInSync && pr.isMergeable && !branchWithPr?.hasStaleTarget && isTailOfStack
+
     return (
       <div className="flex items-center gap-2">
         {showRebaseButton && !prIsMerged && (
@@ -195,21 +203,16 @@ export const GitForgeSection = memo(function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {/* Temporarily hidden until issues with this are fixed */}
-        {/* {!prIsMerged &&
-          pr.isInSync &&
-          pr.isMergeable &&
-          !isWorkingTreeDirty &&
-          !branchWithPr?.hasStaleTarget && (
-            <button
-              type="button"
-              onClick={handleShipIt}
-              disabled={isLoading}
-              className="cursor-pointer rounded-md border border-green-700 bg-green-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
-            >
-              {isLoading ? 'Shipping...' : 'Ship it!'}
-            </button>
-          )} */}
+        {shouldShowShipIt && (
+          <button
+            type="button"
+            onClick={handleShipIt}
+            disabled={isLoading}
+            className="cursor-pointer rounded-md border border-green-600 bg-green-500/10 px-2 py-1 text-xs font-medium text-green-600 transition-colors hover:bg-green-500/20 disabled:opacity-50"
+          >
+            {isLoading ? 'Shipping...' : 'Ship it!'}
+          </button>
+        )}
         {!prIsMerged && branchWithPr?.hasStaleTarget && (
           <span
             className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"

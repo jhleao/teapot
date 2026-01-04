@@ -171,6 +171,8 @@ export const CommitView = memo(function CommitView({
     navigator.clipboard.writeText(data.sha)
   }, [data.sha])
 
+  const isTailOfStack = data.sha === stack.commits[0]?.sha
+
   return (
     <div className={cn('w-full pl-2 whitespace-nowrap')}>
       {hasSpinoffs && (
@@ -261,6 +263,7 @@ export const CommitView = memo(function CommitView({
               commitSha={data.sha}
               trunkHeadSha={trunkHeadSha}
               baseSha={baseSha}
+              isTailOfStack={isTailOfStack}
             />
             {!stack.isTrunk && isCurrent && (
               <button

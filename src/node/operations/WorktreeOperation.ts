@@ -69,10 +69,18 @@ export class WorktreeOperation {
     force: boolean = false
   ): Promise<WorktreeOperationResult> {
     try {
+      // Resolve symlinks to match git's canonical path (e.g., /var -> /private/var on macOS)
+      let resolvedPath = worktreePath
+      try {
+        resolvedPath = await fs.promises.realpath(worktreePath)
+      } catch {
+        // Path doesn't exist, use original path
+      }
+
       // Cannot remove the main worktree
       const git = getGitAdapter()
       const worktrees = await git.listWorktrees(repoPath)
-      const targetWorktree = worktrees.find((wt) => wt.path === worktreePath)
+      const targetWorktree = worktrees.find((wt) => wt.path === resolvedPath)
 
       if (!targetWorktree) {
         return { success: false, error: 'Worktree not found' }
@@ -144,8 +152,12 @@ export class WorktreeOperation {
 
       await execAsync(`git -C "${repoPath}" worktree add "${worktreePath}" "${branch}"`)
 
-      log.info(`[WorktreeOperation] Created worktree ${worktreePath} for branch ${branch}`)
-      return { success: true, worktreePath }
+      // Resolve symlinks to get the canonical path (e.g., /var -> /private/var on macOS)
+      // This ensures the path matches what git reports in `worktree list`
+      const resolvedPath = await fs.promises.realpath(worktreePath)
+
+      log.info(`[WorktreeOperation] Created worktree ${resolvedPath} for branch ${branch}`)
+      return { success: true, worktreePath: resolvedPath }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       log.error(`[WorktreeOperation.create] Failed:`, error)

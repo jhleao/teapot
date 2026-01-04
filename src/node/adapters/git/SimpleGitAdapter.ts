@@ -132,6 +132,56 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  /**
+   * Batch resolve multiple refs in a single git call.
+   * Uses git for-each-ref for branches, which is much faster than individual rev-parse calls.
+   *
+   * @param dir - Repository directory path
+   * @param refs - Array of refs to resolve (e.g., refs/heads/main, refs/remotes/origin/main)
+   * @returns Map of ref -> sha (empty string if ref doesn't exist)
+   */
+  async resolveRefs(dir: string, refs: string[]): Promise<Map<string, string>> {
+    if (refs.length === 0) {
+      return new Map()
+    }
+
+    const result = new Map<string, string>()
+    // Initialize all refs with empty string (not found)
+    for (const ref of refs) {
+      result.set(ref, '')
+    }
+
+    try {
+      const git = this.createGit(dir)
+      // Use for-each-ref to get all refs at once - much faster than individual calls
+      // Format: refname + tab + objectname
+      const output = await git.raw([
+        'for-each-ref',
+        '--format=%(refname)\t%(objectname)',
+        'refs/heads',
+        'refs/remotes'
+      ])
+
+      // Parse the output and populate the map
+      for (const line of output.trim().split('\n')) {
+        if (!line) continue
+        const [refName, sha] = line.split('\t')
+        if (refName && sha && result.has(refName)) {
+          result.set(refName, sha)
+        }
+      }
+    } catch {
+      // If for-each-ref fails, fall back to individual resolves
+      await Promise.all(
+        refs.map(async (ref) => {
+          result.set(ref, await this.resolveRef(dir, ref))
+        })
+      )
+    }
+
+    return result
+  }
+
   async currentBranch(dir: string): Promise<string | null> {
     try {
       const git = this.createGit(dir)
@@ -314,14 +364,24 @@ export class SimpleGitAdapter implements GitAdapter {
    * For bare worktrees (detached HEAD), there's no "branch" line.
    * For prunable (stale) worktrees, there's a "prunable" line.
    */
-  async listWorktrees(dir: string): Promise<WorktreeInfo[]> {
+  async listWorktrees(
+    dir: string,
+    options?: { skipDirtyCheck?: boolean }
+  ): Promise<WorktreeInfo[]> {
     try {
       const git = this.createGit(dir)
       const output = await git.raw(['worktree', 'list', '--porcelain'])
 
-      const worktrees: WorktreeInfo[] = []
-      const blocks = output.trim().split('\n\n')
+      // Phase 1: Parse all worktree info from git output
+      const parsedWorktrees: Array<{
+        path: string
+        headSha: string
+        branch: string | null
+        isStale: boolean
+        isMain: boolean
+      }> = []
 
+      const blocks = output.trim().split('\n\n')
       for (const block of blocks) {
         if (!block.trim()) continue
 
@@ -347,23 +407,44 @@ export class SimpleGitAdapter implements GitAdapter {
         if (!worktreePath) continue
 
         // First worktree in the list is always the main worktree
-        const isMain = worktrees.length === 0
+        const isMain = parsedWorktrees.length === 0
 
-        // Check if worktree is dirty (has uncommitted changes)
-        let isDirty = false
-        if (!isStale) {
-          isDirty = await this.isWorktreeDirty(worktreePath)
-        }
-
-        worktrees.push({
+        parsedWorktrees.push({
           path: worktreePath,
           headSha,
           branch,
           isMain,
-          isStale,
-          isDirty
+          isStale
         })
       }
+
+      // Phase 2: Check dirty status (skip if requested for performance)
+      if (options?.skipDirtyCheck) {
+        // Fast path: skip dirty checking, all worktrees appear clean
+        return parsedWorktrees.map((wt) => ({
+          path: wt.path,
+          headSha: wt.headSha,
+          branch: wt.branch,
+          isMain: wt.isMain,
+          isStale: wt.isStale,
+          isDirty: false
+        }))
+      }
+
+      // Standard path: Check dirty status in parallel for all non-stale worktrees
+      const worktrees = await Promise.all(
+        parsedWorktrees.map(async (wt) => {
+          const isDirty = wt.isStale ? false : await this.isWorktreeDirty(wt.path)
+          return {
+            path: wt.path,
+            headSha: wt.headSha,
+            branch: wt.branch,
+            isMain: wt.isMain,
+            isStale: wt.isStale,
+            isDirty
+          }
+        })
+      )
 
       return worktrees
     } catch (error) {

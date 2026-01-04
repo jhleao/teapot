@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/jhleao/teapot/compare/v0.6.0...v0.7.0) (2026-01-04)
+
+
+### Features
+
+* add request versioning ([fc82f5d](https://github.com/jhleao/teapot/commit/fc82f5dfc6ba96fe2e9e66ca858d70173bf1d3cd))
+* worktree context menu on app header ([9969bbc](https://github.com/jhleao/teapot/commit/9969bbc34b30eb3fc52a61dc84c437098a59ad97))
+
+
+### Bug Fixes
+
+* handle github pr eventual consistency ([1390f0c](https://github.com/jhleao/teapot/commit/1390f0ce5b3b2e4d4c1049185f6e3a58a957c0aa))
+* optimize getRepo performance (substantially) ([a7b38d3](https://github.com/jhleao/teapot/commit/a7b38d3b5994cad3a74c8b9a5c6c8a8367c81138))
+
 ## [0.6.0](https://github.com/jhleao/teapot/compare/v0.5.0...v0.6.0) (2026-01-02)
 
 ### Features

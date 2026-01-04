@@ -1,6 +1,7 @@
 import { log } from '@shared/logger'
 import type { ForgeStateResult, ForgeStatus, GitForgeState } from '@shared/types/git-forge'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useRequestVersioning } from '../hooks/use-request-versioning'
 
 interface ForgeStateContextValue {
   /** Current forge state (PR data). May be stale if status is 'error'. */
@@ -35,6 +36,7 @@ export function ForgeStateProvider({
   children,
   repoPath
 }: ForgeStateProviderProps): React.JSX.Element {
+  const { acquireVersion, checkVersion } = useRequestVersioning()
   const [forgeState, setForgeState] = useState<GitForgeState | null>(null)
   const [forgeStatus, setForgeStatus] = useState<ForgeStatus>('idle')
   const [forgeError, setForgeError] = useState<string | null>(null)
@@ -48,10 +50,17 @@ export function ForgeStateProvider({
       return
     }
 
+    const version = acquireVersion()
     setForgeStatus('fetching')
 
     try {
       const result: ForgeStateResult = await window.api.getForgeState({ repoPath })
+
+      if (!checkVersion(version)) {
+        log.debug('[ForgeStateContext] Discarding stale response')
+        return
+      }
+
       setForgeState(result.state)
       setForgeStatus(result.status)
       setForgeError(result.error ?? null)
@@ -59,13 +68,15 @@ export function ForgeStateProvider({
         setLastSuccessfulFetch(result.lastSuccessfulFetch)
       }
     } catch (error) {
+      if (!checkVersion(version)) return
+
       // Network error or IPC failure - keep stale state
       log.error('Failed to fetch forge state:', error)
       setForgeStatus('error')
       setForgeError(error instanceof Error ? error.message : 'Failed to connect to GitHub')
       // Don't clear forgeState - keep showing stale data
     }
-  }, [repoPath])
+  }, [repoPath, acquireVersion, checkVersion])
 
   // Reset state and fetch when repoPath changes
   useEffect(() => {

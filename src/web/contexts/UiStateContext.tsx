@@ -13,6 +13,7 @@ import {
 import { toast } from 'sonner'
 import { WorktreeConflictDialog } from '../components/WorktreeConflictDialog'
 import { useGitWatcher } from '../hooks/use-git-watcher'
+import { useRequestVersioning } from '../hooks/use-request-versioning'
 import { useForgeStateContext } from './ForgeStateContext'
 import { useLocalStateContext } from './LocalStateContext'
 
@@ -63,6 +64,7 @@ export function UiStateProvider({
   children: ReactNode
   selectedRepoPath: string | null
 }): React.JSX.Element {
+  const { acquireVersion, checkVersion } = useRequestVersioning()
   const { refreshForge } = useForgeStateContext()
   const { refreshRepos } = useLocalStateContext()
   const [isDark, setIsDark] = useState(true)
@@ -83,18 +85,28 @@ export function UiStateProvider({
       return
     }
 
+    const version = acquireVersion()
+
     try {
       const uiState = await window.api.getRepo({ repoPath })
+
+      if (!checkVersion(version)) {
+        log.debug('[UiStateContext] Discarding stale response')
+        return
+      }
+
       if (uiState) {
         setUiState(uiState)
         setRepoError(null)
       }
     } catch (error) {
+      if (!checkVersion(version)) return
+
       log.error('Failed to refresh repo:', error)
       setRepoError(error instanceof Error ? error.message : String(error))
       setUiState(null)
     }
-  }, [repoPath])
+  }, [repoPath, acquireVersion, checkVersion])
 
   // Clear state immediately when repo path changes to show loading state
   useEffect(() => {

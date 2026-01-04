@@ -170,11 +170,7 @@ export class GitForgeService {
    *
    * @throws Error if no PAT configured or merge fails
    */
-  async mergePullRequest(
-    repoPath: string,
-    number: number,
-    strategy: MergeStrategy
-  ): Promise<void> {
+  async mergePullRequest(repoPath: string, number: number, strategy: MergeStrategy): Promise<void> {
     const client = await this.getClient(repoPath)
     if (!client) {
       throw new Error('No GitHub client available. Please configure your GitHub PAT in settings.')

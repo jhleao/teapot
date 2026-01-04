@@ -98,10 +98,7 @@ export class GitForgeClient {
    * Merges a pull request using the specified merge strategy.
    * After merging, refreshes the state to reflect the merged status.
    */
-  async mergePullRequest(
-    number: number,
-    strategy: MergeStrategy
-  ): Promise<ForgeStateResult> {
+  async mergePullRequest(number: number, strategy: MergeStrategy): Promise<ForgeStateResult> {
     await this.adapter.mergePullRequest(number, strategy)
     return this.refreshWithStatus()
   }

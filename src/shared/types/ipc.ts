@@ -321,7 +321,7 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.removeWorktree]: {
     request: { repoPath: string; worktreePath: string; force?: boolean }
-    response: { success: boolean; error?: string }
+    response: { success: boolean; error?: string; uiState?: UiState | null }
   }
   [IPC_CHANNELS.discardWorktreeChanges]: {
     request: { worktreePath: string }
@@ -345,7 +345,7 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.createWorktree]: {
     request: { repoPath: string; branch: string }
-    response: { success: boolean; error?: string; worktreePath?: string }
+    response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
   }
 }
 

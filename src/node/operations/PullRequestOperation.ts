@@ -67,7 +67,10 @@ export class PullRequestOperation {
 
     const git = getGitAdapter()
     await this.forcePushBranch(repoPath, headBranch, git)
-    await gitForgeService.refreshWithStatus(repoPath)
+
+    const expectedSha = await git.resolveRef(repoPath, headBranch)
+
+    await this.waitForPrSync(repoPath, headBranch, expectedSha)
 
     log.debug(`[PullRequestOperation.update] Successfully updated PR for branch ${headBranch}`)
   }
@@ -136,6 +139,40 @@ export class PullRequestOperation {
     }
 
     return { success: true, message, needsRebase: hasChildren }
+  }
+
+  /**
+   * Polls GitHub API until PR's headSha matches the expected SHA.
+   * This handles GitHub's eventual consistency after force push.
+   */
+  private static async waitForPrSync(
+    repoPath: string,
+    branchName: string,
+    expectedSha: string,
+    maxAttempts = 10,
+    delayMs = 500
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { state } = await gitForgeService.refreshWithStatus(repoPath)
+      const pr = state.pullRequests.find((p) => p.headRefName === branchName)
+
+      if (pr?.headSha === expectedSha) {
+        log.debug(`[PullRequestOperation] PR synced after ${attempt} attempt(s)`)
+        return
+      }
+
+      if (attempt < maxAttempts) {
+        log.debug(
+          `[PullRequestOperation] PR headSha mismatch, retrying (${attempt}/${maxAttempts})`
+        )
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+
+    // Timeout - log warning but don't fail (eventual consistency will catch up)
+    log.warn(
+      `[PullRequestOperation] PR sync timeout after ${maxAttempts} attempts, proceeding anyway`
+    )
   }
 
   private static async loadRepoWithRemotes(repoPath: string): Promise<Repo> {

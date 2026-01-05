@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/github/license/jhleao/teapot?style=flat-square)](LICENSE)
 
 </div>
-
+ 
 ---
 
 <p align="center"><img src="resources/teapot-demo.gif" alt="Teapot Demo" width="800" /></p>

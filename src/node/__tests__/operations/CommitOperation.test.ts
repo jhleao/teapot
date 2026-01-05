@@ -15,11 +15,14 @@ vi.mock('../../store', () => ({
 vi.mock('../../services/ForgeService', () => ({
   gitForgeService: {
     getState: vi.fn().mockResolvedValue({ pullRequests: [] }),
-    closePullRequest: vi.fn()
+    getStateWithStatus: vi.fn().mockResolvedValue({ state: { pullRequests: [] }, status: 'success' }),
+    closePullRequest: vi.fn(),
+    deleteRemoteBranch: vi.fn()
   }
 }))
 
 import { CommitOperation } from '../../operations/CommitOperation'
+import { gitForgeService } from '../../services/ForgeService'
 
 describe('uncommit', () => {
   let repoPath: string
@@ -117,5 +120,29 @@ describe('uncommit', () => {
     const status = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' })
     // 'M  file1.txt' means modified and staged
     expect(status).toContain('M  file1.txt')
+  })
+
+  it('should delete remote branch when uncommitting', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+    execSync('git checkout feature', { cwd: repoPath })
+
+    // Commit 2 on feature
+    await fs.promises.writeFile(file1, 'modified')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 2"', { cwd: repoPath })
+    const commit2 = execSync('git rev-parse HEAD', { cwd: repoPath, encoding: 'utf-8' }).trim()
+
+    // Uncommit commit2
+    await CommitOperation.uncommit(repoPath, commit2)
+
+    // Verify deleteRemoteBranch was called for the feature branch
+    expect(gitForgeService.deleteRemoteBranch).toHaveBeenCalledWith(repoPath, 'feature')
   })
 })

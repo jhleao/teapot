@@ -306,6 +306,14 @@ export class CommitOperation {
   ): Promise<void> {
     for (const branch of branches) {
       if (excludeBranch && branch === excludeBranch) continue
+
+      try {
+        await gitForgeService.deleteRemoteBranch(repoPath, branch)
+        log.debug(`[CommitOperation] Deleted remote branch: ${branch}`)
+      } catch (error) {
+        log.warn(`[CommitOperation] Failed to delete remote branch: ${branch}`, error)
+      }
+
       await git.deleteBranch(repoPath, branch)
     }
   }

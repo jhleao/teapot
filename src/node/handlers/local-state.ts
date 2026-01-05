@@ -1,5 +1,6 @@
 import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
 import { dialog, ipcMain } from 'electron'
+import { CloneOperation } from '../operations/CloneOperation'
 import { gitForgeService } from '../services/ForgeService'
 import { configStore } from '../store'
 
@@ -57,6 +58,13 @@ const setMergeStrategyHandler: IpcHandlerOf<'setMergeStrategy'> = (_event, { str
   configStore.setMergeStrategy(strategy)
 }
 
+const cloneRepositoryHandler: IpcHandlerOf<'cloneRepository'> = async (
+  _event,
+  { url, targetPath }
+) => {
+  return CloneOperation.clone(url, targetPath)
+}
+
 export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getLocalRepos, getLocalReposHandler)
   ipcMain.handle(IPC_CHANNELS.selectLocalRepo, selectLocalRepoHandler)
@@ -69,4 +77,5 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.setPreferredEditor, setPreferredEditorHandler)
   ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)
+  ipcMain.handle(IPC_CHANNELS.cloneRepository, cloneRepositoryHandler)
 }

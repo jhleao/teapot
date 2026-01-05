@@ -26,6 +26,7 @@ export type { GitAdapterConfig, GitAdapterType } from './factory'
 // Interface and types
 export {
   supportsCherryPick,
+  supportsClone,
   supportsGetRebaseState,
   supportsMerge,
   supportsMergeBase,

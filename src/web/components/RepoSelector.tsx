@@ -6,12 +6,14 @@ export function RepoSelector({
   repos,
   onSelectRepo,
   onAddRepo,
-  onRemoveRepo
+  onRemoveRepo,
+  onCloneRepo
 }: {
   repos: LocalRepo[]
   onSelectRepo: (path: string) => Promise<void>
   onAddRepo: () => Promise<void>
   onRemoveRepo: (path: string) => Promise<void>
+  onCloneRepo: () => void
 }): React.JSX.Element {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -45,6 +47,11 @@ export function RepoSelector({
 
   const handleAddRepo = async (): Promise<void> => {
     await onAddRepo()
+    setIsOpen(false)
+  }
+
+  const handleCloneRepo = (): void => {
+    onCloneRepo()
     setIsOpen(false)
   }
 
@@ -189,6 +196,25 @@ export function RepoSelector({
                 />
               </svg>
               <span>Add Repository</span>
+            </button>
+            <button
+              onClick={handleCloneRepo}
+              className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+            >
+              <svg
+                className="text-muted-foreground h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+              <span>Clone Repository</span>
             </button>
           </div>
         </div>

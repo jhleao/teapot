@@ -412,6 +412,71 @@ describe('SimpleGitAdapter', () => {
     })
   })
 
+  describe('clone', () => {
+    it('should clone a repository to the target path', async () => {
+      const fs = await import('fs')
+      const path = await import('path')
+      const os = await import('os')
+
+      // Create a source repo with a commit
+      await createCommit(repoPath, { 'file.txt': 'content' }, 'initial commit')
+
+      // Create a target directory for the clone
+      const targetDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-clone-test-'))
+      const clonePath = path.join(targetDir, 'cloned-repo')
+
+      try {
+        // Clone the local repo
+        await adapter.clone(repoPath, clonePath)
+
+        // Verify the clone exists and has the file
+        const clonedFile = await fs.promises.readFile(path.join(clonePath, 'file.txt'), 'utf-8')
+        expect(clonedFile).toBe('content')
+
+        // Verify it's a git repo
+        const stat = await fs.promises.stat(path.join(clonePath, '.git'))
+        expect(stat.isDirectory()).toBe(true)
+      } finally {
+        // Cleanup
+        await fs.promises.rm(targetDir, { recursive: true, force: true })
+      }
+    })
+
+    it('should throw error when cloning to non-empty directory', async () => {
+      const fs = await import('fs')
+      const path = await import('path')
+      const os = await import('os')
+
+      await createCommit(repoPath, { 'file.txt': 'content' }, 'initial commit')
+
+      // Create a target directory with existing content
+      const targetDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-clone-test-'))
+      await fs.promises.writeFile(path.join(targetDir, 'existing-file.txt'), 'existing content')
+
+      try {
+        // Try to clone to the non-empty directory (should fail)
+        await expect(adapter.clone(repoPath, targetDir)).rejects.toThrow()
+      } finally {
+        await fs.promises.rm(targetDir, { recursive: true, force: true })
+      }
+    })
+
+    it('should throw error for invalid repository URL', async () => {
+      const fs = await import('fs')
+      const path = await import('path')
+      const os = await import('os')
+
+      const targetDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-clone-test-'))
+      const clonePath = path.join(targetDir, 'cloned-repo')
+
+      try {
+        await expect(adapter.clone('invalid-url', clonePath)).rejects.toThrow()
+      } finally {
+        await fs.promises.rm(targetDir, { recursive: true, force: true })
+      }
+    })
+  })
+
   describe('merge', () => {
     it('performs fast-forward merge when possible', async () => {
       // Create initial commit on main

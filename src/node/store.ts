@@ -18,6 +18,7 @@ interface StoreSchema {
   githubPat?: string
   preferredEditor?: string
   mergeStrategy?: MergeStrategy
+  lastClonePath?: string
   rebaseSessions: Record<string, StoredRebaseSession>
 }
 
@@ -65,6 +66,14 @@ export class ConfigStore {
 
   setMergeStrategy(strategy: MergeStrategy): void {
     this.store.set('mergeStrategy', strategy)
+  }
+
+  getLastClonePath(): string | undefined {
+    return this.store.get('lastClonePath')
+  }
+
+  setLastClonePath(path: string): void {
+    this.store.set('lastClonePath', path)
   }
 
   private setRepos(repos: LocalRepo[]): void {

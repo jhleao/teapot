@@ -7,6 +7,7 @@
  */
 
 export { BranchUtils } from './BranchUtils'
+export { extractRepoName, isValidGitUrl, parseGitCloneError } from './GitUrlParser'
 export { PrTargetResolver } from './PrTargetResolver'
 export { RebaseIntentBuilder } from './RebaseIntentBuilder'
 export { RebaseStateMachine } from './RebaseStateMachine'

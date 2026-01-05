@@ -41,6 +41,19 @@ export class SimpleGitAdapter implements GitAdapter {
   }
 
   // ============================================================================
+  // Repository Creation
+  // ============================================================================
+
+  async clone(url: string, targetPath: string): Promise<void> {
+    try {
+      const git = simpleGit()
+      await git.clone(url, targetPath)
+    } catch (error) {
+      throw this.createError('clone', error)
+    }
+  }
+
+  // ============================================================================
   // Repository Inspection
   // ============================================================================
 

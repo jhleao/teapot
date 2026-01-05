@@ -41,6 +41,18 @@ export interface GitAdapter {
   readonly name: string
 
   // ============================================================================
+  // Repository Creation
+  // ============================================================================
+
+  /**
+   * Clone a repository from a URL to a local path
+   *
+   * @param url - Repository URL (HTTPS or SSH)
+   * @param targetPath - Local directory to clone into
+   */
+  clone?(url: string, targetPath: string): Promise<void>
+
+  // ============================================================================
   // Repository Inspection
   // ============================================================================
 
@@ -461,4 +473,13 @@ export function supportsMerge(adapter: GitAdapter): adapter is GitAdapter & {
   ) => Promise<import('@shared/types/repo').MergeResult>
 } {
   return typeof adapter.merge === 'function'
+}
+
+/**
+ * Type guard to check if an adapter supports clone
+ */
+export function supportsClone(adapter: GitAdapter): adapter is GitAdapter & {
+  clone: (url: string, targetPath: string) => Promise<void>
+} {
+  return typeof adapter.clone === 'function'
 }

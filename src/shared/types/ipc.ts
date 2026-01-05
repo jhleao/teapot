@@ -138,7 +138,11 @@ export const IPC_CHANNELS = {
   openWorktreeInEditor: 'openWorktreeInEditor',
   openWorktreeInTerminal: 'openWorktreeInTerminal',
   copyWorktreePath: 'copyWorktreePath',
-  createWorktree: 'createWorktree'
+  createWorktree: 'createWorktree',
+  // Clone
+  cloneRepository: 'cloneRepository',
+  getLastClonePath: 'getLastClonePath',
+  readClipboardText: 'readClipboardText'
 } as const
 
 export const IPC_EVENTS = {
@@ -368,6 +372,18 @@ export interface IpcContract {
   [IPC_CHANNELS.createWorktree]: {
     request: { repoPath: string; branch: string }
     response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
+  }
+  [IPC_CHANNELS.cloneRepository]: {
+    request: { url: string; targetPath: string }
+    response: { success: boolean; error?: string; repoPath?: string }
+  }
+  [IPC_CHANNELS.getLastClonePath]: {
+    request: void
+    response: string | null
+  }
+  [IPC_CHANNELS.readClipboardText]: {
+    request: void
+    response: string
   }
 }
 

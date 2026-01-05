@@ -10,6 +10,7 @@
 
 </div>
  
+ 
 ---
 
 <p align="center"><img src="resources/teapot-demo.gif" alt="Teapot Demo" width="800" /></p>

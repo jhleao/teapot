@@ -7,10 +7,10 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import { Toaster as Sonner, type ToasterProps } from 'sonner'
-import { useUiStateContext } from '../contexts/UiStateContext'
+import { useTheme } from '../contexts/ThemeContext'
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { isDark } = useUiStateContext()
+  const { isDark } = useTheme()
 
   return (
     <Sonner

@@ -1,18 +1,91 @@
 /**
- * ShipItNavigator - Pure domain logic for post-merge navigation.
+ * ShipItNavigator - Pure domain logic for Ship It operations.
  *
- * Determines where to navigate after a PR is merged ("shipped").
- * The goal is to provide a smooth UX by:
- * 1. Moving user off the now-merged branch
- * 2. Landing on the most logical next branch (parent or main)
- * 3. Informing user if rebasing is needed for remaining stack
+ * Contains:
+ * 1. Pre-merge validation (can this PR be shipped?)
+ * 2. Post-merge navigation (where should user go after shipping?)
+ *
+ * All functions are pure and deterministic - no I/O.
  */
 
 import type { ShipItNavigationContext, ShipItNavigationResult } from '@shared/types'
 import { isTrunk } from '@shared/types/repo'
 
+/** Minimal PR shape for validation functions */
+type PrForValidation = {
+  headRefName: string
+  baseRefName: string
+  state: string
+  isMergeable: boolean
+}
+
+/** Result of Ship It validation */
+export type ShipItValidationResult = { canShip: true } | { canShip: false; reason: string }
+
 export class ShipItNavigator {
   private constructor() {}
+
+  // ============================================================================
+  // Pre-merge Validation (Pure Logic)
+  // ============================================================================
+
+  /**
+   * Validates whether a PR can be shipped.
+   * Returns an error reason if shipping should be blocked.
+   *
+   * Checks:
+   * 1. PR exists and is open
+   * 2. PR is mergeable (no conflicts, checks pass)
+   * 3. Target branch hasn't been merged (stale target)
+   * 4. Branch has no child PRs (must ship children first)
+   */
+  public static validateCanShip(
+    branchName: string,
+    pullRequests: PrForValidation[]
+  ): ShipItValidationResult {
+    // Find the PR for this branch
+    const pr = pullRequests.find((p) => p.headRefName === branchName && p.state === 'open')
+
+    if (!pr) {
+      return { canShip: false, reason: `No open PR found for branch "${branchName}"` }
+    }
+
+    // Check if PR is mergeable
+    if (!pr.isMergeable) {
+      return {
+        canShip: false,
+        reason: 'PR is not mergeable. Check for conflicts or failing checks.'
+      }
+    }
+
+    // Check if target branch has been merged (stale target)
+    const targetBranch = pr.baseRefName
+    if (!isTrunk(targetBranch)) {
+      const targetBranchMerged = pullRequests.some(
+        (p) => p.headRefName === targetBranch && p.state === 'merged'
+      )
+      if (targetBranchMerged) {
+        return {
+          canShip: false,
+          reason: `Target branch "${targetBranch}" has been merged. Update the PR target first.`
+        }
+      }
+    }
+
+    // Check if this branch has children (other PRs targeting it)
+    if (ShipItNavigator.hasChildBranches(branchName, pullRequests)) {
+      return {
+        canShip: false,
+        reason: 'Cannot ship a branch that has child PRs. Ship the child branches first.'
+      }
+    }
+
+    return { canShip: true }
+  }
+
+  // ============================================================================
+  // Post-merge Navigation (Pure Logic)
+  // ============================================================================
 
   /**
    * Determines the navigation action after shipping a branch.

@@ -174,7 +174,7 @@ export function StatusChecksDisplay({
             position.top ? 'top-full mt-1' : 'bottom-full mb-1',
             // Horizontal positioning
             position.left ? 'left-0' : 'right-0',
-            'bg-popover border-border rounded-md border shadow-lg',
+            'bg-background border-border rounded-md border shadow-lg',
             'max-w-[300px] min-w-[200px] p-2'
           )}
         >

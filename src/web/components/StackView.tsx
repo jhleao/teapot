@@ -6,10 +6,10 @@ import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
-import { BranchBadge } from './BranchBadge'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
 import { GitForgeSection } from './GitForgeSection'
+import { MultiBranchBadge } from './MultiBranchBadge'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
 import { WorktreeBadge } from './WorktreeBadge'
@@ -228,13 +228,7 @@ export const CommitView = memo(function CommitView({
             variant={isCurrent ? 'current' : 'default'}
             accentLines={showWorkingTree ? 'top' : 'none'}
           />
-          {data.branches.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {data.branches.map((branch, index) => (
-                <BranchBadge key={`${branch.name}-${index}`} data={branch} />
-              ))}
-            </div>
-          )}
+          {data.branches.length > 0 && <MultiBranchBadge branches={data.branches} />}
           {data.branches.length === 0 && !stack.isTrunk && (
             <CreateBranchButton commitSha={data.sha} />
           )}

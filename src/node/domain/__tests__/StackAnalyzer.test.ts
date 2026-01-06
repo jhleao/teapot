@@ -223,9 +223,7 @@ describe('StackAnalyzer', () => {
     })
 
     it('returns null when branching occurs', () => {
-      const childrenIndex = new Map<string, string[]>([
-        ['parent', ['child-1', 'child-2']]
-      ])
+      const childrenIndex = new Map<string, string[]>([['parent', ['child-1', 'child-2']]])
 
       const descendants = StackAnalyzer.collectLinearDescendants('parent', childrenIndex)
       expect(descendants).toBeNull()

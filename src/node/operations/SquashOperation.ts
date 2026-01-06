@@ -1,7 +1,12 @@
 import type { SquashPreview, SquashResult } from '@shared/types'
 import type { GitForgeState } from '@shared/types/git-forge'
-import { getAuthorIdentity, getGitAdapter, supportsRebase, supportsRebaseAbort } from '../adapters/git'
 import type { GitAdapter } from '../adapters/git'
+import {
+  getAuthorIdentity,
+  getGitAdapter,
+  supportsRebase,
+  supportsRebaseAbort
+} from '../adapters/git'
 import { SquashValidator } from '../domain'
 import { RepoModelService, SessionService } from '../services'
 import { gitForgeService } from '../services/ForgeService'
@@ -30,8 +35,7 @@ export class SquashOperation {
 
     const parentBranch = validation.parentBranch!
     const targetHeadSha = validation.targetHeadSha ?? (await git.resolveRef(repoPath, branchName))
-    const parentHeadSha =
-      validation.parentHeadSha ?? (await git.resolveRef(repoPath, parentBranch))
+    const parentHeadSha = validation.parentHeadSha ?? (await git.resolveRef(repoPath, parentBranch))
 
     const isEmpty =
       validation.commitDistance === 0 ||
@@ -98,8 +102,7 @@ export class SquashOperation {
     const parentBranch = validation.parentBranch!
     const descendants = validation.descendantBranches
     const directChild = descendants[0]
-    const parentHeadSha =
-      validation.parentHeadSha ?? (await git.resolveRef(repoPath, parentBranch))
+    const parentHeadSha = validation.parentHeadSha ?? (await git.resolveRef(repoPath, parentBranch))
     const targetHeadSha = validation.targetHeadSha ?? (await git.resolveRef(repoPath, branchName))
 
     const isEmpty =
@@ -254,7 +257,11 @@ export class SquashOperation {
     originalShas: Map<string, string>,
     newParentSha: string,
     git: GitAdapter
-  ): Promise<{ status: 'success' } | { status: 'conflict'; conflicts: string[] } | { status: 'error'; message: string }> {
+  ): Promise<
+    | { status: 'success' }
+    | { status: 'conflict'; conflicts: string[] }
+    | { status: 'error'; message: string }
+  > {
     if (!directChild || allDescendants.length === 0) {
       return { status: 'success' }
     }
@@ -332,7 +339,9 @@ export class SquashOperation {
     descendants: string[],
     originalShas: Map<string, string>,
     git: GitAdapter
-  ): Promise<{ success: true; changedBranches: string[] } | { success: false; result: SquashResult }> {
+  ): Promise<
+    { success: true; changedBranches: string[] } | { success: false; result: SquashResult }
+  > {
     const branchesToPush = [parentBranch, ...descendants]
     const changedBranches: string[] = []
 

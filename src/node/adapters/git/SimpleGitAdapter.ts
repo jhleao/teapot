@@ -679,7 +679,9 @@ export class SimpleGitAdapter implements GitAdapter {
 
       if (options.forceWithLease) {
         if (typeof options.forceWithLease === 'object') {
-          args.push(`--force-with-lease=${options.forceWithLease.ref}:${options.forceWithLease.expect}`)
+          args.push(
+            `--force-with-lease=${options.forceWithLease.ref}:${options.forceWithLease.expect}`
+          )
         } else {
           args.push('--force-with-lease')
         }

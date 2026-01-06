@@ -18,6 +18,7 @@ import {
   type GitAdapter
 } from '../adapters/git'
 import { gitForgeService } from '../services/ForgeService'
+import { WorktreeOperation } from './WorktreeOperation'
 
 export type SyncTrunkResult = {
   status: 'success' | 'conflict' | 'error'
@@ -45,6 +46,7 @@ export class BranchOperation {
 
   /**
    * Cleans up a merged branch by deleting it both locally and on the remote.
+   * If the branch is checked out in a worktree, the worktree is removed first.
    */
   static async cleanup(repoPath: string, branchName: string): Promise<void> {
     const git = getGitAdapter()
@@ -54,15 +56,41 @@ export class BranchOperation {
       throw new Error('Cannot delete the currently checked out branch')
     }
 
+    // Check if the branch is used by a worktree and remove it first
+    // Don't skip dirty check - we need to know if there are uncommitted changes
+    const worktrees = await git.listWorktrees(repoPath)
+    const worktreeUsingBranch = worktrees.find(
+      (wt) => wt.branch === branchName && !wt.isMain
+    )
+
+    if (worktreeUsingBranch) {
+      if (worktreeUsingBranch.isDirty) {
+        throw new Error(
+          `Cannot cleanup branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
+        )
+      }
+
+      log.info(
+        `[BranchOperation.cleanup] Branch ${branchName} is used by worktree ${worktreeUsingBranch.path}, removing worktree first`
+      )
+      const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
+      if (!result.success) {
+        throw new Error(`Failed to remove worktree: ${result.error}`)
+      }
+    }
+
     try {
       await gitForgeService.deleteRemoteBranch(repoPath, branchName)
-      log.info(`Deleted remote branch: ${branchName}`)
+      log.info(`[BranchOperation.cleanup] Deleted remote branch: ${branchName}`)
     } catch (error) {
-      log.warn(`Failed to delete remote branch (continuing with local): ${branchName}`, error)
+      log.warn(
+        `[BranchOperation.cleanup] Failed to delete remote branch (continuing with local): ${branchName}`,
+        error
+      )
     }
 
     await git.deleteBranch(repoPath, branchName)
-    log.info(`Deleted local branch: ${branchName}`)
+    log.info(`[BranchOperation.cleanup] Deleted local branch: ${branchName}`)
   }
 
   /**

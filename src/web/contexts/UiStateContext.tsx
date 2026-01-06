@@ -153,19 +153,26 @@ export function UiStateProvider({
   }, [])
 
   // Helper to call API and update state
-  const callApi = useCallback(async (apiCall: Promise<UiState | null>) => {
-    try {
-      const newUiState = await apiCall
-      if (newUiState) setUiState(newUiState)
-    } catch (error) {
-      log.error('API call failed:', error)
-      toast.error('Operation failed', {
-        description: error instanceof Error ? error.message : String(error)
-      })
-      // Re-throw so callers can handle loading states etc if needed
-      throw error
-    }
-  }, [])
+  const callApi = useCallback(
+    async (apiCall: Promise<UiState | null>) => {
+      // Version guard prevents stale watcher responses from overwriting fresh mutations
+      const version = acquireVersion()
+      try {
+        const newUiState = await apiCall
+        if (!checkVersion(version)) return
+        if (newUiState) setUiState(newUiState)
+      } catch (error) {
+        if (!checkVersion(version)) return
+        log.error('API call failed:', error)
+        toast.error('Operation failed', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        // Re-throw so callers can handle loading states etc if needed
+        throw error
+      }
+    },
+    [acquireVersion, checkVersion]
+  )
 
   const setFilesStageStatus = useCallback(
     async (params: { staged: boolean; files: string[] }) => {

@@ -314,6 +314,14 @@ export class CommitOperation {
         log.warn(`[CommitOperation] Failed to delete remote branch: ${branch}`, error)
       }
 
+      // Always delete the local remote-tracking reference regardless of remote deletion result
+      try {
+        await git.deleteRemoteTrackingBranch(repoPath, 'origin', branch)
+        log.debug(`[CommitOperation] Deleted remote-tracking ref: origin/${branch}`)
+      } catch {
+        // Ignore - the remote-tracking ref may not exist
+      }
+
       await git.deleteBranch(repoPath, branch)
     }
   }

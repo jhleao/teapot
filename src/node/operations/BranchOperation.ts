@@ -105,6 +105,20 @@ export class BranchOperation {
       )
     }
 
+    // Always delete the local remote-tracking reference to prevent the branch from reappearing.
+    // This is done regardless of whether the remote deletion succeeded because:
+    // 1. If the branch still exists on remote, `git fetch` will recreate the tracking ref
+    // 2. If the branch was already deleted (e.g., GitHub auto-delete after merge), this cleans up the stale ref
+    // 3. Network errors shouldn't prevent local cleanup of a merged branch
+    try {
+      await git.deleteRemoteTrackingBranch(repoPath, 'origin', branchName)
+      log.info(
+        `[BranchOperation.cleanup] Deleted remote-tracking ref: origin/${branchName}`
+      )
+    } catch {
+      // Ignore - the remote-tracking ref may not exist
+    }
+
     await git.deleteBranch(repoPath, branchName)
     log.info(`[BranchOperation.cleanup] Deleted local branch: ${branchName}`)
   }

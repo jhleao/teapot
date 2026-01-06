@@ -40,6 +40,7 @@ export type { GitAdapter } from './interface'
 export type {
   Branch,
   BranchOptions,
+  ApplyPatchResult,
   CheckoutOptions,
   CherryPickResult,
   Commit,

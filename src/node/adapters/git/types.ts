@@ -155,6 +155,11 @@ export type PushOptions = {
    */
   force?: boolean
   /**
+   * Force push with lease. When object, specify expected remote ref tip.
+   * Takes precedence over `force` when provided.
+   */
+  forceWithLease?: boolean | { ref: string; expect: string }
+  /**
    * Set upstream tracking
    */
   setUpstream?: boolean
@@ -179,6 +184,14 @@ export type ResetOptions = {
    * Target commit SHA or ref
    */
   ref: string
+}
+
+/**
+ * Result of applying a patch to the working tree.
+ */
+export type ApplyPatchResult = {
+  success: boolean
+  conflicts?: string[]
 }
 
 /**

@@ -15,6 +15,7 @@ import type {
   BranchOptions,
   CheckoutOptions,
   CherryPickResult,
+  ApplyPatchResult,
   Commit,
   CommitDetail,
   CommitOptions,
@@ -229,6 +230,35 @@ export interface GitAdapter {
    * @param options - Reset options (mode, ref)
    */
   reset(dir: string, options: ResetOptions): Promise<void>
+
+  /**
+   * Generate an email-style patch for a commit range.
+   *
+   * @param dir - Repository directory path
+   * @param commitRange - Range in git diff format (e.g., A..B)
+   * @returns Patch text
+   */
+  formatPatch(dir: string, commitRange: string): Promise<string>
+
+  /**
+   * Apply a patch to the working tree.
+   *
+   * Performs a dry-run check before applying for clearer conflict reporting.
+   *
+   * @param dir - Repository directory path
+   * @param patch - Patch text to apply
+   * @returns Result indicating success or conflicts
+   */
+  applyPatch(dir: string, patch: string): Promise<ApplyPatchResult>
+
+  /**
+   * Check whether a diff range produces any changes.
+   *
+   * @param dir - Repository directory path
+   * @param range - Diff range (e.g., base..head)
+   * @returns True if no diff exists for the range
+   */
+  isDiffEmpty(dir: string, range: string): Promise<boolean>
 
   // ============================================================================
   // Network Operations

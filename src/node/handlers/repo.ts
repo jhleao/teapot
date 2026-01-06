@@ -30,6 +30,7 @@ import {
   CommitOperation,
   PullRequestOperation,
   RebaseOperation,
+  SquashOperation,
   UiStateOperation,
   WorkingTreeOperation,
   WorktreeOperation
@@ -282,6 +283,23 @@ const cleanupBranchHandler: IpcHandlerOf<'cleanupBranch'> = async (
   return UiStateOperation.getUiState(repoPath)
 }
 
+// ============================================================================
+// Fold / Squash Handlers
+// ============================================================================
+
+const getFoldPreview: IpcHandlerOf<'getFoldPreview'> = async (_event, { repoPath, branchName }) => {
+  const workingPath = resolveWorkingPath(repoPath)
+  return SquashOperation.preview(workingPath, branchName)
+}
+
+const foldIntoParent: IpcHandlerOf<'foldIntoParent'> = async (
+  _event,
+  { repoPath, branchName, commitMessage }
+) => {
+  const workingPath = resolveWorkingPath(repoPath)
+  return SquashOperation.execute(workingPath, branchName, { commitMessage })
+}
+
 const createBranchHandler: IpcHandlerOf<'createBranch'> = async (
   _event,
   { repoPath, branchName, commitSha }
@@ -506,6 +524,8 @@ export function registerRepoHandlers(): void {
   // History
   ipcMain.handle(IPC_CHANNELS.uncommit, uncommit)
   ipcMain.handle(IPC_CHANNELS.updatePullRequest, updatePullRequest)
+  ipcMain.handle(IPC_CHANNELS.getFoldPreview, getFoldPreview)
+  ipcMain.handle(IPC_CHANNELS.foldIntoParent, foldIntoParent)
 
   // Worktree
   ipcMain.handle(IPC_CHANNELS.getActiveWorktree, getActiveWorktree)

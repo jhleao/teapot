@@ -163,6 +163,75 @@ describe('StackAnalyzer', () => {
     })
   })
 
+  describe('buildParentIndex', () => {
+    it('finds nearest ancestor branch and distance', () => {
+      const commits: Commit[] = [
+        createCommit('A', ''),
+        createCommit('B', 'A'),
+        createCommit('C', 'B')
+      ]
+      const commitMap = new Map(commits.map((c) => [c.sha, c]))
+      const branches: Branch[] = [
+        createBranch('main', 'A', { isTrunk: true }),
+        createBranch('feature-1', 'B'),
+        createBranch('feature-2', 'C')
+      ]
+
+      const parentIndex = StackAnalyzer.buildParentIndex(branches, commitMap)
+
+      expect(parentIndex.get('feature-1')).toEqual({ parent: 'main', distance: 1 })
+      expect(parentIndex.get('feature-2')).toEqual({ parent: 'feature-1', distance: 1 })
+    })
+
+    it('excludes remote branches by default', () => {
+      const commits: Commit[] = [createCommit('A', ''), createCommit('B', 'A')]
+      const commitMap = new Map(commits.map((c) => [c.sha, c]))
+      const branches: Branch[] = [
+        createBranch('main', 'A', { isTrunk: true }),
+        createBranch('origin/feature', 'B', { isRemote: true })
+      ]
+
+      const parentIndex = StackAnalyzer.buildParentIndex(branches, commitMap)
+      expect(parentIndex.has('origin/feature')).toBe(false)
+    })
+  })
+
+  describe('buildChildrenIndex', () => {
+    it('creates reverse mapping from parent index', () => {
+      const parentIndex = new Map<string, { parent: string; distance: number }>([
+        ['child-1', { parent: 'main', distance: 1 }],
+        ['child-2', { parent: 'main', distance: 1 }],
+        ['grandchild', { parent: 'child-1', distance: 1 }]
+      ])
+
+      const childrenIndex = StackAnalyzer.buildChildrenIndex(parentIndex)
+
+      expect(childrenIndex.get('main')).toEqual(['child-1', 'child-2'])
+      expect(childrenIndex.get('child-1')).toEqual(['grandchild'])
+    })
+  })
+
+  describe('collectLinearDescendants', () => {
+    it('returns descendants when stack is linear', () => {
+      const childrenIndex = new Map<string, string[]>([
+        ['feature-1', ['feature-2']],
+        ['feature-2', ['feature-3']]
+      ])
+
+      const descendants = StackAnalyzer.collectLinearDescendants('feature-1', childrenIndex)
+      expect(descendants).toEqual(['feature-2', 'feature-3'])
+    })
+
+    it('returns null when branching occurs', () => {
+      const childrenIndex = new Map<string, string[]>([
+        ['parent', ['child-1', 'child-2']]
+      ])
+
+      const descendants = StackAnalyzer.collectLinearDescendants('parent', childrenIndex)
+      expect(descendants).toBeNull()
+    })
+  })
+
   describe('findDirectChildBranches', () => {
     it('finds branches whose head parent is the given SHA', () => {
       const commits: Commit[] = [

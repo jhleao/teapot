@@ -7,13 +7,14 @@
  */
 
 import { log } from '@shared/logger'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
 import { promisify } from 'util'
 import type { GitAdapter } from './interface'
 import type {
+  ApplyPatchResult,
   BranchOptions,
   CheckoutOptions,
   Commit,
@@ -621,6 +622,52 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  /**
+   * Generate a patch for a commit range.
+   *
+   * Uses `git format-patch --stdout` to preserve author metadata and binary hunks.
+   */
+  async formatPatch(dir: string, commitRange: string): Promise<string> {
+    try {
+      const git = this.createGit(dir)
+      return await git.raw(['format-patch', '--stdout', '--binary', commitRange])
+    } catch (error) {
+      throw this.createError('formatPatch', error)
+    }
+  }
+
+  /**
+   * Apply a patch to the working tree.
+   *
+   * Performs a dry-run check first to surface conflicts before mutating state.
+   */
+  async applyPatch(dir: string, patch: string): Promise<ApplyPatchResult> {
+    try {
+      await this.runGitWithInput(dir, ['apply', '--check'], patch)
+      await this.runGitWithInput(dir, ['apply'], patch)
+      return { success: true }
+    } catch (error) {
+      const conflicts = this.parseApplyConflicts(error)
+      return {
+        success: false,
+        conflicts: conflicts.length > 0 ? conflicts : undefined
+      }
+    }
+  }
+
+  /**
+   * Determine whether a diff range has any changes.
+   */
+  async isDiffEmpty(dir: string, range: string): Promise<boolean> {
+    try {
+      const git = this.createGit(dir)
+      const diff = await git.diff([range])
+      return diff.trim().length === 0
+    } catch (error) {
+      throw this.createError('isDiffEmpty', error)
+    }
+  }
+
   // ============================================================================
   // Network Operations
   // ============================================================================
@@ -630,7 +677,13 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       const args: string[] = [options.remote, options.ref]
 
-      if (options.force) {
+      if (options.forceWithLease) {
+        if (typeof options.forceWithLease === 'object') {
+          args.push(`--force-with-lease=${options.forceWithLease.ref}:${options.forceWithLease.expect}`)
+        } else {
+          args.push('--force-with-lease')
+        }
+      } else if (options.force) {
         args.push('--force')
       }
 
@@ -973,6 +1026,90 @@ export class SimpleGitAdapter implements GitAdapter {
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
+
+  private async runGitWithInput(
+    dir: string,
+    args: string[],
+    input: string
+  ): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = spawn('git', args, { cwd: dir })
+      let stdout = ''
+      let stderr = ''
+
+      child.stdout?.on('data', (data) => {
+        stdout += data.toString()
+      })
+      child.stderr?.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      child.on('error', reject)
+      child.on('close', (code) => {
+        if (code === 0) {
+          resolve({ stdout, stderr })
+        } else {
+          const message = stderr.trim() || stdout.trim() || `git ${args.join(' ')} failed`
+          const error = new Error(message)
+          ;(error as any).stdout = stdout
+          ;(error as any).stderr = stderr
+          ;(error as any).exitCode = code
+          reject(error)
+        }
+      })
+
+      child.stdin?.end(input)
+    })
+  }
+
+  private parseApplyConflicts(error: unknown): string[] {
+    const outputParts: string[] = []
+
+    if (error && typeof error === 'object') {
+      const errObj = error as any
+      if (typeof errObj.stderr === 'string') {
+        outputParts.push(errObj.stderr)
+      }
+      if (typeof errObj.stdout === 'string') {
+        outputParts.push(errObj.stdout)
+      }
+      if ('message' in errObj && typeof errObj.message === 'string') {
+        outputParts.push(errObj.message)
+      }
+    } else if (error) {
+      outputParts.push(String(error))
+    }
+
+    const combined = outputParts.join('\n')
+    const conflicts = new Set<string>()
+
+    for (const line of combined.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed) continue
+
+      const patchFailed = trimmed.match(/patch failed:\s*(.+?):\d+/i)
+      if (patchFailed?.[1]) {
+        conflicts.add(patchFailed[1])
+        continue
+      }
+
+      const rejectMatch = trimmed.match(/error:\s*(.+)/i)
+      if (rejectMatch?.[1]) {
+        const message = rejectMatch[1].trim()
+        const pathOnly = message.split(':')[0]
+        conflicts.add(pathOnly || message)
+      }
+    }
+
+    if (conflicts.size > 0) {
+      return [...conflicts]
+    }
+
+    return combined
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+  }
 
   private async detectRebase(dir: string): Promise<boolean> {
     const gitDir = path.join(dir, '.git')

@@ -232,6 +232,42 @@ describe('SimpleGitAdapter', () => {
     })
   })
 
+  describe('patch operations', () => {
+    it('formats and applies patch successfully', async () => {
+      await createCommit(repoPath, { 'file.txt': 'base' }, 'initial commit')
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'file.txt': 'feature change' }, 'feature commit')
+
+      await adapter.checkout(repoPath, 'main')
+
+      const patch = await adapter.formatPatch(repoPath, 'main..feature')
+      expect(await adapter.isDiffEmpty(repoPath, 'HEAD')).toBe(true)
+
+      const applyResult = await adapter.applyPatch(repoPath, patch)
+      expect(applyResult.success).toBe(true)
+
+      const status = await adapter.getWorkingTreeStatus(repoPath)
+      expect(status.modified).toContain('file.txt')
+      expect(await adapter.isDiffEmpty(repoPath, 'HEAD')).toBe(false)
+    })
+
+    it('returns conflicts when patch cannot be applied cleanly', async () => {
+      await createCommit(repoPath, { 'file.txt': 'base' }, 'base commit')
+
+      await createBranch(repoPath, 'feature', true)
+      await createCommit(repoPath, { 'file.txt': 'feature change' }, 'feature commit')
+
+      await adapter.checkout(repoPath, 'main')
+      await createCommit(repoPath, { 'file.txt': 'main change' }, 'main commit')
+
+      const patch = await adapter.formatPatch(repoPath, 'main..feature')
+      const applyResult = await adapter.applyPatch(repoPath, patch)
+
+      expect(applyResult.success).toBe(false)
+      expect(applyResult.conflicts?.some((c) => c.includes('file.txt'))).toBe(true)
+    })
+  })
+
   describe('mergeBase', () => {
     it('should find merge base between branches', async () => {
       // Create initial commit

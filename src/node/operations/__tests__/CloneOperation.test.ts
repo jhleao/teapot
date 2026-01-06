@@ -119,4 +119,107 @@ describe('CloneOperation.clone', () => {
     const stat = await fs.promises.stat(path.join(targetDir, 'test-repo', '.git'))
     expect(stat.isDirectory()).toBe(true)
   })
+
+  it('uses custom folder name when provided', async () => {
+    // Rename source repo to have a predictable name
+    const namedSourceRepo = path.join(path.dirname(sourceRepoPath), 'original-name')
+    await fs.promises.rename(sourceRepoPath, namedSourceRepo)
+    sourceRepoPath = namedSourceRepo
+
+    // Use file:// protocol for local path, with custom folder name
+    const result = await CloneOperation.clone(
+      `file://${namedSourceRepo}`,
+      targetDir,
+      'custom-folder-name'
+    )
+
+    expect(result.success).toBe(true)
+    expect(result.repoPath).toBe(path.join(targetDir, 'custom-folder-name'))
+
+    // Verify the clone exists
+    const stat = await fs.promises.stat(path.join(targetDir, 'custom-folder-name', '.git'))
+    expect(stat.isDirectory()).toBe(true)
+  })
+})
+
+describe('CloneOperation.checkFolderName', () => {
+  let targetDir: string
+
+  beforeEach(async () => {
+    targetDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-check-folder-'))
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(targetDir, { recursive: true, force: true })
+  })
+
+  it('returns exists: false when folder does not exist', async () => {
+    const result = await CloneOperation.checkFolderName(targetDir, 'nonexistent')
+
+    expect(result.exists).toBe(false)
+    expect(result.suggestion).toBeUndefined()
+  })
+
+  it('returns exists: true with suggestion when folder exists', async () => {
+    await fs.promises.mkdir(path.join(targetDir, 'my-repo'))
+
+    const result = await CloneOperation.checkFolderName(targetDir, 'my-repo')
+
+    expect(result.exists).toBe(true)
+    expect(result.suggestion).toBe('my-repo-2')
+  })
+
+  it('suggests incrementing number when multiple folders exist', async () => {
+    await fs.promises.mkdir(path.join(targetDir, 'my-repo'))
+    await fs.promises.mkdir(path.join(targetDir, 'my-repo-2'))
+    await fs.promises.mkdir(path.join(targetDir, 'my-repo-3'))
+
+    const result = await CloneOperation.checkFolderName(targetDir, 'my-repo')
+
+    expect(result.exists).toBe(true)
+    expect(result.suggestion).toBe('my-repo-4')
+  })
+})
+
+describe('CloneOperation.checkTargetPath', () => {
+  let targetDir: string
+
+  beforeEach(async () => {
+    targetDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-check-target-'))
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(targetDir, { recursive: true, force: true })
+  })
+
+  it('returns valid: true for existing writable directory', async () => {
+    const result = await CloneOperation.checkTargetPath(targetDir)
+
+    expect(result.valid).toBe(true)
+    expect(result.error).toBeUndefined()
+  })
+
+  it('returns error for empty path', async () => {
+    const result = await CloneOperation.checkTargetPath('')
+
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('Target path is required')
+  })
+
+  it('returns error for non-existent directory', async () => {
+    const result = await CloneOperation.checkTargetPath('/nonexistent/path/that/does/not/exist')
+
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('Directory does not exist')
+  })
+
+  it('returns error when path is a file, not directory', async () => {
+    const filePath = path.join(targetDir, 'file.txt')
+    await fs.promises.writeFile(filePath, 'content')
+
+    const result = await CloneOperation.checkTargetPath(filePath)
+
+    expect(result.valid).toBe(false)
+    expect(result.error).toBe('Path is not a directory')
+  })
 })

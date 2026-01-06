@@ -142,7 +142,9 @@ export const IPC_CHANNELS = {
   // Clone
   cloneRepository: 'cloneRepository',
   getLastClonePath: 'getLastClonePath',
-  readClipboardText: 'readClipboardText'
+  readClipboardText: 'readClipboardText',
+  checkCloneFolderName: 'checkCloneFolderName',
+  checkTargetPath: 'checkTargetPath'
 } as const
 
 export const IPC_EVENTS = {
@@ -374,7 +376,7 @@ export interface IpcContract {
     response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
   }
   [IPC_CHANNELS.cloneRepository]: {
-    request: { url: string; targetPath: string }
+    request: { url: string; targetPath: string; folderName?: string }
     response: { success: boolean; error?: string; repoPath?: string }
   }
   [IPC_CHANNELS.getLastClonePath]: {
@@ -384,6 +386,14 @@ export interface IpcContract {
   [IPC_CHANNELS.readClipboardText]: {
     request: void
     response: string
+  }
+  [IPC_CHANNELS.checkCloneFolderName]: {
+    request: { targetPath: string; folderName: string }
+    response: { exists: boolean; suggestion?: string }
+  }
+  [IPC_CHANNELS.checkTargetPath]: {
+    request: { targetPath: string }
+    response: { valid: boolean; error?: string }
   }
 }
 

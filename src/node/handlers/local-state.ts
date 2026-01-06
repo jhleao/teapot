@@ -60,13 +60,24 @@ const setMergeStrategyHandler: IpcHandlerOf<'setMergeStrategy'> = (_event, { str
 
 const cloneRepositoryHandler: IpcHandlerOf<'cloneRepository'> = async (
   _event,
-  { url, targetPath }
+  { url, targetPath, folderName }
 ) => {
-  const result = await CloneOperation.clone(url, targetPath)
+  const result = await CloneOperation.clone(url, targetPath, folderName)
   if (result.success) {
     configStore.setLastClonePath(targetPath)
   }
   return result
+}
+
+const checkCloneFolderNameHandler: IpcHandlerOf<'checkCloneFolderName'> = async (
+  _event,
+  { targetPath, folderName }
+) => {
+  return CloneOperation.checkFolderName(targetPath, folderName)
+}
+
+const checkTargetPathHandler: IpcHandlerOf<'checkTargetPath'> = async (_event, { targetPath }) => {
+  return CloneOperation.checkTargetPath(targetPath)
 }
 
 const getLastClonePathHandler: IpcHandlerOf<'getLastClonePath'> = () => {
@@ -92,4 +103,6 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.cloneRepository, cloneRepositoryHandler)
   ipcMain.handle(IPC_CHANNELS.getLastClonePath, getLastClonePathHandler)
   ipcMain.handle(IPC_CHANNELS.readClipboardText, readClipboardTextHandler)
+  ipcMain.handle(IPC_CHANNELS.checkCloneFolderName, checkCloneFolderNameHandler)
+  ipcMain.handle(IPC_CHANNELS.checkTargetPath, checkTargetPathHandler)
 }

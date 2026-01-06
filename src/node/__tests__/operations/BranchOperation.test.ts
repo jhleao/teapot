@@ -7,7 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // Mock the store to avoid electron-store initialization
 vi.mock('../../store', () => ({
   configStore: {
-    getGithubPat: vi.fn().mockReturnValue(null)
+    getGithubPat: vi.fn().mockReturnValue(null),
+    getActiveWorktree: vi.fn().mockReturnValue(null),
+    setActiveWorktree: vi.fn()
   }
 }))
 

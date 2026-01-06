@@ -8,8 +8,8 @@
  */
 
 import { log } from '@shared/logger'
-import fs from 'fs'
 import type { CheckoutResult } from '@shared/types/repo'
+import fs from 'fs'
 import {
   branchExists,
   canFastForward,
@@ -61,9 +61,7 @@ export class BranchOperation {
     // Check if the branch is used by a worktree and remove it first
     // Don't skip dirty check - we need to know if there are uncommitted changes
     const worktrees = await git.listWorktrees(repoPath)
-    const worktreeUsingBranch = worktrees.find(
-      (wt) => wt.branch === branchName && !wt.isMain
-    )
+    const worktreeUsingBranch = worktrees.find((wt) => wt.branch === branchName && !wt.isMain)
 
     if (worktreeUsingBranch) {
       if (worktreeUsingBranch.isDirty) {

@@ -1,4 +1,4 @@
-import type { LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
+import type { DetachedWorktree, LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
 import type { MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
@@ -10,6 +10,7 @@ export type StoredRebaseSession = {
   createdAtMs: number
   updatedAtMs: number
   originalBranch: string
+  autoDetachedWorktrees?: DetachedWorktree[]
 }
 
 interface StoreSchema {

@@ -35,6 +35,8 @@ interface UiStateContextValue {
   skipRebaseCommit: () => Promise<void>
   resumeRebaseQueue: () => Promise<void>
   dismissRebaseQueue: () => Promise<void>
+  handleStashAndProceed: () => Promise<void>
+  handleDeleteAndProceed: () => Promise<void>
   checkout: (params: { ref: string }) => Promise<void>
   deleteBranch: (params: { branchName: string }) => Promise<void>
   cleanupBranch: (params: { branchName: string }) => Promise<void>
@@ -83,7 +85,10 @@ export function UiStateProvider({
   const [worktreeConflicts, setWorktreeConflicts] = useState<{
     conflicts: WorktreeConflict[]
     message: string
+    headSha: string
+    baseSha: string
   } | null>(null)
+  const [isResolvingWorktreeConflict, setIsResolvingWorktreeConflict] = useState(false)
 
   const refreshRepo = useCallback(async () => {
     if (!repoPath) {
@@ -129,6 +134,15 @@ export function UiStateProvider({
     window.addEventListener('focus', refreshRepo)
     return () => window.removeEventListener('focus', refreshRepo)
   }, [refreshRepo])
+
+  useEffect(() => {
+    const unsubscribe = window.api.onRebaseWarning((message) => {
+      toast.warning(message)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   useGitWatcher({
     repoPath,
@@ -233,7 +247,9 @@ export function UiStateProvider({
           skipWatcherUpdatesRef.current = false
           setWorktreeConflicts({
             conflicts: result.worktreeConflicts,
-            message: result.message
+            message: result.message,
+            headSha: params.headSha,
+            baseSha: params.baseSha
           })
           return
         }
@@ -491,10 +507,72 @@ export function UiStateProvider({
     [repoPath]
   )
 
+  const resolveWorktreeConflicts = useCallback(
+    async (action: 'stash' | 'delete') => {
+      if (!repoPath || !worktreeConflicts) return
+      setIsResolvingWorktreeConflict(true)
+      skipWatcherUpdatesRef.current = true
+
+      try {
+        const resolutions = dedupeWorktreeConflicts(worktreeConflicts.conflicts).map(
+          (conflict) => ({
+            worktreePath: conflict.worktreePath,
+            action
+          })
+        )
+
+        const result = await window.api.resolveWorktreeConflictAndRebase({
+          repoPath,
+          headSha: worktreeConflicts.headSha,
+          baseSha: worktreeConflicts.baseSha,
+          resolutions
+        })
+
+        if (result === null) {
+          return
+        }
+
+        if (!result.success && result.error === 'WORKTREE_CONFLICT') {
+          setWorktreeConflicts({
+            conflicts: result.worktreeConflicts,
+            message: result.message,
+            headSha: worktreeConflicts.headSha,
+            baseSha: worktreeConflicts.baseSha
+          })
+          return
+        }
+
+        if (result.success && result.uiState) {
+          setUiState(result.uiState)
+          setWorktreeConflicts(null)
+        }
+      } catch (error) {
+        log.error('Resolve worktree conflicts failed:', error)
+        toast.error('Failed to resolve worktree conflicts', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      } finally {
+        skipWatcherUpdatesRef.current = false
+        setIsResolvingWorktreeConflict(false)
+      }
+    },
+    [repoPath, worktreeConflicts]
+  )
+
+  const handleStashAndProceed = useCallback(async () => {
+    await resolveWorktreeConflicts('stash')
+  }, [resolveWorktreeConflicts])
+
+  const handleDeleteAndProceed = useCallback(async () => {
+    await resolveWorktreeConflicts('delete')
+  }, [resolveWorktreeConflicts])
+
   // Handler for closing the worktree conflict dialog
   const handleWorktreeConflictClose = useCallback(() => {
+    if (isResolvingWorktreeConflict) return
     setWorktreeConflicts(null)
-  }, [])
+  }, [isResolvingWorktreeConflict])
 
   const isWorkingTreeDirty = useMemo(
     () => (uiState?.workingTree?.length ?? 0) > 0,
@@ -538,6 +616,8 @@ export function UiStateProvider({
       skipRebaseCommit,
       resumeRebaseQueue,
       dismissRebaseQueue,
+      handleStashAndProceed,
+      handleDeleteAndProceed,
       checkout,
       deleteBranch,
       cleanupBranch,
@@ -574,6 +654,8 @@ export function UiStateProvider({
       skipRebaseCommit,
       resumeRebaseQueue,
       dismissRebaseQueue,
+      handleStashAndProceed,
+      handleDeleteAndProceed,
       checkout,
       deleteBranch,
       cleanupBranch,
@@ -602,7 +684,10 @@ export function UiStateProvider({
           open={true}
           conflicts={worktreeConflicts.conflicts}
           message={worktreeConflicts.message}
-          onClose={handleWorktreeConflictClose}
+          onCancel={handleWorktreeConflictClose}
+          onStashAndProceed={handleStashAndProceed}
+          onDeleteAndProceed={handleDeleteAndProceed}
+          isLoading={isResolvingWorktreeConflict}
         />
       )}
     </UiStateContext.Provider>
@@ -616,6 +701,16 @@ export function useUiStateContext(): UiStateContextValue {
     throw new Error('useUiStateContext must be used within a UiStateProvider')
   }
   return context
+}
+
+function dedupeWorktreeConflicts(conflicts: WorktreeConflict[]): WorktreeConflict[] {
+  const byPath = new Map<string, WorktreeConflict>()
+  for (const conflict of conflicts) {
+    if (!byPath.has(conflict.worktreePath)) {
+      byPath.set(conflict.worktreePath, conflict)
+    }
+  }
+  return Array.from(byPath.values())
 }
 
 /**

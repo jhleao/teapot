@@ -47,6 +47,13 @@ export const api = {
       ipcRenderer.removeListener(IPC_EVENTS.repoError, subscription)
     }
   },
+  onRebaseWarning: (callback: (message: string) => void) => {
+    const subscription = (_event: any, message: string): void => callback(message)
+    ipcRenderer.on(IPC_EVENTS.rebaseWarning, subscription)
+    return (): void => {
+      ipcRenderer.removeListener(IPC_EVENTS.rebaseWarning, subscription)
+    }
+  },
   onUpdateDownloading: (callback: (version: string) => void) => {
     const subscription = (_event: any, version: string): void => callback(version)
     ipcRenderer.on(IPC_EVENTS.updateDownloading, subscription)

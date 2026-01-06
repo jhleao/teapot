@@ -1,6 +1,6 @@
 import type { Commit, Repo } from '@shared/types'
+import { findOpenPr, type GitForgeState } from '@shared/types/git-forge'
 import type { SquashBlocker } from '@shared/types/squash'
-import type { GitForgeState } from '../../shared/types/git-forge'
 import { StackAnalyzer } from './StackAnalyzer'
 
 export type SquashValidationResult = {
@@ -188,8 +188,7 @@ export class SquashValidator {
     pullRequests: GitForgeState['pullRequests']
   ): string | null {
     for (const branch of descendants) {
-      const pr = pullRequests.find((p) => p.headRefName === branch && p.state === 'open')
-      if (pr) {
+      if (findOpenPr(branch, pullRequests)) {
         return branch
       }
     }

@@ -35,11 +35,22 @@ export type ForgeStateResult = {
   lastSuccessfulFetch?: number
 }
 
+/** Possible states for a pull request */
+export type PrState = 'open' | 'closed' | 'merged' | 'draft'
+
+/** PR states that represent active PRs (not closed or merged) */
+export const ACTIVE_PR_STATES: readonly PrState[] = ['open', 'draft'] as const
+
+/** Type guard to check if a state is an active PR state */
+export function isActivePrState(state: string): state is 'open' | 'draft' {
+  return ACTIVE_PR_STATES.includes(state as PrState)
+}
+
 export type ForgePullRequest = {
   number: number
   title: string
   url: string
-  state: 'open' | 'closed' | 'merged' | 'draft'
+  state: PrState
 
   /**
    * The name of the branch where the changes are implemented.
@@ -66,6 +77,68 @@ export type ForgePullRequest = {
    * False for draft PRs, closed PRs, or when branch protection blocks the merge.
    */
   isMergeable: boolean
+}
+
+/**
+ * Determines if a branch has child PRs in a stack.
+ * A branch has children if any active (open or draft) PR targets it as their base.
+ *
+ * @param branchName - The branch to check
+ * @param pullRequests - All known PRs
+ * @returns True if the branch has child PRs
+ */
+export function hasChildPrs(
+  branchName: string,
+  pullRequests: Array<{ baseRefName: string; state: string }>
+): boolean {
+  return pullRequests.some(
+    (pr) => pr.baseRefName === branchName && isActivePrState(pr.state)
+  )
+}
+
+/**
+ * Finds the open (shippable) PR for a branch.
+ * Only returns PRs with state 'open' - drafts are not shippable.
+ *
+ * @param branchName - The branch to find a PR for
+ * @param pullRequests - All known PRs
+ * @returns The open PR for this branch, or undefined if none exists
+ */
+export function findOpenPr<T extends { headRefName: string; state: string }>(
+  branchName: string,
+  pullRequests: T[]
+): T | undefined {
+  return pullRequests.find((p) => p.headRefName === branchName && p.state === 'open')
+}
+
+/**
+ * Finds an active (open or draft) PR for a branch.
+ * Use this when you need to find a PR that exists but may not be ready to ship.
+ *
+ * @param branchName - The branch to find a PR for
+ * @param pullRequests - All known PRs
+ * @returns The active PR for this branch, or undefined if none exists
+ */
+export function findActivePr<T extends { headRefName: string; state: string }>(
+  branchName: string,
+  pullRequests: T[]
+): T | undefined {
+  return pullRequests.find((p) => p.headRefName === branchName && isActivePrState(p.state))
+}
+
+/**
+ * Checks if a branch has a merged PR (stale target detection).
+ * Used to detect when a PR's target branch has already been merged.
+ *
+ * @param branchName - The branch to check
+ * @param pullRequests - All known PRs
+ * @returns True if the branch has a merged PR
+ */
+export function hasMergedPr(
+  branchName: string,
+  pullRequests: Array<{ headRefName: string; state: string }>
+): boolean {
+  return pullRequests.some((p) => p.headRefName === branchName && p.state === 'merged')
 }
 
 export interface GitForgeAdapter {

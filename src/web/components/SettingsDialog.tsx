@@ -1,8 +1,7 @@
 import { log } from '@shared/logger'
 import type { MergeStrategy } from '@shared/types/git-forge'
-import { Moon, Sun } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
-import { useUiStateContext } from '../contexts/UiStateContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog'
 
 interface SettingsDialogProps {
@@ -11,7 +10,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): React.JSX.Element {
-  const { toggleTheme, isDark } = useUiStateContext()
+  const { preference, setPreference } = useTheme()
   const [pat, setPat] = useState('')
   const [editor, setEditor] = useState('')
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
@@ -78,22 +77,26 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
         <div className="grid gap-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <h4 className="text-sm leading-none font-medium">Appearance</h4>
-              <p className="text-muted-foreground text-sm">Switch between light and dark mode</p>
-            </div>
-            <button
-              onClick={toggleTheme}
-              className="focus:ring-foreground bg-secondary hover:bg-secondary/80 flex h-10 w-10 cursor-pointer items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
-              aria-label="Toggle theme"
+          <div className="space-y-2">
+            <label
+              htmlFor="theme-select"
+              className="text-sm leading-none font-medium"
             >
-              {isDark ? (
-                <Sun className="text-foreground h-5 w-5" />
-              ) : (
-                <Moon className="text-foreground h-5 w-5" />
-              )}
-            </button>
+              Appearance
+            </label>
+            <p className="text-muted-foreground text-sm">Choose your preferred color scheme</p>
+            <select
+              id="theme-select"
+              value={preference}
+              onChange={(e) =>
+                setPreference(e.target.value as 'light' | 'dark' | 'system')
+              }
+              className="border-input bg-background ring-offset-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
+              <option value="system">System (follow OS preference)</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
           </div>
 
           <div className="space-y-2">

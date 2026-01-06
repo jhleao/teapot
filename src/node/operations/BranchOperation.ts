@@ -8,6 +8,7 @@
  */
 
 import { log } from '@shared/logger'
+import fs from 'fs'
 import type { CheckoutResult } from '@shared/types/repo'
 import {
   branchExists,
@@ -18,6 +19,7 @@ import {
   type GitAdapter
 } from '../adapters/git'
 import { gitForgeService } from '../services/ForgeService'
+import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
 
 export type SyncTrunkResult = {
@@ -76,6 +78,22 @@ export class BranchOperation {
       const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
       if (!result.success) {
         throw new Error(`Failed to remove worktree: ${result.error}`)
+      }
+
+      // If the removed worktree was the active one, fall back to main worktree
+      const activeWorktree = configStore.getActiveWorktree(repoPath)
+      if (activeWorktree) {
+        try {
+          const [removedReal, activeReal] = await Promise.all([
+            fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
+            fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
+          ])
+          if (removedReal === activeReal) {
+            configStore.setActiveWorktree(repoPath, null)
+          }
+        } catch {
+          // Best-effort realpath check; ignore resolution errors
+        }
       }
     }
 

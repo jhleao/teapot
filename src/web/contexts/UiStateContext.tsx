@@ -19,8 +19,6 @@ import { useLocalStateContext } from './LocalStateContext'
 import type { SquashPreview, SquashResult, SquashBlocker } from '@shared/types'
 
 interface UiStateContextValue {
-  toggleTheme: () => void
-  isDark: boolean
   uiState: UiState | null
   repoError: string | null
   repoPath: string | null
@@ -79,7 +77,6 @@ export function UiStateProvider({
   const { acquireVersion, checkVersion } = useRequestVersioning()
   const { refreshForge } = useForgeStateContext()
   const { refreshRepos } = useLocalStateContext()
-  const [isDark, setIsDark] = useState(true)
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
   const skipWatcherUpdatesRef = useRef(false)
@@ -158,16 +155,6 @@ export function UiStateProvider({
       setUiState(null)
     }
   })
-
-  useEffect(() => {
-    const html = document.documentElement
-    if (isDark) html.classList.add('dark')
-    else html.classList.remove('dark')
-  }, [isDark])
-
-  const toggleTheme = useCallback((): void => {
-    setIsDark((prev) => !prev)
-  }, [])
 
   // Helper to call API and update state
   const callApi = useCallback(
@@ -639,8 +626,6 @@ export function UiStateProvider({
 
   const contextValue = useMemo<UiStateContextValue>(
     () => ({
-      toggleTheme,
-      isDark,
       uiState,
       repoError,
       repoPath,
@@ -679,8 +664,6 @@ export function UiStateProvider({
       queuedBranches
     }),
     [
-      toggleTheme,
-      isDark,
       uiState,
       repoError,
       repoPath,

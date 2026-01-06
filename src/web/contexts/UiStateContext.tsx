@@ -1,5 +1,12 @@
 import { log } from '@shared/logger'
-import type { UiStack, UiState, WorktreeConflict } from '@shared/types'
+import type {
+  SquashBlocker,
+  SquashPreview,
+  SquashResult,
+  UiStack,
+  UiState,
+  WorktreeConflict
+} from '@shared/types'
 import {
   createContext,
   useCallback,
@@ -16,7 +23,6 @@ import { useGitWatcher } from '../hooks/use-git-watcher'
 import { useRequestVersioning } from '../hooks/use-request-versioning'
 import { useForgeStateContext } from './ForgeStateContext'
 import { useLocalStateContext } from './LocalStateContext'
-import type { SquashPreview, SquashResult, SquashBlocker } from '@shared/types'
 
 interface UiStateContextValue {
   uiState: UiState | null
@@ -44,7 +50,10 @@ interface UiStateContextValue {
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
   getFoldPreview: (params: { branchName: string }) => Promise<SquashPreview>
-  foldIntoParent: (params: { branchName: string; commitMessage?: string }) => Promise<SquashResult | undefined>
+  foldIntoParent: (params: {
+    branchName: string
+    commitMessage?: string
+  }) => Promise<SquashResult | undefined>
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string }) => Promise<void>
   syncTrunk: () => Promise<void>
@@ -567,7 +576,10 @@ export function UiStateProvider({
   )
 
   const foldIntoParent = useCallback(
-    async (params: { branchName: string; commitMessage?: string }): Promise<SquashResult | undefined> => {
+    async (params: {
+      branchName: string
+      commitMessage?: string
+    }): Promise<SquashResult | undefined> => {
       if (!repoPath) return
 
       try {
@@ -593,7 +605,6 @@ export function UiStateProvider({
     },
     [repoPath, refreshRepo]
   )
-
 
   // Handler for closing the worktree conflict dialog
   const handleWorktreeConflictClose = useCallback(() => {

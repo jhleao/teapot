@@ -253,7 +253,9 @@ export class StackAnalyzer {
   ): Map<string, { parent: string; distance: number }> {
     const { includeRemote = false } = options
     const branchByName = new Map(branches.map((branch) => [branch.ref, branch]))
-    const eligibleBranches = includeRemote ? branches : branches.filter((branch) => !branch.isRemote)
+    const eligibleBranches = includeRemote
+      ? branches
+      : branches.filter((branch) => !branch.isRemote)
     const headIndex = StackAnalyzer.buildBranchHeadIndex(eligibleBranches)
 
     const parentIndex = new Map<string, { parent: string; distance: number }>()

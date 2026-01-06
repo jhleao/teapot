@@ -38,9 +38,9 @@ export type { GitAdapter } from './interface'
 
 // All type definitions
 export type {
+  ApplyPatchResult,
   Branch,
   BranchOptions,
-  ApplyPatchResult,
   CheckoutOptions,
   CherryPickResult,
   Commit,

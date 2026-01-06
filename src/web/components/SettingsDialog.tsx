@@ -78,19 +78,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
         </DialogHeader>
         <div className="grid gap-6 py-4">
           <div className="space-y-2">
-            <label
-              htmlFor="theme-select"
-              className="text-sm leading-none font-medium"
-            >
+            <label htmlFor="theme-select" className="text-sm leading-none font-medium">
               Appearance
             </label>
             <p className="text-muted-foreground text-sm">Choose your preferred color scheme</p>
             <select
               id="theme-select"
               value={preference}
-              onChange={(e) =>
-                setPreference(e.target.value as 'light' | 'dark' | 'system')
-              }
+              onChange={(e) => setPreference(e.target.value as 'light' | 'dark' | 'system')}
               className="border-input bg-background ring-offset-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
             >
               <option value="system">System (follow OS preference)</option>

@@ -138,9 +138,7 @@ describe('cleanupBranch', () => {
     expect(remoteBranchesBefore).toContain('origin/feature')
 
     // Mock remote deletion to fail (simulating network error)
-    vi.mocked(gitForgeService.deleteRemoteBranch).mockRejectedValueOnce(
-      new Error('Network error')
-    )
+    vi.mocked(gitForgeService.deleteRemoteBranch).mockRejectedValueOnce(new Error('Network error'))
 
     // Cleanup should still succeed
     await BranchOperation.cleanup(repoPath, 'feature')

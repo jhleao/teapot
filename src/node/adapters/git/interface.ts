@@ -12,10 +12,10 @@
  */
 
 import type {
+  ApplyPatchResult,
   BranchOptions,
   CheckoutOptions,
   CherryPickResult,
-  ApplyPatchResult,
   Commit,
   CommitDetail,
   CommitOptions,

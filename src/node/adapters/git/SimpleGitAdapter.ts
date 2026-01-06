@@ -565,6 +565,16 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
+  async deleteRemoteTrackingBranch(dir: string, remote: string, branch: string): Promise<void> {
+    try {
+      const git = this.createGit(dir)
+      // Use `git branch -rd` to delete a remote-tracking branch
+      await git.branch(['-rd', `${remote}/${branch}`])
+    } catch (error) {
+      throw this.createError('deleteRemoteTrackingBranch', error)
+    }
+  }
+
   async checkout(dir: string, ref: string, options?: CheckoutOptions): Promise<void> {
     try {
       const git = this.createGit(dir)

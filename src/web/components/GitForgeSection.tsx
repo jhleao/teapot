@@ -1,12 +1,14 @@
 import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
 import { hasChildPrs } from '@shared/types/git-forge'
+import { Loader2Icon } from 'lucide-react'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
 import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
+import { StatusChecksDisplay } from './StatusChecksDisplay'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
@@ -56,7 +58,7 @@ export const GitForgeSection = memo(function GitForgeSection({
    * Determines if this branch is at the bottom of a PR stack.
    * A branch is at the bottom if no other open/draft PRs target it as their base.
    * Ship It should only be available for bottom-of-stack branches to prevent
-   * shipping a branch that would leave orphaned child PRs.
+   * shipping a branch that would leave orphaned child PRs or branches.
    */
   const isBottomOfStack = useMemo(() => {
     if (!branchWithPr || !forgeState?.pullRequests) return false
@@ -178,9 +180,115 @@ export const GitForgeSection = memo(function GitForgeSection({
 
   if (pr) {
     const prIsMerged = pr.state === 'merged'
+    const prIsClosed = pr.state === 'closed'
+    const prIsActive = pr.state === 'open' || pr.state === 'draft'
+    const mergeReadiness = pr.mergeReadiness
+    const blockers = mergeReadiness?.blockers ?? []
+    const checksStatus = mergeReadiness?.checksStatus ?? 'none'
+
+    // Derive Ship It button state
+    const isComputing = blockers.includes('computing')
+    const checksRunning = blockers.includes('checks_pending')
+    const checksFailed = blockers.includes('checks_failed')
+    const hasConflicts = blockers.includes('conflicts')
+    const reviewsRequired = blockers.includes('reviews_required')
+
+    // Ship It should be visible when PR is open, in sync and at bottom of stack (even if disabled)
+    // Don't show for merged or closed PRs
+    const showShipItArea =
+      prIsActive &&
+      !prIsMerged &&
+      !prIsClosed &&
+      pr.isInSync &&
+      !branchWithPr?.hasStaleTarget &&
+      isBottomOfStack
+
+    // Determine button label and style
+    const getShipItConfig = (): { label: string; style: string; disabled: boolean } => {
+      if (isLoading) {
+        return {
+          label: 'Shipping...',
+          style: 'border-green-700 bg-green-600 text-white',
+          disabled: true
+        }
+      }
+      if (shipItError) {
+        return {
+          label: 'Failed - Retry',
+          style: 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20',
+          disabled: false
+        }
+      }
+      if (isWorkingTreeDirty) {
+        return {
+          label: 'Uncommitted changes',
+          style: 'border-border bg-muted text-muted-foreground',
+          disabled: true
+        }
+      }
+      if (isComputing && checksStatus === 'none') {
+        // Just created PR, no checks yet
+        return {
+          label: 'Checks incoming...',
+          style: 'border-border bg-muted text-muted-foreground',
+          disabled: true
+        }
+      }
+      if (isComputing) {
+        return {
+          label: 'Computing...',
+          style: 'border-border bg-muted text-muted-foreground',
+          disabled: true
+        }
+      }
+      if (checksFailed) {
+        return {
+          label: 'Checks failed',
+          style: 'border-red-500 bg-red-500/10 text-red-500',
+          disabled: true
+        }
+      }
+      if (checksRunning) {
+        return {
+          label: 'Checks running...',
+          style: 'border-yellow-500 bg-yellow-500/10 text-yellow-500',
+          disabled: true
+        }
+      }
+      if (hasConflicts) {
+        return {
+          label: 'Has conflicts',
+          style: 'border-red-500 bg-red-500/10 text-red-500',
+          disabled: true
+        }
+      }
+      if (reviewsRequired) {
+        return {
+          label: 'Reviews pending',
+          style: 'border-orange-500 bg-orange-500/10 text-orange-500',
+          disabled: true
+        }
+      }
+      if (pr.isMergeable) {
+        return {
+          label: 'Ship it!',
+          style: 'border-green-700 bg-green-600 text-white hover:bg-green-700',
+          disabled: false
+        }
+      }
+      // Fallback for any other non-mergeable state
+      return {
+        label: 'Not ready',
+        style: 'border-border bg-muted text-muted-foreground',
+        disabled: true
+      }
+    }
+
+    const shipItConfig = showShipItArea ? getShipItConfig() : null
+
     return (
       <div className="flex items-center gap-2">
-        {showRebaseButton && !prIsMerged && (
+        {showRebaseButton && prIsActive && (
           <button
             type="button"
             onClick={handleRebase}
@@ -196,15 +304,23 @@ export const GitForgeSection = memo(function GitForgeSection({
           rel="noopener noreferrer"
           className={cn(
             'cursor-pointer text-sm hover:underline',
-            prIsMerged ? 'text-muted-foreground' : pr.isInSync ? 'text-accent' : 'text-warning'
+            prIsMerged || prIsClosed
+              ? 'text-muted-foreground'
+              : pr.isInSync
+                ? 'text-accent'
+                : 'text-warning'
           )}
           onClick={(e) => e.stopPropagation()}
         >
           #{pr.number}
           {prIsMerged && ' (Merged)'}
-          {!prIsMerged && !pr.isInSync && ' (Out of sync)'}
+          {prIsClosed && ' (Closed)'}
+          {prIsActive && !pr.isInSync && ' (Out of sync)'}
         </a>
-        {!prIsMerged && !pr.isInSync && (
+        {/* Status checks display - show next to PR number for active PRs */}
+        {prIsActive && mergeReadiness && <StatusChecksDisplay mergeReadiness={mergeReadiness} />}
+        {/* Update PR button - only show for active PRs that are out of sync */}
+        {prIsActive && !pr.isInSync && (
           <button
             onClick={handleUpdatePr}
             disabled={isLoading}
@@ -214,35 +330,22 @@ export const GitForgeSection = memo(function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {/* Ship It button - only show when:
-            1. PR is not merged
-            2. PR is in sync with local branch
-            3. PR is mergeable (no conflicts, checks pass)
-            4. Working tree is clean
-            5. PR target is not stale (target branch hasn't been merged)
-            6. Branch is at bottom of stack (no child PRs targeting this branch)
-        */}
-        {!prIsMerged &&
-          pr.isInSync &&
-          pr.isMergeable &&
-          !isWorkingTreeDirty &&
-          !branchWithPr?.hasStaleTarget &&
-          isBottomOfStack && (
-            <button
-              type="button"
-              onClick={handleShipIt}
-              disabled={isLoading}
-              className={cn(
-                'cursor-pointer rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50',
-                shipItError
-                  ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
-                  : 'border-green-700 bg-green-600 text-white hover:bg-green-700'
-              )}
-              title={shipItError || undefined}
-            >
-              {isLoading ? 'Shipping...' : shipItError ? 'Failed - Retry' : 'Ship it!'}
-            </button>
-          )}
+        {/* Ship It button with enhanced states */}
+        {shipItConfig && (
+          <button
+            type="button"
+            onClick={handleShipIt}
+            disabled={shipItConfig.disabled || isLoading}
+            className={cn(
+              'flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed',
+              shipItConfig.style
+            )}
+            title={shipItError || undefined}
+          >
+            {checksRunning && <Loader2Icon className="h-3 w-3 animate-spin" />}
+            {shipItConfig.label}
+          </button>
+        )}
         {shipItError && (
           <span
             className="max-w-[200px] text-[10px] wrap-break-word text-red-500"
@@ -251,7 +354,7 @@ export const GitForgeSection = memo(function GitForgeSection({
             {shipItError.length > 50 ? `${shipItError.substring(0, 50)}...` : shipItError}
           </span>
         )}
-        {!prIsMerged && branchWithPr?.hasStaleTarget && (
+        {prIsActive && branchWithPr?.hasStaleTarget && (
           <span
             className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"
             title="PR target branch has been merged. Update the PR target first."
@@ -259,7 +362,8 @@ export const GitForgeSection = memo(function GitForgeSection({
             Stale target
           </span>
         )}
-        {prIsMerged && mergedBranchToCleanup && (
+        {/* Show cleanup button for merged PRs, and also for closed PRs */}
+        {(prIsMerged || prIsClosed) && mergedBranchToCleanup && (
           <button
             type="button"
             onClick={handleCleanup}

@@ -84,7 +84,7 @@ export function UiStateProvider({
   selectedRepoPath: string | null
 }): React.JSX.Element {
   const { acquireVersion, checkVersion } = useRequestVersioning()
-  const { refreshForge } = useForgeStateContext()
+  const { refreshForge, markPrAsMerged, markPrChecksPending } = useForgeStateContext()
   const { refreshRepos } = useLocalStateContext()
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
@@ -328,12 +328,18 @@ export function UiStateProvider({
 
   const resumeRebaseQueue = useCallback(async () => {
     if (!repoPath) return
+    // Capture queued branches before the operation (they'll be pushed)
+    const branchesToPush = uiState?.stack ? findQueuedBranches(uiState.stack) : []
     const result = await window.api.resumeRebaseQueue({ repoPath })
     if (result.uiState) setUiState(result.uiState)
+    if (result.success) {
+      // Optimistically mark checks as pending for all pushed branches
+      branchesToPush.forEach((branch) => markPrChecksPending(branch))
+    }
     if (!result.success && result.error) {
       log.error('Resume rebase queue failed:', result.error)
     }
-  }, [repoPath])
+  }, [repoPath, uiState?.stack, markPrChecksPending])
 
   const dismissRebaseQueue = useCallback(async () => {
     if (!repoPath) return
@@ -411,10 +417,13 @@ export function UiStateProvider({
     async (params: { headBranch: string }) => {
       if (!repoPath) return
       await callApi(window.api.updatePullRequest({ repoPath, ...params }))
+      // Optimistically mark checks as pending - GitHub takes a few seconds
+      // to register new check runs after a push
+      markPrChecksPending(params.headBranch)
       // Refresh forge state to get the updated PR status
       await refreshForge()
     },
-    [repoPath, callApi, refreshForge]
+    [repoPath, callApi, refreshForge, markPrChecksPending]
   )
 
   const uncommit = useCallback(
@@ -437,6 +446,9 @@ export function UiStateProvider({
             toast.info(result.message)
           } else {
             toast.success(result.message)
+            // Optimistically mark PR as merged to prevent Ship It button
+            // from briefly re-enabling during the race with refreshForge()
+            markPrAsMerged(params.branchName)
           }
         }
         // Refresh forge state to get updated PR status (merged)
@@ -449,7 +461,7 @@ export function UiStateProvider({
         throw error
       }
     },
-    [repoPath, refreshForge]
+    [repoPath, refreshForge, markPrAsMerged]
   )
 
   const syncTrunk = useCallback(async () => {
@@ -464,6 +476,8 @@ export function UiStateProvider({
       } else if (result.status === 'error' && result.message) {
         toast.error(result.message)
       }
+      // Also refresh forge state (PR data) since user explicitly synced with remote
+      refreshForge()
     } catch (error) {
       log.error('Sync trunk failed:', error)
       toast.error('Sync trunk failed', {
@@ -471,7 +485,7 @@ export function UiStateProvider({
       })
       throw error
     }
-  }, [repoPath])
+  }, [repoPath, refreshForge])
 
   const switchWorktree = useCallback(
     async (params: { worktreePath: string }) => {
@@ -587,6 +601,10 @@ export function UiStateProvider({
 
         if (result.success) {
           toast.success(`Folded ${params.branchName} into parent`)
+          // Optimistically mark checks as pending for all pushed branches
+          if (result.modifiedBranches) {
+            result.modifiedBranches.forEach((branch) => markPrChecksPending(branch))
+          }
           await refreshRepo()
         } else if (result.localSuccess) {
           toast.warning('Local fold succeeded but push failed. Retry git push manually.')
@@ -603,7 +621,7 @@ export function UiStateProvider({
         throw error
       }
     },
-    [repoPath, refreshRepo]
+    [repoPath, refreshRepo, markPrChecksPending]
   )
 
   // Handler for closing the worktree conflict dialog

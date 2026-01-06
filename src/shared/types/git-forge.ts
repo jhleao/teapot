@@ -4,6 +4,44 @@
  */
 export type MergeStrategy = 'squash' | 'merge' | 'rebase'
 
+/**
+ * Status of an individual CI check.
+ */
+export type CheckStatus = 'pending' | 'success' | 'failure' | 'neutral' | 'skipped'
+
+/**
+ * Represents a single CI status check (e.g., GitHub Actions workflow).
+ */
+export type StatusCheck = {
+  name: string
+  status: CheckStatus
+  description?: string
+  detailsUrl?: string
+}
+
+/**
+ * Reasons why a PR cannot be merged.
+ */
+export type MergeBlocker =
+  | 'checks_pending'
+  | 'checks_failed'
+  | 'conflicts'
+  | 'reviews_required'
+  | 'branch_protection'
+  | 'computing'
+  | 'unknown'
+
+/**
+ * Complete merge readiness information for a PR.
+ * Combines GitHub's mergeable state with CI check status.
+ */
+export type MergeReadiness = {
+  canMerge: boolean
+  blockers: MergeBlocker[]
+  checksStatus: 'pending' | 'success' | 'failure' | 'none'
+  checks: StatusCheck[]
+}
+
 export type GitForgeState = {
   pullRequests: ForgePullRequest[]
   /**
@@ -77,6 +115,12 @@ export type ForgePullRequest = {
    * False for draft PRs, closed PRs, or when branch protection blocks the merge.
    */
   isMergeable: boolean
+
+  /**
+   * Detailed merge readiness information including CI check status.
+   * Only populated for open PRs where we fetch detailed information.
+   */
+  mergeReadiness?: MergeReadiness
 }
 
 /**
@@ -91,9 +135,7 @@ export function hasChildPrs(
   branchName: string,
   pullRequests: Array<{ baseRefName: string; state: string }>
 ): boolean {
-  return pullRequests.some(
-    (pr) => pr.baseRefName === branchName && isActivePrState(pr.state)
-  )
+  return pullRequests.some((pr) => pr.baseRefName === branchName && isActivePrState(pr.state))
 }
 
 /**

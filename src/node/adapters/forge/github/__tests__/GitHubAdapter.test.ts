@@ -205,7 +205,8 @@ describe('GitHubAdapter', () => {
           json: async () => ({
             number: 123,
             mergeable: true,
-            mergeable_state: 'clean'
+            mergeable_state: 'clean',
+            head: { sha: 'abc123' }
           }),
           text: async () => ''
         }
@@ -215,6 +216,7 @@ describe('GitHubAdapter', () => {
 
       expect(details.mergeable).toBe(true)
       expect(details.mergeable_state).toBe('clean')
+      expect(details.headSha).toBe('abc123')
       expect(mockRequest).toHaveBeenCalledWith(
         `https://api.github.com/repos/${owner}/${repo}/pulls/123`,
         expect.objectContaining({
@@ -232,7 +234,8 @@ describe('GitHubAdapter', () => {
           json: async () => ({
             number: 123,
             mergeable: false,
-            mergeable_state: 'dirty'
+            mergeable_state: 'dirty',
+            head: { sha: 'abc123' }
           }),
           text: async () => ''
         }
@@ -251,7 +254,8 @@ describe('GitHubAdapter', () => {
           json: async () => ({
             number: 123,
             mergeable: true,
-            mergeable_state: 'blocked'
+            mergeable_state: 'blocked',
+            head: { sha: 'abc123' }
           }),
           text: async () => ''
         }
@@ -270,7 +274,8 @@ describe('GitHubAdapter', () => {
           json: async () => ({
             number: 123,
             mergeable: true,
-            mergeable_state: 'unstable'
+            mergeable_state: 'unstable',
+            head: { sha: 'abc123' }
           }),
           text: async () => ''
         }
@@ -289,7 +294,8 @@ describe('GitHubAdapter', () => {
           json: async () => ({
             number: 123,
             mergeable: null,
-            mergeable_state: 'unknown'
+            mergeable_state: 'unknown',
+            head: { sha: 'abc123' }
           }),
           text: async () => ''
         }
@@ -303,6 +309,27 @@ describe('GitHubAdapter', () => {
   })
 
   describe('fetchState with isMergeable', () => {
+    // Helper to create a mock check runs response
+    const mockCheckRunsResponse = (
+      checks: { name: string; status: string; conclusion?: string }[] = []
+    ) => ({
+      statusCode: 200,
+      body: {
+        json: async () => ({
+          total_count: checks.length,
+          check_runs: checks.map((c, i) => ({
+            id: i,
+            name: c.name,
+            status: c.status,
+            conclusion: c.conclusion ?? null,
+            html_url: `https://github.com/owner/repo/runs/${i}`,
+            output: { title: null, summary: null }
+          }))
+        }),
+        text: async () => ''
+      }
+    })
+
     it('should set isMergeable=true only when mergeable=true AND mergeable_state=clean', async () => {
       // First call: list PRs
       mockRequest.mockResolvedValueOnce({
@@ -347,29 +374,37 @@ describe('GitHubAdapter', () => {
         }
       } as never)
 
-      // Second call: fetch details for PR #1 (open)
+      // PR #1: fetch details then check runs
       mockRequest.mockResolvedValueOnce({
         statusCode: 200,
         body: {
           json: async () => ({
             mergeable: true,
-            mergeable_state: 'clean'
+            mergeable_state: 'clean',
+            head: { sha: 'sha1' }
           }),
           text: async () => ''
         }
       } as never)
+      mockRequest.mockResolvedValueOnce(
+        mockCheckRunsResponse([{ name: 'CI', status: 'completed', conclusion: 'success' }]) as never
+      )
 
-      // Third call: fetch details for PR #2 (open)
+      // PR #2: fetch details then check runs
       mockRequest.mockResolvedValueOnce({
         statusCode: 200,
         body: {
           json: async () => ({
             mergeable: true,
-            mergeable_state: 'blocked'
+            mergeable_state: 'blocked',
+            head: { sha: 'sha2' }
           }),
           text: async () => ''
         }
       } as never)
+      mockRequest.mockResolvedValueOnce(
+        mockCheckRunsResponse([{ name: 'CI', status: 'completed', conclusion: 'success' }]) as never
+      )
 
       const state = await adapter.fetchState()
 
@@ -409,18 +444,7 @@ describe('GitHubAdapter', () => {
         }
       } as never)
 
-      // Even for draft, we might still fetch (implementation choice)
-      // But isMergeable should be false because drafts can't be merged
-      mockRequest.mockResolvedValueOnce({
-        statusCode: 200,
-        body: {
-          json: async () => ({
-            mergeable: true,
-            mergeable_state: 'clean'
-          }),
-          text: async () => ''
-        }
-      } as never)
+      // Draft PRs don't get details fetched (state !== 'open')
 
       const state = await adapter.fetchState()
 
@@ -449,16 +473,20 @@ describe('GitHubAdapter', () => {
         }
       } as never)
 
+      // PR details
       mockRequest.mockResolvedValueOnce({
         statusCode: 200,
         body: {
           json: async () => ({
             mergeable: null,
-            mergeable_state: 'unknown'
+            mergeable_state: 'unknown',
+            head: { sha: 'sha1' }
           }),
           text: async () => ''
         }
       } as never)
+      // Check runs
+      mockRequest.mockResolvedValueOnce(mockCheckRunsResponse([]) as never)
 
       const state = await adapter.fetchState()
 

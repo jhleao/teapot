@@ -26,8 +26,8 @@ export class GitForgeClient {
   private lastSuccessfulFetch = 0
   private status: ForgeStatus = 'idle'
   private lastError?: string
-  private readonly CACHE_TTL_MS = 10_000 // 10 seconds
-  private readonly ERROR_RETRY_MS = 5_000 // Retry sooner after error
+  private readonly CACHE_TTL_MS = 3_000 // 3 seconds - faster updates for status checks
+  private readonly ERROR_RETRY_MS = 2_000 // Retry sooner after error
 
   constructor(private readonly adapter: GitForgeAdapter) {}
 

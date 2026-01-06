@@ -1,3 +1,5 @@
+import type { MergeReadiness } from './git-forge'
+
 export type LocalRepo = {
   path: string
   isSelected: boolean
@@ -95,6 +97,11 @@ export type UiPullRequest = {
    * Only true when GitHub returns mergeable=true AND mergeable_state='clean'.
    */
   isMergeable: boolean
+  /**
+   * Detailed merge readiness information including CI check status.
+   * Only populated for open PRs.
+   */
+  mergeReadiness?: MergeReadiness
 }
 
 export type UiWorkingTreeFile = {

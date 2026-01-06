@@ -14,6 +14,10 @@ interface ForgeStateContextValue {
   lastSuccessfulFetch: number | null
   /** Manually trigger a refresh of forge state */
   refreshForge: () => Promise<void>
+  /** Optimistically mark a PR as merged (prevents Ship It button race condition) */
+  markPrAsMerged: (branchName: string) => void
+  /** Optimistically mark a PR's checks as pending (when user pushes new commits) */
+  markPrChecksPending: (branchName: string) => void
 }
 
 const ForgeStateContext = createContext<ForgeStateContextValue | undefined>(undefined)
@@ -41,6 +45,59 @@ export function ForgeStateProvider({
   const [forgeStatus, setForgeStatus] = useState<ForgeStatus>('idle')
   const [forgeError, setForgeError] = useState<string | null>(null)
   const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<number | null>(null)
+
+  /**
+   * Optimistically marks a PR as merged by branch name.
+   * This prevents the Ship It button from briefly re-enabling during the race
+   * between merge completion and forge state refresh.
+   */
+  const markPrAsMerged = useCallback((branchName: string) => {
+    setForgeState((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        pullRequests: prev.pullRequests.map((pr) =>
+          pr.headRefName === branchName
+            ? { ...pr, state: 'merged' as const, isMergeable: false, mergeReadiness: undefined }
+            : pr
+        )
+      }
+    })
+  }, [])
+
+  /**
+   * Optimistically marks a PR's checks as pending by branch name.
+   * Called when user pushes new commits - GitHub takes a few seconds to register
+   * new check runs, so we show "Checks pending" immediately for better UX.
+   */
+  const markPrChecksPending = useCallback((branchName: string) => {
+    setForgeState((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        pullRequests: prev.pullRequests.map((pr) => {
+          if (pr.headRefName !== branchName) return pr
+          // Only update if PR has existing mergeReadiness (i.e., it's an open PR)
+          if (!pr.mergeReadiness) return pr
+          return {
+            ...pr,
+            isMergeable: false,
+            mergeReadiness: {
+              ...pr.mergeReadiness,
+              canMerge: false,
+              checksStatus: 'pending',
+              // Clear existing checks - new ones will be registered by GitHub
+              checks: [],
+              // Add checks_pending blocker if not already present
+              blockers: pr.mergeReadiness.blockers.includes('checks_pending')
+                ? pr.mergeReadiness.blockers
+                : [...pr.mergeReadiness.blockers.filter((b) => b !== 'checks_failed'), 'checks_pending']
+            }
+          }
+        })
+      }
+    })
+  }, [])
 
   const refreshForge = useCallback(async () => {
     if (!repoPath) {
@@ -95,6 +152,20 @@ export function ForgeStateProvider({
     return () => window.removeEventListener('focus', handleFocus)
   }, [refreshForge])
 
+  // Periodic refresh every 5 seconds when tab is visible
+  useEffect(() => {
+    if (!repoPath) return
+
+    const REFRESH_INTERVAL_MS = 5_000
+    const intervalId = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshForge()
+      }
+    }, REFRESH_INTERVAL_MS)
+
+    return () => clearInterval(intervalId)
+  }, [repoPath, refreshForge])
+
   return (
     <ForgeStateContext.Provider
       value={{
@@ -102,7 +173,9 @@ export function ForgeStateProvider({
         forgeStatus,
         forgeError,
         lastSuccessfulFetch,
-        refreshForge
+        refreshForge,
+        markPrAsMerged,
+        markPrChecksPending
       }}
     >
       {children}

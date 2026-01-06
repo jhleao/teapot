@@ -198,6 +198,18 @@ export interface GitAdapter {
   renameBranch(dir: string, oldRef: string, newRef: string): Promise<void>
 
   /**
+   * Delete a remote-tracking branch (e.g., origin/feature-branch)
+   *
+   * This removes the local reference to a remote branch without affecting the remote.
+   * Useful for cleaning up stale tracking refs after a remote branch has been deleted.
+   *
+   * @param dir - Repository directory path
+   * @param remote - Remote name (e.g., 'origin')
+   * @param branch - Branch name (without remote prefix)
+   */
+  deleteRemoteTrackingBranch(dir: string, remote: string, branch: string): Promise<void>
+
+  /**
    * Checkout a branch or commit
    *
    * @param dir - Repository directory path

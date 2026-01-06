@@ -122,6 +122,41 @@ describe('cleanupBranch', () => {
     expect(branches).not.toContain('feature')
   })
 
+  it('should delete remote-tracking ref even when remote deletion fails', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch and simulate a remote tracking ref
+    execSync('git branch feature', { cwd: repoPath })
+    execSync('git update-ref refs/remotes/origin/feature HEAD', { cwd: repoPath })
+
+    // Verify the remote tracking ref exists
+    const remoteBranchesBefore = execSync('git branch -r', { cwd: repoPath, encoding: 'utf-8' })
+    expect(remoteBranchesBefore).toContain('origin/feature')
+
+    // Mock remote deletion to fail (simulating network error)
+    vi.mocked(gitForgeService.deleteRemoteBranch).mockRejectedValueOnce(
+      new Error('Network error')
+    )
+
+    // Cleanup should still succeed
+    await BranchOperation.cleanup(repoPath, 'feature')
+
+    // Local branch should be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+
+    // Remote tracking ref should ALSO be gone (even though remote deletion failed)
+    const remoteBranchesAfter = execSync('git branch -r', { cwd: repoPath, encoding: 'utf-8' })
+    expect(remoteBranchesAfter).not.toContain('origin/feature')
+  })
+
   it('should succeed if remote branch does not exist (already deleted)', async () => {
     // Setup: main -> commit1
     const file1 = path.join(repoPath, 'file1.txt')
@@ -252,5 +287,38 @@ describe('cleanupBranch', () => {
         // Ignore if already removed
       }
     }
+  })
+
+  it('should delete remote-tracking ref after successful remote branch deletion', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Simulate having a remote tracking ref by creating a fake remote ref
+    // In a real scenario, this would come from `git fetch`
+    execSync('git update-ref refs/remotes/origin/feature HEAD', { cwd: repoPath })
+
+    // Verify the remote tracking ref exists
+    const remoteBranchesBefore = execSync('git branch -r', { cwd: repoPath, encoding: 'utf-8' })
+    expect(remoteBranchesBefore).toContain('origin/feature')
+
+    // Cleanup should succeed
+    await BranchOperation.cleanup(repoPath, 'feature')
+
+    // Local branch should be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+
+    // Remote tracking ref should also be gone
+    const remoteBranchesAfter = execSync('git branch -r', { cwd: repoPath, encoding: 'utf-8' })
+    expect(remoteBranchesAfter).not.toContain('origin/feature')
   })
 })

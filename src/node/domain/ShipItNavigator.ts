@@ -9,6 +9,12 @@
  */
 
 import type { ShipItNavigationContext, ShipItNavigationResult } from '@shared/types'
+import {
+  findActivePr,
+  findOpenPr,
+  hasChildPrs,
+  hasMergedPr
+} from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 
 /** Minimal PR shape for validation functions */
@@ -43,8 +49,8 @@ export class ShipItNavigator {
     branchName: string,
     pullRequests: PrForValidation[]
   ): ShipItValidationResult {
-    // Find the PR for this branch
-    const pr = pullRequests.find((p) => p.headRefName === branchName && p.state === 'open')
+    // Find the open (shippable) PR for this branch
+    const pr = findOpenPr(branchName, pullRequests)
 
     if (!pr) {
       return { canShip: false, reason: `No open PR found for branch "${branchName}"` }
@@ -60,20 +66,15 @@ export class ShipItNavigator {
 
     // Check if target branch has been merged (stale target)
     const targetBranch = pr.baseRefName
-    if (!isTrunk(targetBranch)) {
-      const targetBranchMerged = pullRequests.some(
-        (p) => p.headRefName === targetBranch && p.state === 'merged'
-      )
-      if (targetBranchMerged) {
-        return {
-          canShip: false,
-          reason: `Target branch "${targetBranch}" has been merged. Update the PR target first.`
-        }
+    if (!isTrunk(targetBranch) && hasMergedPr(targetBranch, pullRequests)) {
+      return {
+        canShip: false,
+        reason: `Target branch "${targetBranch}" has been merged. Update the PR target first.`
       }
     }
 
     // Check if this branch has children (other PRs targeting it)
-    if (ShipItNavigator.hasChildBranches(branchName, pullRequests)) {
+    if (hasChildPrs(branchName, pullRequests)) {
       return {
         canShip: false,
         reason: 'Cannot ship a branch that has child PRs. Ship the child branches first.'
@@ -142,24 +143,6 @@ export class ShipItNavigator {
   }
 
   /**
-   * Determines if a branch has children in the stack.
-   *
-   * This is used to warn users about rebasing after shipping.
-   * A branch has children if other branches have PRs targeting it.
-   *
-   * @param branchName - The shipped branch name
-   * @param pullRequests - All known PRs
-   * @returns True if the branch has children
-   */
-  public static hasChildBranches(
-    branchName: string,
-    pullRequests: Array<{ baseRefName: string; headRefName: string; state: string }>
-  ): boolean {
-    // A branch has children if any open PR targets it
-    return pullRequests.some((pr) => pr.baseRefName === branchName && pr.state === 'open')
-  }
-
-  /**
    * Finds the parent branch of a given branch in a stack.
    *
    * In a stacked PR workflow:
@@ -175,11 +158,8 @@ export class ShipItNavigator {
     branchName: string,
     pullRequests: Array<{ baseRefName: string; headRefName: string; state: string }>
   ): string | null {
-    // Find the open PR for this branch
-    const pr = pullRequests.find(
-      (p) => p.headRefName === branchName && (p.state === 'open' || p.state === 'draft')
-    )
-
+    // Find the active PR for this branch (open or draft)
+    const pr = findActivePr(branchName, pullRequests)
     if (!pr) {
       return null
     }

@@ -1,5 +1,6 @@
 import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
+import { hasChildPrs } from '@shared/types/git-forge'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -53,18 +54,13 @@ export const GitForgeSection = memo(function GitForgeSection({
 
   /**
    * Determines if this branch is at the bottom of a PR stack.
-   * A branch is at the bottom if no other open PRs target it as their base.
+   * A branch is at the bottom if no other open/draft PRs target it as their base.
    * Ship It should only be available for bottom-of-stack branches to prevent
    * shipping a branch that would leave orphaned child PRs.
    */
   const isBottomOfStack = useMemo(() => {
     if (!branchWithPr || !forgeState?.pullRequests) return false
-    const branchName = branchWithPr.name
-    // Check if any open PR has this branch as its base (meaning this branch has children)
-    const hasChildPrs = forgeState.pullRequests.some(
-      (pr) => pr.baseRefName === branchName && pr.state === 'open'
-    )
-    return !hasChildPrs
+    return !hasChildPrs(branchWithPr.name, forgeState.pullRequests)
   }, [branchWithPr, forgeState?.pullRequests])
 
   const handleCleanup = useCallback(

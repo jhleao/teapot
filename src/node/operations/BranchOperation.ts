@@ -47,10 +47,14 @@ export class BranchOperation {
   }
 
   /**
-   * Cleans up a merged branch by deleting it both locally and on the remote.
-   * If the branch is checked out in a worktree, the worktree is removed first.
+   * Removes a worktree if the branch is checked out in one.
+   * Returns the worktree path if one was removed, or null if none existed.
    */
-  static async cleanup(repoPath: string, branchName: string): Promise<void> {
+  private static async removeWorktreeForBranch(
+    repoPath: string,
+    branchName: string,
+    operation: 'cleanup' | 'delete'
+  ): Promise<string | null> {
     const git = getGitAdapter()
 
     const currentBranch = await git.currentBranch(repoPath)
@@ -58,42 +62,54 @@ export class BranchOperation {
       throw new Error('Cannot delete the currently checked out branch')
     }
 
-    // Check if the branch is used by a worktree and remove it first
-    // Don't skip dirty check - we need to know if there are uncommitted changes
     const worktrees = await git.listWorktrees(repoPath)
     const worktreeUsingBranch = worktrees.find((wt) => wt.branch === branchName && !wt.isMain)
 
-    if (worktreeUsingBranch) {
-      if (worktreeUsingBranch.isDirty) {
-        throw new Error(
-          `Cannot cleanup branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
-        )
-      }
+    if (!worktreeUsingBranch) {
+      return null
+    }
 
-      log.info(
-        `[BranchOperation.cleanup] Branch ${branchName} is used by worktree ${worktreeUsingBranch.path}, removing worktree first`
+    if (worktreeUsingBranch.isDirty) {
+      throw new Error(
+        `Cannot ${operation} branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
       )
-      const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
-      if (!result.success) {
-        throw new Error(`Failed to remove worktree: ${result.error}`)
-      }
+    }
 
-      // If the removed worktree was the active one, fall back to main worktree
-      const activeWorktree = configStore.getActiveWorktree(repoPath)
-      if (activeWorktree) {
-        try {
-          const [removedReal, activeReal] = await Promise.all([
-            fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
-            fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
-          ])
-          if (removedReal === activeReal) {
-            configStore.setActiveWorktree(repoPath, null)
-          }
-        } catch {
-          // Best-effort realpath check; ignore resolution errors
+    log.info(
+      `[BranchOperation.${operation}] Branch ${branchName} is used by worktree ${worktreeUsingBranch.path}, removing worktree first`
+    )
+    const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
+    if (!result.success) {
+      throw new Error(`Failed to remove worktree: ${result.error}`)
+    }
+
+    // If the removed worktree was the active one, fall back to main worktree
+    const activeWorktree = configStore.getActiveWorktree(repoPath)
+    if (activeWorktree) {
+      try {
+        const [removedReal, activeReal] = await Promise.all([
+          fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
+          fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
+        ])
+        if (removedReal === activeReal) {
+          configStore.setActiveWorktree(repoPath, null)
         }
+      } catch {
+        // Best-effort realpath check; ignore resolution errors
       }
     }
+
+    return worktreeUsingBranch.path
+  }
+
+  /**
+   * Cleans up a merged branch by deleting it both locally and on the remote.
+   * If the branch is checked out in a worktree, the worktree is removed first.
+   */
+  static async cleanup(repoPath: string, branchName: string): Promise<void> {
+    const git = getGitAdapter()
+
+    await this.removeWorktreeForBranch(repoPath, branchName, 'cleanup')
 
     try {
       await gitForgeService.deleteRemoteBranch(repoPath, branchName)
@@ -135,10 +151,15 @@ export class BranchOperation {
 
   /**
    * Deletes a local branch.
+   * If the branch is checked out in a worktree, the worktree is removed first.
    */
   static async delete(repoPath: string, branchName: string): Promise<void> {
     const git = getGitAdapter()
+
+    await this.removeWorktreeForBranch(repoPath, branchName, 'delete')
+
     await git.deleteBranch(repoPath, branchName)
+    log.info(`[BranchOperation.delete] Deleted local branch: ${branchName}`)
   }
 
   /**

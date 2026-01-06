@@ -105,6 +105,11 @@ export type RebaseState = {
   queue: RebaseQueueState
 }
 
+export type DetachedWorktree = {
+  worktreePath: string
+  branch: string
+}
+
 export type RebasePlan = {
   intent: RebaseIntent
   state: RebaseState

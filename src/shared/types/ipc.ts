@@ -91,6 +91,7 @@ export const IPC_CHANNELS = {
   submitRebaseIntent: 'submitRebaseIntent',
   confirmRebaseIntent: 'confirmRebaseIntent',
   cancelRebaseIntent: 'cancelRebaseIntent',
+  resolveWorktreeConflictAndRebase: 'resolveWorktreeConflictAndRebase',
   continueRebase: 'continueRebase',
   abortRebase: 'abortRebase',
   skipRebaseCommit: 'skipRebaseCommit',
@@ -140,6 +141,7 @@ export const IPC_CHANNELS = {
 export const IPC_EVENTS = {
   repoChange: 'repoChange',
   repoError: 'repoError',
+  rebaseWarning: 'rebaseWarning',
   updateDownloading: 'updateDownloading',
   updateDownloaded: 'updateDownloaded'
 } as const
@@ -168,6 +170,15 @@ export interface IpcContract {
   [IPC_CHANNELS.cancelRebaseIntent]: {
     request: { repoPath: string }
     response: UiState | null
+  }
+  [IPC_CHANNELS.resolveWorktreeConflictAndRebase]: {
+    request: {
+      repoPath: string
+      headSha: string
+      baseSha: string
+      resolutions: Array<{ worktreePath: string; action: 'stash' | 'delete' }>
+    }
+    response: SubmitRebaseIntentResponse
   }
   [IPC_CHANNELS.continueRebase]: {
     request: { repoPath: string }

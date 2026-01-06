@@ -12,14 +12,18 @@
  * - Manage session state throughout the process
  */
 
-import type {
-  Commit,
-  CommitRewrite,
-  RebaseIntent,
-  RebaseJob,
-  RebasePlan,
-  RebaseState
+import { log } from '@shared/logger'
+import {
+  IPC_EVENTS,
+  type Commit,
+  type CommitRewrite,
+  type RebaseIntent,
+  type RebaseJob,
+  type RebasePlan,
+  type RebaseState
 } from '@shared/types'
+import { BrowserWindow } from 'electron'
+import * as fs from 'fs'
 import type { GitAdapter } from '../adapters/git'
 import {
   getGitAdapter,
@@ -34,6 +38,7 @@ import { SessionService } from '../services'
 import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { checkConflictResolution } from '../utils/conflict-markers'
+import { WorktreeOperation } from './WorktreeOperation'
 
 export type RebaseExecutionResult =
   | { status: 'completed'; finalState: RebaseState }
@@ -633,10 +638,41 @@ export class RebaseExecutor {
     session: StoredRebaseSession,
     git: GitAdapter
   ): Promise<void> {
+    const detachedWorktrees = session.autoDetachedWorktrees ?? []
+    const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
+
+    for (const { worktreePath, branch } of detachedWorktrees) {
+      if (!fs.existsSync(worktreePath)) continue
+      const result = await WorktreeOperation.checkoutBranchInWorktree(worktreePath, branch)
+      if (!result.success) {
+        log.error(
+          `[RebaseExecutor] Failed to re-checkout ${branch} in worktree ${worktreePath}: ${result.error}`
+        )
+        reattachFailures.push({ worktreePath, branch, error: result.error })
+      }
+    }
+
     try {
       await git.checkout(repoPath, session.originalBranch)
     } catch {
       // Original branch might not exist anymore; ignore checkout failure
+    }
+
+    if (reattachFailures.length > 0) {
+      SessionService.clearAutoDetachedWorktrees(repoPath)
+      const warning = reattachFailures
+        .map(
+          (failure) =>
+            `${failure.branch} @ ${failure.worktreePath}${failure.error ? ` (${failure.error})` : ''}`
+        )
+        .join(', ')
+
+      BrowserWindow.getAllWindows().forEach((win) => {
+        win.webContents.send(
+          IPC_EVENTS.rebaseWarning,
+          `Rebase finished but could not re-checkout: ${warning}`
+        )
+      })
     }
 
     const finalState: RebaseState = {

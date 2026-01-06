@@ -12,10 +12,12 @@
 
 import type {
   Configuration,
+  DetachedWorktree,
   RebaseOperationResponse,
   RebaseStatusResponse,
   SubmitRebaseIntentResponse,
-  UiState
+  UiState,
+  WorktreeConflict
 } from '@shared/types'
 import { getGitAdapter, supportsGetRebaseState } from '../adapters/git'
 import {
@@ -31,6 +33,7 @@ import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { RebaseExecutor } from './RebaseExecutor'
 import { UiStateOperation } from './UiStateOperation'
+import { WorktreeOperation } from './WorktreeOperation'
 
 export class RebaseOperation {
   /**
@@ -41,7 +44,8 @@ export class RebaseOperation {
   static async submitRebaseIntent(
     repoPath: string,
     headSha: string,
-    baseSha: string
+    baseSha: string,
+    options: { preDetachedWorktrees?: DetachedWorktree[] } = {}
   ): Promise<SubmitRebaseIntentResponse> {
     const config: Configuration = { repoPath }
     const gitAdapter = getGitAdapter()
@@ -64,13 +68,38 @@ export class RebaseOperation {
       activeWorktreePath
     )
 
+    let autoDetachedWorktrees = [...(options.preDetachedWorktrees ?? [])]
+
     if (!worktreeValidation.valid) {
-      return {
-        success: false,
-        error: 'WORKTREE_CONFLICT',
-        worktreeConflicts: worktreeValidation.conflicts,
-        message: worktreeValidation.message
+      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts(
+        worktreeValidation.conflicts
+      )
+
+      if (dirty.length > 0) {
+        return {
+          success: false,
+          error: 'WORKTREE_CONFLICT',
+          worktreeConflicts: dirty,
+          message: RebaseValidator.formatWorktreeConflictMessage(dirty)
+        }
       }
+
+      const { detached, failures } = await RebaseOperation.detachCleanWorktrees(clean)
+
+      if (failures.length > 0) {
+        const conflicts = [...dirty, ...failures]
+        return {
+          success: false,
+          error: 'WORKTREE_CONFLICT',
+          worktreeConflicts: conflicts,
+          message: RebaseValidator.formatWorktreeConflictMessage(conflicts)
+        }
+      }
+
+      autoDetachedWorktrees = RebaseOperation.mergeDetachedWorktrees(
+        autoDetachedWorktrees,
+        detached
+      )
     }
 
     const plan = RebaseStateMachine.createRebasePlan({
@@ -80,7 +109,9 @@ export class RebaseOperation {
     })
 
     await SessionService.clearSession(repoPath)
-    const storedSession = SessionService.createStoredSession(plan, currentBranch ?? 'HEAD')
+    const storedSession = SessionService.createStoredSession(plan, currentBranch ?? 'HEAD', {
+      autoDetachedWorktrees
+    })
     const createResult = await SessionService.rebaseSessionStore.createSession(
       repoPath,
       storedSession
@@ -268,5 +299,45 @@ export class RebaseOperation {
   static async dismissRebaseQueue(repoPath: string): Promise<UiState | null> {
     await SessionService.clearSession(repoPath)
     return UiStateOperation.getUiState(repoPath)
+  }
+
+  private static async detachCleanWorktrees(
+    conflicts: WorktreeConflict[]
+  ): Promise<{ detached: DetachedWorktree[]; failures: WorktreeConflict[] }> {
+    if (conflicts.length === 0) return { detached: [], failures: [] }
+
+    const conflictsByPath = new Map<string, WorktreeConflict>()
+    for (const conflict of conflicts) {
+      if (!conflictsByPath.has(conflict.worktreePath)) {
+        conflictsByPath.set(conflict.worktreePath, conflict)
+      }
+    }
+
+    const detached: DetachedWorktree[] = []
+    const failures: WorktreeConflict[] = []
+
+    for (const conflict of conflictsByPath.values()) {
+      const result = await WorktreeOperation.detachHead(conflict.worktreePath)
+      if (!result.success) {
+        failures.push({ ...conflict, isDirty: true })
+        continue
+      }
+      detached.push({ worktreePath: conflict.worktreePath, branch: conflict.branch })
+    }
+
+    return { detached, failures }
+  }
+
+  private static mergeDetachedWorktrees(
+    existing: DetachedWorktree[],
+    next: DetachedWorktree[]
+  ): DetachedWorktree[] {
+    if (!next.length) return existing
+
+    const byPath = new Map<string, DetachedWorktree>()
+    for (const entry of [...existing, ...next]) {
+      byPath.set(entry.worktreePath, entry)
+    }
+    return Array.from(byPath.values())
   }
 }

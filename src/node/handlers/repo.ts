@@ -12,12 +12,15 @@ import {
   IPC_CHANNELS,
   IpcHandlerOf,
   type CheckoutResponse,
+  type DetachedWorktree,
   type RebaseOperationResponse,
   type RebaseStatusResponse,
   type ShipItResponse,
   type SyncTrunkResponse
 } from '@shared/types'
 
+import * as fs from 'fs'
+import { getGitAdapter } from '../adapters/git'
 import { gitForgeService } from '../services/ForgeService'
 import { GitWatcher } from '../services/GitWatcherService'
 import { configStore } from '../store'
@@ -97,6 +100,67 @@ const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, 
 const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = async (_event, { repoPath }) => {
   const workingPath = resolveWorkingPath(repoPath)
   return RebaseOperation.cancelRebaseIntent(workingPath)
+}
+
+const resolveWorktreeConflictAndRebase: IpcHandlerOf<'resolveWorktreeConflictAndRebase'> = async (
+  _event,
+  { repoPath, headSha, baseSha, resolutions }
+) => {
+  const workingPath = resolveWorkingPath(repoPath)
+  const git = getGitAdapter()
+  const detachedWorktrees: DetachedWorktree[] = []
+
+  const existingWorktrees = await git.listWorktrees(repoPath)
+  const worktreeByPath = new Map(existingWorktrees.map((wt) => [wt.path, wt]))
+
+  // Dedupe resolutions by worktree path to avoid repeated operations
+  const resolutionsByPath = new Map<string, (typeof resolutions)[number]>()
+  for (const resolution of resolutions) {
+    resolutionsByPath.set(resolution.worktreePath, resolution)
+  }
+
+  for (const resolution of resolutionsByPath.values()) {
+    if (!fs.existsSync(resolution.worktreePath)) {
+      log.warn(
+        `[handler.resolveWorktreeConflictAndRebase] Skipping missing worktree ${resolution.worktreePath}`
+      )
+      continue
+    }
+
+    const worktree = worktreeByPath.get(resolution.worktreePath)
+    if (!worktree || !worktree.branch) {
+      log.warn(
+        `[handler.resolveWorktreeConflictAndRebase] Skipping unresolved worktree ${resolution.worktreePath} (not listed or no branch)`
+      )
+      continue
+    }
+    const branch = worktree.branch
+
+    if (resolution.action === 'stash') {
+      const stashResult = await WorktreeOperation.stash(resolution.worktreePath)
+      if (!stashResult.success) {
+        throw new Error(stashResult.error ?? 'Failed to stash worktree changes')
+      }
+
+      const detachResult = await WorktreeOperation.detachHead(resolution.worktreePath)
+      if (!detachResult.success) {
+        throw new Error(detachResult.error ?? 'Failed to detach worktree')
+      }
+
+      if (branch) {
+        detachedWorktrees.push({ worktreePath: resolution.worktreePath, branch })
+      }
+    } else {
+      const removeResult = await WorktreeOperation.remove(repoPath, resolution.worktreePath, true)
+      if (!removeResult.success) {
+        throw new Error(removeResult.error ?? 'Failed to delete worktree')
+      }
+    }
+  }
+
+  return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha, {
+    preDetachedWorktrees: detachedWorktrees
+  })
 }
 
 // ============================================================================
@@ -412,6 +476,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.confirmRebaseIntent, confirmRebaseIntent)
   ipcMain.handle(IPC_CHANNELS.cancelRebaseIntent, cancelRebaseIntent)
+  ipcMain.handle(IPC_CHANNELS.resolveWorktreeConflictAndRebase, resolveWorktreeConflictAndRebase)
 
   // Rebase execution
   ipcMain.handle(IPC_CHANNELS.continueRebase, continueRebase)

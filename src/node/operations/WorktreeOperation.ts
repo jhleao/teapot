@@ -60,6 +60,57 @@ export class WorktreeOperation {
   }
 
   /**
+   * Checkout a branch inside a worktree without validating cleanliness.
+   * Used for restoring worktrees after automated operations.
+   */
+  static async checkoutBranchInWorktree(
+    worktreePath: string,
+    branch: string
+  ): Promise<WorktreeOperationResult> {
+    try {
+      await execAsync(`git -C "${worktreePath}" checkout "${branch}"`)
+      log.info(
+        `[WorktreeOperation] Checked out ${branch} in worktree ${worktreePath} (no validation)`
+      )
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.checkoutBranchInWorktree] Failed:`, error)
+      return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Detach HEAD in a worktree to release the branch reference.
+   */
+  static async detachHead(worktreePath: string): Promise<WorktreeOperationResult> {
+    try {
+      await execAsync(`git -C "${worktreePath}" checkout --detach HEAD`)
+      log.info(`[WorktreeOperation] Detached HEAD in worktree ${worktreePath}`)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.detachHead] Failed:`, error)
+      return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Stash all changes in a worktree before detaching.
+   */
+  static async stash(worktreePath: string): Promise<WorktreeOperationResult> {
+    try {
+      await execAsync(`git -C "${worktreePath}" stash push -u -m "Teapot auto-stash before rebase"`)
+      log.info(`[WorktreeOperation] Stashed changes in worktree ${worktreePath}`)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.stash] Failed:`, error)
+      return { success: false, error: message }
+    }
+  }
+
+  /**
    * Delete a worktree.
    * Use force=true to delete even if the worktree has uncommitted changes.
    */

@@ -1,5 +1,5 @@
 import type { WorktreeConflict } from '@shared/types'
-import { AlertTriangle, FolderOpen, GitBranch } from 'lucide-react'
+import { AlertTriangle, FolderOpen, GitBranch, Loader2 } from 'lucide-react'
 import React from 'react'
 import { cn } from '../utils/cn'
 import {
@@ -15,14 +15,20 @@ interface WorktreeConflictDialogProps {
   open: boolean
   conflicts: WorktreeConflict[]
   message: string
-  onClose: () => void
+  isLoading: boolean
+  onCancel: () => void
+  onStashAndProceed: () => void
+  onDeleteAndProceed: () => void
 }
 
 export function WorktreeConflictDialog({
   open,
   conflicts,
   message,
-  onClose
+  isLoading,
+  onCancel,
+  onStashAndProceed,
+  onDeleteAndProceed
 }: WorktreeConflictDialogProps): React.JSX.Element | null {
   // Group conflicts by worktree path to show each worktree once
   const conflictsByWorktree = conflicts.reduce(
@@ -43,7 +49,7 @@ export function WorktreeConflictDialog({
   const worktreeGroups = Object.values(conflictsByWorktree)
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && !isLoading && onCancel()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -83,21 +89,53 @@ export function WorktreeConflictDialog({
           ))}
         </div>
 
-        <div className="text-muted-foreground text-xs">
-          <p>To proceed with the rebase, either:</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5 pl-1">
-            <li>Delete the worktree, or</li>
-            <li>Checkout a different branch in that worktree</li>
-          </ul>
+        <div className="text-muted-foreground space-y-1 text-xs">
+          <p>These worktrees have uncommitted changes. Choose how to unblock the rebase:</p>
+          <p>
+            <span className="text-foreground font-medium">Stash and Proceed</span> will stash
+            changes, temporarily detach the branch, and continue. We&apos;ll re-checkout the branch
+            after rebasing.
+          </p>
+          <p>
+            <span className="text-foreground font-medium">Delete Worktree</span> force-removes the
+            worktree (all changes in it will be lost).
+          </p>
         </div>
 
         <DialogFooter className="mt-4 sm:justify-end">
-          <button
-            onClick={onClose}
-            className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-4 py-1.5 text-sm transition-colors"
-          >
-            OK
-          </button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              onClick={onStashAndProceed}
+              disabled={isLoading}
+              className={cn(
+                'bg-accent text-accent-foreground hover:bg-accent/90 flex items-center justify-center gap-2 rounded px-4 py-1.5 text-sm transition-colors',
+                isLoading && 'cursor-not-allowed opacity-80'
+              )}
+            >
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Stash and Proceed
+            </button>
+            <button
+              onClick={onDeleteAndProceed}
+              disabled={isLoading}
+              className={cn(
+                'border-destructive text-destructive hover:bg-destructive/10 rounded border px-4 py-1.5 text-sm transition-colors',
+                isLoading && 'cursor-not-allowed opacity-80'
+              )}
+            >
+              Delete Worktree
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={isLoading}
+              className={cn(
+                'text-muted-foreground hover:bg-muted/60 rounded px-4 py-1.5 text-sm transition-colors',
+                isLoading && 'cursor-not-allowed opacity-80'
+              )}
+            >
+              Cancel
+            </button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

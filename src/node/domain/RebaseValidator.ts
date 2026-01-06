@@ -282,22 +282,50 @@ export class RebaseValidator {
     }
 
     if (conflicts.length > 0) {
-      // Dedupe conflicts by worktree path (same worktree may block multiple branches)
-      const uniqueWorktrees = new Set(conflicts.map((c) => c.worktreePath))
-      const conflictCount = conflicts.length
-      const worktreeCount = uniqueWorktrees.size
-
-      const message =
-        conflictCount === 1
-          ? `Cannot rebase: branch "${conflicts[0].branch}" is checked out in another worktree`
-          : worktreeCount === 1
-            ? `Cannot rebase: ${conflictCount} branches are checked out in another worktree`
-            : `Cannot rebase: ${conflictCount} branches are checked out in ${worktreeCount} other worktrees`
-
+      const message = RebaseValidator.formatWorktreeConflictMessage(conflicts)
       return { valid: false, code: 'WORKTREE_CONFLICT', message, conflicts }
     }
 
     return { valid: true }
+  }
+
+  /**
+   * Partitions worktree conflicts into clean vs dirty worktrees.
+   */
+  static partitionWorktreeConflicts(conflicts: WorktreeConflict[]): {
+    clean: WorktreeConflict[]
+    dirty: WorktreeConflict[]
+  } {
+    const clean: WorktreeConflict[] = []
+    const dirty: WorktreeConflict[] = []
+
+    for (const conflict of conflicts) {
+      if (conflict.isDirty) {
+        dirty.push(conflict)
+      } else {
+        clean.push(conflict)
+      }
+    }
+
+    return { clean, dirty }
+  }
+
+  /**
+   * Builds a user-facing message summarizing worktree conflicts.
+   */
+  static formatWorktreeConflictMessage(conflicts: WorktreeConflict[]): string {
+    if (!conflicts.length) return ''
+
+    // Dedupe conflicts by worktree path (same worktree may block multiple branches)
+    const uniqueWorktrees = new Set(conflicts.map((c) => c.worktreePath))
+    const conflictCount = conflicts.length
+    const worktreeCount = uniqueWorktrees.size
+
+    return conflictCount === 1
+      ? `Cannot rebase: branch "${conflicts[0].branch}" is checked out in another worktree`
+      : worktreeCount === 1
+        ? `Cannot rebase: ${conflictCount} branches are checked out in another worktree`
+        : `Cannot rebase: ${conflictCount} branches are checked out in ${worktreeCount} other worktrees`
   }
 
   /**

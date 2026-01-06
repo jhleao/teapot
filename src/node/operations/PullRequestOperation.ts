@@ -9,7 +9,7 @@
 
 import { log } from '@shared/logger'
 import type { Branch, Repo } from '@shared/types'
-import type { MergeStrategy } from '@shared/types/git-forge'
+import { findOpenPr, type MergeStrategy } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
 import { PrTargetResolver, ShipItNavigator } from '../domain'
@@ -96,9 +96,7 @@ export class PullRequestOperation {
     }
 
     // Find the PR (we know it exists because validation passed)
-    const pr = forgeState.pullRequests.find(
-      (p) => p.headRefName === branchName && p.state === 'open'
-    )!
+    const pr = findOpenPr(branchName, forgeState.pullRequests)!
     const targetBranch = pr.baseRefName
 
     // Get current branch before merging (for navigation decision)

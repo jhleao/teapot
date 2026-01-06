@@ -1,5 +1,5 @@
 import type { SquashPreview, SquashResult } from '@shared/types'
-import type { GitForgeState } from '@shared/types/git-forge'
+import { findOpenPr, type GitForgeState } from '@shared/types/git-forge'
 import type { GitAdapter } from '../adapters/git'
 import {
   getAuthorIdentity,
@@ -43,9 +43,7 @@ export class SquashOperation {
 
     const parentCommit = await git.readCommit(repoPath, parentHeadSha)
     const targetCommit = await git.readCommit(repoPath, targetHeadSha)
-    const pr = forgeStateResult.state.pullRequests.find(
-      (p) => p.headRefName === branchName && p.state === 'open'
-    )
+    const pr = findOpenPr(branchName, forgeStateResult.state.pullRequests)
 
     return {
       canSquash: true,
@@ -384,9 +382,7 @@ export class SquashOperation {
     branch: string,
     forgeState: GitForgeState
   ): Promise<void> {
-    const pr = forgeState.pullRequests.find(
-      (pull) => pull.headRefName === branch && pull.state === 'open'
-    )
+    const pr = findOpenPr(branch, forgeState.pullRequests)
     if (pr) {
       await gitForgeService.closePullRequest(repoPath, pr.number)
     }

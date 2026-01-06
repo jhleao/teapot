@@ -159,6 +159,20 @@ describe('validateCanShip', () => {
 
       expect(result.canShip).toBe(true) // closed child doesn't block
     })
+
+    it('blocks shipping when child PR is a draft', () => {
+      const prs = [
+        makePr({ headRefName: 'feature-1', baseRefName: 'main' }),
+        makePr({ headRefName: 'feature-2', baseRefName: 'feature-1', state: 'draft' })
+      ]
+
+      const result = validateCanShip('feature-1', prs)
+
+      expect(result.canShip).toBe(false) // draft child blocks
+      if (!result.canShip) {
+        expect(result.reason).toContain('child PRs')
+      }
+    })
   })
 
   describe('complex stack scenarios', () => {

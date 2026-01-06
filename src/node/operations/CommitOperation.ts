@@ -9,6 +9,7 @@
 
 import { log } from '@shared/logger'
 import type { Configuration, RebaseIntent, RebaseTarget, Repo } from '@shared/types'
+import { findOpenPr } from '@shared/types/git-forge'
 import { getAuthorIdentity, getGitAdapter, type GitAdapter } from '../adapters/git'
 import {
   BranchUtils,
@@ -255,9 +256,7 @@ export class CommitOperation {
       const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
 
       for (const branch of branchesToDelete) {
-        const pr = forgeState.pullRequests.find(
-          (p) => p.headRefName === branch && p.state === 'open'
-        )
+        const pr = findOpenPr(branch, forgeState.pullRequests)
         if (pr) {
           log.debug(`[CommitOperation] Closing associated PR #${pr.number} for branch ${branch}`)
           await gitForgeService.closePullRequest(repoPath, pr.number)

@@ -63,7 +63,8 @@ function enrichCommit(
       url: pr.url,
       state: pr.state,
       isInSync: pr.headSha === commit.sha,
-      isMergeable: pr.isMergeable
+      isMergeable: pr.isMergeable,
+      mergeReadiness: pr.mergeReadiness
     }
 
     // Determine merged status

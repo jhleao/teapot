@@ -57,8 +57,8 @@ describe('GitForgeClient', () => {
       await client.getStateWithStatus()
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(1)
 
-      // Second call within TTL (10s)
-      vi.advanceTimersByTime(5000)
+      // Second call within TTL (3s)
+      vi.advanceTimersByTime(2000)
       const result = await client.getStateWithStatus()
 
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(1) // Not called again
@@ -71,8 +71,8 @@ describe('GitForgeClient', () => {
       await client.getStateWithStatus()
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(1)
 
-      // Advance past TTL (10s)
-      vi.advanceTimersByTime(11000)
+      // Advance past TTL (3s)
+      vi.advanceTimersByTime(4000)
       await client.getStateWithStatus()
 
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(2)
@@ -85,8 +85,8 @@ describe('GitForgeClient', () => {
       // Setup failure for next call
       vi.mocked(mockAdapter.fetchState).mockRejectedValueOnce(new Error('Network timeout'))
 
-      // Advance past TTL
-      vi.advanceTimersByTime(11000)
+      // Advance past TTL (3s)
+      vi.advanceTimersByTime(4000)
       const result = await client.getStateWithStatus()
 
       expect(result.status).toBe('error')
@@ -94,24 +94,24 @@ describe('GitForgeClient', () => {
       expect(result.state).toEqual(mockState) // Stale state preserved
     })
 
-    it('should retry sooner after error (5s instead of 10s)', async () => {
+    it('should retry sooner after error (2s instead of 3s)', async () => {
       // First successful call
       await client.getStateWithStatus()
 
       // Setup failure
       vi.mocked(mockAdapter.fetchState).mockRejectedValueOnce(new Error('Timeout'))
 
-      // Advance past TTL to trigger error
-      vi.advanceTimersByTime(11000)
+      // Advance past TTL (3s) to trigger error
+      vi.advanceTimersByTime(4000)
       await client.getStateWithStatus()
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(2)
 
-      // Advance 4s - should NOT retry yet (error retry is 5s)
-      vi.advanceTimersByTime(4000)
+      // Advance 1s - should NOT retry yet (error retry is 2s)
+      vi.advanceTimersByTime(1000)
       await client.getStateWithStatus()
       expect(mockAdapter.fetchState).toHaveBeenCalledTimes(2) // Still 2
 
-      // Advance 2 more seconds (total 6s since error) - should retry now
+      // Advance 2 more seconds (total 3s since error) - should retry now
       vi.advanceTimersByTime(2000)
       await client.getStateWithStatus()
 
@@ -132,7 +132,7 @@ describe('GitForgeClient', () => {
       await client.getStateWithStatus()
 
       vi.mocked(mockAdapter.fetchState).mockRejectedValueOnce(new Error('Timeout'))
-      vi.advanceTimersByTime(11000)
+      vi.advanceTimersByTime(4000) // Past TTL (3s)
 
       const result = await client.getStateWithStatus()
 

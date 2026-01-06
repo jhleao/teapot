@@ -9,12 +9,7 @@
  */
 
 import type { ShipItNavigationContext, ShipItNavigationResult } from '@shared/types'
-import {
-  findActivePr,
-  findOpenPr,
-  hasChildPrs,
-  hasMergedPr
-} from '@shared/types/git-forge'
+import { findActivePr, findOpenPr, hasChildPrs, hasMergedPr } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 
 /** Minimal PR shape for validation functions */

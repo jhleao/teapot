@@ -1,4 +1,4 @@
-import type { RebasePlan, RebaseState } from '@shared/types'
+import type { DetachedWorktree, RebasePlan, RebaseState } from '@shared/types'
 import { configStore, type ConfigStore, type StoredRebaseSession } from '../store'
 
 export type { StoredRebaseSession }
@@ -59,7 +59,12 @@ export function getAllSessions(): Map<string, StoredRebaseSession> {
   return sessionStore.getAll()
 }
 
-export function createSession(repoPath: string, plan: RebasePlan, originalBranch: string): void {
+export function createSession(
+  repoPath: string,
+  plan: RebasePlan,
+  originalBranch: string,
+  autoDetachedWorktrees?: DetachedWorktree[]
+): void {
   const key = normalizePath(repoPath)
   if (sessionStore.has(key)) {
     throw new Error('Session already exists')
@@ -70,6 +75,7 @@ export function createSession(repoPath: string, plan: RebasePlan, originalBranch
     intent: plan.intent,
     state: plan.state,
     originalBranch,
+    autoDetachedWorktrees,
     version: 1,
     createdAtMs: now,
     updatedAtMs: now
@@ -78,6 +84,13 @@ export function createSession(repoPath: string, plan: RebasePlan, originalBranch
 
 export function clearSession(repoPath: string): void {
   sessionStore.delete(normalizePath(repoPath))
+}
+
+export function clearAutoDetachedWorktrees(repoPath: string): void {
+  const key = normalizePath(repoPath)
+  const existing = sessionStore.get(key)
+  if (!existing) return
+  sessionStore.set(key, { ...existing, autoDetachedWorktrees: [] })
 }
 
 export function updateState(repoPath: string, state: RebaseState): void {
@@ -169,11 +182,13 @@ export const rebaseSessionStore: IRebaseSessionStore = {
 
 export function createStoredSession(
   plan: RebasePlan,
-  originalBranch: string
+  originalBranch: string,
+  options: { autoDetachedWorktrees?: DetachedWorktree[] } = {}
 ): Omit<StoredRebaseSession, 'version' | 'createdAtMs' | 'updatedAtMs'> {
   return {
     intent: plan.intent,
     state: plan.state,
-    originalBranch
+    originalBranch,
+    autoDetachedWorktrees: options.autoDetachedWorktrees
   }
 }

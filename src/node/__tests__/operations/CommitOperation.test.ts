@@ -15,7 +15,9 @@ vi.mock('../../store', () => ({
 vi.mock('../../services/ForgeService', () => ({
   gitForgeService: {
     getState: vi.fn().mockResolvedValue({ pullRequests: [] }),
-    getStateWithStatus: vi.fn().mockResolvedValue({ state: { pullRequests: [] }, status: 'success' }),
+    getStateWithStatus: vi
+      .fn()
+      .mockResolvedValue({ state: { pullRequests: [] }, status: 'success' }),
     closePullRequest: vi.fn(),
     deleteRemoteBranch: vi.fn()
   }

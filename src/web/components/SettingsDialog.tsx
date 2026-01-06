@@ -148,9 +148,9 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
               disabled={isLoading}
               className="border-input bg-background ring-offset-background focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <option value="rebase">Rebase and merge</option>
-              <option value="squash">Squash and merge</option>
-              <option value="merge">Create a merge commit</option>
+              <option value="rebase">Rebase (linear history, no merge commit)</option>
+              <option value="squash">Squash (single commit)</option>
+              <option value="merge">Merge commit (preserve branch history)</option>
             </select>
           </div>
         </div>

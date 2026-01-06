@@ -12,7 +12,7 @@ import type { Branch, Repo } from '@shared/types'
 import type { MergeStrategy } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
-import { PrTargetResolver } from '../domain'
+import { PrTargetResolver, ShipItNavigator } from '../domain'
 import { RepoModelService } from '../services'
 import { gitForgeService } from '../services/ForgeService'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
@@ -88,57 +88,72 @@ export class PullRequestOperation {
 
     // Get forge state to find PR number and target branch
     const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
+
+    // Validate using pure domain logic (defense in depth - UI should also validate)
+    const validation = ShipItNavigator.validateCanShip(branchName, forgeState.pullRequests)
+    if (!validation.canShip) {
+      return { success: false, error: validation.reason }
+    }
+
+    // Find the PR (we know it exists because validation passed)
     const pr = forgeState.pullRequests.find(
       (p) => p.headRefName === branchName && p.state === 'open'
-    )
-
-    if (!pr) {
-      return { success: false, error: `No open PR found for branch "${branchName}"` }
-    }
+    )!
+    const targetBranch = pr.baseRefName
 
     // Get current branch before merging (for navigation decision)
     const currentBranch = await git.currentBranch(repoPath)
-    const wasOnShippedBranch = currentBranch === branchName
-    const targetBranch = pr.baseRefName
-
-    // Check if shipped branch has children (other PRs targeting it)
-    const hasChildren = forgeState.pullRequests.some(
-      (p) => p.baseRefName === branchName && p.state === 'open'
-    )
 
     // Merge via GitHub API
-    await gitForgeService.mergePullRequest(repoPath, pr.number, mergeStrategy)
+    try {
+      await gitForgeService.mergePullRequest(repoPath, pr.number, mergeStrategy)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error('[PullRequestOperation.shipIt] Merge failed:', error)
+      return { success: false, error: `Merge failed: ${errorMessage}` }
+    }
 
     // Fetch to update remote refs
     await git.fetch(repoPath)
 
-    // Navigate to appropriate branch after shipping
-    let message: string
-    if (wasOnShippedBranch) {
-      // User was on the shipped branch - move them to the PR target (usually main)
-      await git.checkout(repoPath, targetBranch)
+    // Determine navigation using pure domain logic
+    const navigation = ShipItNavigator.determineNavigation({
+      repoPath,
+      shippedBranch: branchName,
+      prTargetBranch: targetBranch,
+      userCurrentBranch: currentBranch,
+      wasDetached: currentBranch === null,
+      hasChildren: false, // We block shipping branches with children, so always false here
+      isWorkingTreeClean: true // We validated this before shipping
+    })
 
-      // Try to fast-forward to match remote
-      const remoteBranch = `origin/${targetBranch}`
-      if (supportsMerge(git)) {
-        try {
-          await git.merge(repoPath, remoteBranch, { ffOnly: true })
-        } catch {
-          // Fast-forward failed - that's okay, user is still on target branch
+    // Execute navigation if needed
+    if (navigation.targetBranch) {
+      try {
+        await git.checkout(repoPath, navigation.targetBranch)
+
+        // Try to fast-forward to match remote
+        const remoteBranch = `origin/${navigation.targetBranch}`
+        if (supportsMerge(git)) {
+          try {
+            await git.merge(repoPath, remoteBranch, { ffOnly: true })
+          } catch {
+            // Fast-forward failed - that's okay, user is still on target branch
+          }
+        }
+      } catch (checkoutError) {
+        // Checkout failed (e.g., target branch checked out in another worktree)
+        // The merge succeeded, just can't switch branches
+        log.warn('[PullRequestOperation.shipIt] Post-merge checkout failed:', checkoutError)
+        return {
+          success: true,
+          message: 'Shipped! (Could not switch branches automatically)',
+          needsRebase: navigation.needsRebase
         }
       }
-
-      message = `Shipped! Switched to ${targetBranch}.`
-    } else {
-      message = 'Shipped!'
     }
 
-    // Add rebase notice if there are child branches
-    if (hasChildren) {
-      message += ' Remaining branches need rebasing.'
-    }
-
-    return { success: true, message, needsRebase: hasChildren }
+    return { success: true, message: navigation.message, needsRebase: navigation.needsRebase }
   }
 
   /**

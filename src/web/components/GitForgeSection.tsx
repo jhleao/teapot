@@ -1,6 +1,7 @@
 import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
 import React, { memo, useCallback, useMemo, useState } from 'react'
+import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
@@ -32,10 +33,13 @@ export const GitForgeSection = memo(function GitForgeSection({
     updatePullRequest,
     submitRebaseIntent,
     cleanupBranch,
+    shipIt,
     isWorkingTreeDirty
   } = useUiStateContext()
+  const { forgeState } = useForgeStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [shipItError, setShipItError] = useState<string | null>(null)
 
   // Memoize derived values
   const mergedBranchToCleanup = useMemo(() => getMergedBranchToCleanup(branches), [branches])
@@ -46,6 +50,22 @@ export const GitForgeSection = memo(function GitForgeSection({
     () => canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty }),
     [baseSha, trunkHeadSha, isWorkingTreeDirty]
   )
+
+  /**
+   * Determines if this branch is at the bottom of a PR stack.
+   * A branch is at the bottom if no other open PRs target it as their base.
+   * Ship It should only be available for bottom-of-stack branches to prevent
+   * shipping a branch that would leave orphaned child PRs.
+   */
+  const isBottomOfStack = useMemo(() => {
+    if (!branchWithPr || !forgeState?.pullRequests) return false
+    const branchName = branchWithPr.name
+    // Check if any open PR has this branch as its base (meaning this branch has children)
+    const hasChildPrs = forgeState.pullRequests.some(
+      (pr) => pr.baseRefName === branchName && pr.state === 'open'
+    )
+    return !hasChildPrs
+  }, [branchWithPr, forgeState?.pullRequests])
 
   const handleCleanup = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
@@ -98,22 +118,25 @@ export const GitForgeSection = memo(function GitForgeSection({
     [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
   )
 
-  // const _handleShipIt = useCallback(
-  //   async (e: React.MouseEvent): Promise<void> => {
-  //     e.stopPropagation()
-  //     if (isLoading || !branchWithPr) return
+  const handleShipIt = useCallback(
+    async (e: React.MouseEvent): Promise<void> => {
+      e.stopPropagation()
+      if (isLoading || !branchWithPr) return
 
-  //     setIsLoading(true)
-  //     try {
-  //       await shipIt({ branchName: branchWithPr.name })
-  //     } catch (error) {
-  //       log.error('Failed to ship it:', error)
-  //     } finally {
-  //       setIsLoading(false)
-  //     }
-  //   },
-  //   [isLoading, branchWithPr, shipIt]
-  // )
+      setIsLoading(true)
+      setShipItError(null)
+      try {
+        await shipIt({ branchName: branchWithPr.name })
+      } catch (error) {
+        log.error('Failed to ship it:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        setShipItError(errorMessage)
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [isLoading, branchWithPr, shipIt]
+  )
 
   const handleCreatePr = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
@@ -195,21 +218,43 @@ export const GitForgeSection = memo(function GitForgeSection({
             {isLoading ? 'Updating...' : 'Update PR'}
           </button>
         )}
-        {/* Temporarily hidden until issues with this are fixed */}
-        {/* {!prIsMerged &&
+        {/* Ship It button - only show when:
+            1. PR is not merged
+            2. PR is in sync with local branch
+            3. PR is mergeable (no conflicts, checks pass)
+            4. Working tree is clean
+            5. PR target is not stale (target branch hasn't been merged)
+            6. Branch is at bottom of stack (no child PRs targeting this branch)
+        */}
+        {!prIsMerged &&
           pr.isInSync &&
           pr.isMergeable &&
           !isWorkingTreeDirty &&
-          !branchWithPr?.hasStaleTarget && (
+          !branchWithPr?.hasStaleTarget &&
+          isBottomOfStack && (
             <button
               type="button"
               onClick={handleShipIt}
               disabled={isLoading}
-              className="cursor-pointer rounded-md border border-green-700 bg-green-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-50"
+              className={cn(
+                'cursor-pointer rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                shipItError
+                  ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
+                  : 'border-green-700 bg-green-600 text-white hover:bg-green-700'
+              )}
+              title={shipItError || undefined}
             >
-              {isLoading ? 'Shipping...' : 'Ship it!'}
+              {isLoading ? 'Shipping...' : shipItError ? 'Failed - Retry' : 'Ship it!'}
             </button>
-          )} */}
+          )}
+        {shipItError && (
+          <span
+            className="max-w-[200px] text-[10px] wrap-break-word text-red-500"
+            title={shipItError}
+          >
+            {shipItError.length > 50 ? `${shipItError.substring(0, 50)}...` : shipItError}
+          </span>
+        )}
         {!prIsMerged && branchWithPr?.hasStaleTarget && (
           <span
             className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium"

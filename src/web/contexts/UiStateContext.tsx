@@ -16,6 +16,7 @@ import { useGitWatcher } from '../hooks/use-git-watcher'
 import { useRequestVersioning } from '../hooks/use-request-versioning'
 import { useForgeStateContext } from './ForgeStateContext'
 import { useLocalStateContext } from './LocalStateContext'
+import type { SquashPreview, SquashResult, SquashBlocker } from '@shared/types'
 
 interface UiStateContextValue {
   toggleTheme: () => void
@@ -44,6 +45,8 @@ interface UiStateContextValue {
   renameBranch: (params: { oldBranchName: string; newBranchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
+  getFoldPreview: (params: { branchName: string }) => Promise<SquashPreview>
+  foldIntoParent: (params: { branchName: string; commitMessage?: string }) => Promise<SquashResult | undefined>
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string }) => Promise<void>
   syncTrunk: () => Promise<void>
@@ -568,6 +571,43 @@ export function UiStateProvider({
     await resolveWorktreeConflicts('delete')
   }, [resolveWorktreeConflicts])
 
+  const getFoldPreview = useCallback(
+    async (params: { branchName: string }): Promise<SquashPreview> => {
+      if (!repoPath) throw new Error('No repository selected')
+      return window.api.getFoldPreview({ repoPath, ...params })
+    },
+    [repoPath]
+  )
+
+  const foldIntoParent = useCallback(
+    async (params: { branchName: string; commitMessage?: string }): Promise<SquashResult | undefined> => {
+      if (!repoPath) return
+
+      try {
+        const result = await window.api.foldIntoParent({ repoPath, ...params })
+
+        if (result.success) {
+          toast.success(`Folded ${params.branchName} into parent`)
+          await refreshRepo()
+        } else if (result.localSuccess) {
+          toast.warning('Local fold succeeded but push failed. Retry git push manually.')
+          await refreshRepo()
+        } else {
+          toast.error(getSquashErrorMessage(result.error, result.errorDetail))
+        }
+
+        return result
+      } catch (error) {
+        toast.error('Fold failed', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
+    },
+    [repoPath, refreshRepo]
+  )
+
+
   // Handler for closing the worktree conflict dialog
   const handleWorktreeConflictClose = useCallback(() => {
     if (isResolvingWorktreeConflict) return
@@ -625,6 +665,8 @@ export function UiStateProvider({
       renameBranch,
       createPullRequest,
       updatePullRequest,
+      getFoldPreview,
+      foldIntoParent,
       uncommit,
       shipIt,
       syncTrunk,
@@ -663,6 +705,8 @@ export function UiStateProvider({
       renameBranch,
       createPullRequest,
       updatePullRequest,
+      getFoldPreview,
+      foldIntoParent,
       uncommit,
       shipIt,
       syncTrunk,
@@ -763,4 +807,31 @@ function findQueuedBranches(stack: UiStack): string[] {
   }
   traverse(stack)
   return branches
+}
+
+function getSquashErrorMessage(error?: SquashBlocker, detail?: string): string {
+  switch (error) {
+    case 'no_parent':
+      return 'Cannot fold: this branch has no parent'
+    case 'not_linear':
+      return 'Cannot fold: stack is not linear'
+    case 'multi_commit':
+      return 'Cannot fold: branch has multiple commits relative to parent'
+    case 'ancestry_mismatch':
+      return 'Cannot fold: parent changed, restack first'
+    case 'dirty_tree':
+      return detail ? `Cannot fold: ${detail}` : 'Cannot fold: working tree is dirty'
+    case 'descendant_has_pr':
+      return `Cannot fold: descendant branch has an open PR${detail ? ` (${detail})` : ''}`
+    case 'is_trunk':
+      return 'Cannot fold trunk branches'
+    case 'conflict':
+      return 'Cannot fold: changes conflict with parent'
+    case 'descendant_conflict':
+      return 'Cannot fold: descendant rebase conflicted'
+    case 'push_failed':
+      return detail ? `Push failed: ${detail}` : 'Push failed'
+    default:
+      return 'Fold failed'
+  }
 }

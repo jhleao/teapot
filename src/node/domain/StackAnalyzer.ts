@@ -241,6 +241,94 @@ export class StackAnalyzer {
   }
 
   /**
+   * Builds an index mapping each branch to its nearest ancestor branch.
+   *
+   * Distance represents how many commits separate the branch head from its parent head.
+   * Distance 0 means both branches point to the same commit (empty diff).
+   */
+  public static buildParentIndex(
+    branches: Branch[],
+    commitMap: Map<string, Commit>,
+    options: { includeRemote?: boolean } = {}
+  ): Map<string, { parent: string; distance: number }> {
+    const { includeRemote = false } = options
+    const branchByName = new Map(branches.map((branch) => [branch.ref, branch]))
+    const eligibleBranches = includeRemote ? branches : branches.filter((branch) => !branch.isRemote)
+    const headIndex = StackAnalyzer.buildBranchHeadIndex(eligibleBranches)
+
+    const parentIndex = new Map<string, { parent: string; distance: number }>()
+
+    for (const branch of eligibleBranches) {
+      if (!branch.headSha) continue
+
+      const parentInfo = StackAnalyzer.findNearestAncestorBranch(
+        branch,
+        headIndex,
+        branchByName,
+        commitMap
+      )
+
+      if (parentInfo) {
+        parentIndex.set(branch.ref, parentInfo)
+      }
+    }
+
+    return parentIndex
+  }
+
+  /**
+   * Builds a reverse index mapping parent branch -> child branches.
+   */
+  public static buildChildrenIndex(
+    parentIndex: Map<string, { parent: string; distance: number }>
+  ): Map<string, string[]> {
+    const childrenIndex = new Map<string, string[]>()
+
+    for (const [child, { parent }] of parentIndex) {
+      const existing = childrenIndex.get(parent) ?? []
+      existing.push(child)
+      childrenIndex.set(parent, existing)
+    }
+
+    return childrenIndex
+  }
+
+  /**
+   * Collects descendants in a straight line from the given branch.
+   *
+   * Returns null if any branching is encountered.
+   */
+  public static collectLinearDescendants(
+    branch: string,
+    childrenIndex: Map<string, string[]>
+  ): string[] | null {
+    const result: string[] = []
+    const visited = new Set<string>()
+    let current = branch
+
+    while (true) {
+      if (visited.has(current)) {
+        return null
+      }
+      visited.add(current)
+
+      const children = childrenIndex.get(current) ?? []
+      if (children.length === 0) {
+        break
+      }
+      if (children.length > 1) {
+        return null
+      }
+
+      const [child] = children
+      result.push(child)
+      current = child
+    }
+
+    return result
+  }
+
+  /**
    * Finds child branches that stem directly from a given parent commit.
    * A child branch is one whose head's parent is the parentHeadSha.
    */
@@ -260,5 +348,52 @@ export class StackAnalyzer {
       const commit = commitMap.get(branch.headSha)
       return commit?.parentSha === parentHeadSha
     })
+  }
+
+  private static findNearestAncestorBranch(
+    branch: Branch,
+    headIndex: Map<string, string[]>,
+    branchByName: Map<string, Branch>,
+    commitMap: Map<string, Commit>,
+    maxDepth: number = 1000
+  ): { parent: string; distance: number } | null {
+    let distance = 0
+    let currentSha: string | undefined = branch.headSha
+
+    while (currentSha && distance <= maxDepth) {
+      const candidates =
+        headIndex.get(currentSha)?.filter((candidate) => candidate !== branch.ref) ?? []
+      const parentBranch = StackAnalyzer.pickParentCandidate(candidates, branchByName)
+
+      if (parentBranch) {
+        return { parent: parentBranch.ref, distance }
+      }
+
+      const commit = commitMap.get(currentSha)
+      if (!commit?.parentSha) break
+
+      currentSha = commit.parentSha
+      distance++
+    }
+
+    return null
+  }
+
+  private static pickParentCandidate(
+    candidates: string[],
+    branchByName: Map<string, Branch>
+  ): Branch | null {
+    const resolved = candidates
+      .map((name) => branchByName.get(name))
+      .filter((branch): branch is Branch => Boolean(branch))
+      .sort((a, b) => {
+        if (a.isTrunk === b.isTrunk) {
+          return a.ref.localeCompare(b.ref)
+        }
+        // Prefer non-trunk parents when possible
+        return a.isTrunk ? 1 : -1
+      })
+
+    return resolved[0] ?? null
   }
 }

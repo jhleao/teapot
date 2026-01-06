@@ -1,4 +1,5 @@
 export * from './ipc'
 export * from './rebase'
 export * from './repo'
+export * from './squash'
 export type * from './ui'

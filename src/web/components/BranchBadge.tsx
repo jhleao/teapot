@@ -1,8 +1,9 @@
-import type { UiBranch } from '@shared/types'
+import type { SquashPreview, UiBranch } from '@shared/types'
 import React, { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
+import { FoldConfirmDialog } from './FoldConfirmDialog'
 import { RenameBranchDialog } from './RenameBranchDialog'
 
 export const BranchBadge = memo(function BranchBadge({
@@ -10,9 +11,20 @@ export const BranchBadge = memo(function BranchBadge({
 }: {
   data: UiBranch
 }): React.JSX.Element {
-  const { checkout, deleteBranch, isWorkingTreeDirty, createWorktree } = useUiStateContext()
+  const {
+    checkout,
+    deleteBranch,
+    isWorkingTreeDirty,
+    createWorktree,
+    getFoldPreview,
+    foldIntoParent
+  } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
+  const [isFoldDialogOpen, setIsFoldDialogOpen] = useState(false)
+  const [foldPreviewData, setFoldPreviewData] = useState<SquashPreview | null>(null)
+  const [isLoadingFoldPreview, setIsLoadingFoldPreview] = useState(false)
+  const [isFolding, setIsFolding] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -51,6 +63,51 @@ export const BranchBadge = memo(function BranchBadge({
     }
   }, [createWorktree, data.name, isCreatingWorktree])
 
+  const handleOpenFoldDialog = useCallback(async () => {
+    if (isWorkingTreeDirty) {
+      toast.error('Cannot fold while working tree has changes')
+      return
+    }
+    if (data.isRemote || data.isTrunk) {
+      toast.error('Cannot fold this branch')
+      return
+    }
+
+    setIsLoadingFoldPreview(true)
+    try {
+      const preview = await getFoldPreview({ branchName: data.name })
+      if (!preview.canSquash) {
+        toast.error(preview.errorDetail || 'Cannot fold this branch')
+        return
+      }
+      setFoldPreviewData(preview)
+      setIsFoldDialogOpen(true)
+    } catch (error) {
+      toast.error('Failed to load fold preview', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setIsLoadingFoldPreview(false)
+    }
+  }, [data.isRemote, data.isTrunk, data.name, getFoldPreview, isWorkingTreeDirty])
+
+  const handleConfirmFold = useCallback(
+    async (commitMessage: string) => {
+      if (!foldPreviewData) return
+      setIsFolding(true)
+      try {
+        const result = await foldIntoParent({ branchName: data.name, commitMessage })
+        if (result?.success || result?.localSuccess) {
+          setIsFoldDialogOpen(false)
+          setFoldPreviewData(null)
+        }
+      } finally {
+        setIsFolding(false)
+      }
+    },
+    [data.name, foldIntoParent, foldPreviewData]
+  )
+
   // Can't create worktree for branch that already has one
   const hasWorktree = data.worktree != null
 
@@ -66,6 +123,11 @@ export const BranchBadge = memo(function BranchBadge({
             <ContextMenuItem onClick={handleDelete} disabled={data.isCurrent}>
               Delete branch
             </ContextMenuItem>
+            {!data.isRemote && !data.isTrunk && (
+              <ContextMenuItem onClick={handleOpenFoldDialog} disabled={isLoadingFoldPreview}>
+                {isLoadingFoldPreview ? 'Checking...' : 'Fold into parent'}
+              </ContextMenuItem>
+            )}
             {!data.isRemote && !data.isTrunk && (
               <>
                 <ContextMenuSeparator />
@@ -107,6 +169,18 @@ export const BranchBadge = memo(function BranchBadge({
         onOpenChange={setIsRenameDialogOpen}
         branchName={data.name}
       />
+      {foldPreviewData && (
+        <FoldConfirmDialog
+          open={isFoldDialogOpen}
+          onOpenChange={(open) => {
+            setIsFoldDialogOpen(open)
+            if (!open) setFoldPreviewData(null)
+          }}
+          preview={foldPreviewData}
+          onConfirm={handleConfirmFold}
+          isSubmitting={isFolding}
+        />
+      )}
     </>
   )
 })

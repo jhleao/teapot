@@ -169,4 +169,86 @@ describe('cleanupBranch', () => {
       .filter(Boolean)
     expect(branches).not.toContain('feature')
   })
+
+  it('should remove worktree before deleting branch that is checked out in worktree', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Create a worktree for the feature branch
+    const worktreePath = path.join(os.tmpdir(), `teapot-wt-test-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" feature`, { cwd: repoPath })
+
+    try {
+      // Cleanup should succeed - it should remove worktree first, then delete branch
+      await BranchOperation.cleanup(repoPath, 'feature')
+
+      // Local branch should be gone
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^\*\s*/, ''))
+        .filter(Boolean)
+      expect(branches).not.toContain('feature')
+
+      // Worktree should be gone
+      const worktrees = execSync('git worktree list', { cwd: repoPath, encoding: 'utf-8' })
+      expect(worktrees).not.toContain(worktreePath)
+    } finally {
+      // Cleanup worktree if test fails partway through
+      try {
+        execSync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore if already removed
+      }
+    }
+  })
+
+  it('should throw error when worktree has uncommitted changes', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Create a worktree for the feature branch
+    const worktreePath = path.join(os.tmpdir(), `teapot-wt-test-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" feature`, { cwd: repoPath })
+
+    try {
+      // Make the worktree dirty by adding uncommitted changes
+      const dirtyFile = path.join(worktreePath, 'dirty.txt')
+      await fs.promises.writeFile(dirtyFile, 'uncommitted changes')
+
+      // Cleanup should fail because worktree is dirty
+      await expect(BranchOperation.cleanup(repoPath, 'feature')).rejects.toThrow(
+        /has uncommitted changes/
+      )
+
+      // Branch should still exist (may have + prefix when checked out in worktree)
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+        .filter(Boolean)
+      expect(branches).toContain('feature')
+
+      // Worktree should still exist
+      const worktrees = execSync('git worktree list', { cwd: repoPath, encoding: 'utf-8' })
+      expect(worktrees).toContain(worktreePath)
+    } finally {
+      // Cleanup worktree
+      try {
+        execSync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore if already removed
+      }
+    }
+  })
 })

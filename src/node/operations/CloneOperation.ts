@@ -9,8 +9,8 @@ import { log } from '@shared/logger'
 import fs from 'fs'
 import path from 'path'
 import { getGitAdapter, supportsClone } from '../adapters/git'
+import { extractRepoName, isValidGitUrl, parseGitCloneError } from '../domain'
 import { configStore } from '../store'
-import { extractRepoName } from '../utils/git-url'
 
 export type CloneResult = {
   success: boolean
@@ -31,6 +31,11 @@ export class CloneOperation {
 
     if (!targetPath.trim()) {
       return { success: false, error: 'Target path is required' }
+    }
+
+    // Validate URL format
+    if (!isValidGitUrl(url)) {
+      return { success: false, error: 'Invalid Git URL format' }
     }
 
     // Extract repo name from URL
@@ -65,9 +70,10 @@ export class CloneOperation {
       log.info(`[CloneOperation] Cloned ${url} to ${repoPath}`)
       return { success: true, repoPath }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const rawMessage = error instanceof Error ? error.message : String(error)
+      const { userMessage } = parseGitCloneError(rawMessage, url)
       log.error(`[CloneOperation] Failed to clone ${url}:`, error)
-      return { success: false, error: message }
+      return { success: false, error: userMessage }
     }
   }
 }

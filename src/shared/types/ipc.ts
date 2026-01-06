@@ -140,7 +140,9 @@ export const IPC_CHANNELS = {
   copyWorktreePath: 'copyWorktreePath',
   createWorktree: 'createWorktree',
   // Clone
-  cloneRepository: 'cloneRepository'
+  cloneRepository: 'cloneRepository',
+  getLastClonePath: 'getLastClonePath',
+  readClipboardText: 'readClipboardText'
 } as const
 
 export const IPC_EVENTS = {
@@ -374,6 +376,14 @@ export interface IpcContract {
   [IPC_CHANNELS.cloneRepository]: {
     request: { url: string; targetPath: string }
     response: { success: boolean; error?: string; repoPath?: string }
+  }
+  [IPC_CHANNELS.getLastClonePath]: {
+    request: void
+    response: string | null
+  }
+  [IPC_CHANNELS.readClipboardText]: {
+    request: void
+    response: string
   }
 }
 

@@ -1,5 +1,5 @@
 import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
-import { dialog, ipcMain } from 'electron'
+import { clipboard, dialog, ipcMain } from 'electron'
 import { CloneOperation } from '../operations/CloneOperation'
 import { gitForgeService } from '../services/ForgeService'
 import { configStore } from '../store'
@@ -62,7 +62,19 @@ const cloneRepositoryHandler: IpcHandlerOf<'cloneRepository'> = async (
   _event,
   { url, targetPath }
 ) => {
-  return CloneOperation.clone(url, targetPath)
+  const result = await CloneOperation.clone(url, targetPath)
+  if (result.success) {
+    configStore.setLastClonePath(targetPath)
+  }
+  return result
+}
+
+const getLastClonePathHandler: IpcHandlerOf<'getLastClonePath'> = () => {
+  return configStore.getLastClonePath() ?? null
+}
+
+const readClipboardTextHandler: IpcHandlerOf<'readClipboardText'> = () => {
+  return clipboard.readText()
 }
 
 export function registerLocalStateHandlers(): void {
@@ -78,4 +90,6 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.cloneRepository, cloneRepositoryHandler)
+  ipcMain.handle(IPC_CHANNELS.getLastClonePath, getLastClonePathHandler)
+  ipcMain.handle(IPC_CHANNELS.readClipboardText, readClipboardTextHandler)
 }

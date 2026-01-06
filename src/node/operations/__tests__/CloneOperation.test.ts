@@ -51,24 +51,24 @@ describe('CloneOperation.clone', () => {
   })
 
   it('returns error when targetPath is empty', async () => {
-    const result = await CloneOperation.clone(sourceRepoPath, '')
+    const result = await CloneOperation.clone('https://github.com/user/repo', '')
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Target path is required')
   })
 
   it('returns error when targetPath is whitespace only', async () => {
-    const result = await CloneOperation.clone(sourceRepoPath, '   ')
+    const result = await CloneOperation.clone('https://github.com/user/repo', '   ')
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Target path is required')
   })
 
-  it('returns error when repo name cannot be extracted from URL', async () => {
+  it('returns error when URL format is invalid', async () => {
     const result = await CloneOperation.clone('invalid-url-no-separator', targetDir)
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('Could not extract repository name from URL')
+    expect(result.error).toBe('Invalid Git URL format')
   })
 
   it('returns error when target directory already exists', async () => {
@@ -80,7 +80,8 @@ describe('CloneOperation.clone', () => {
     // Create the target subdirectory that would conflict
     await fs.promises.mkdir(path.join(targetDir, 'my-repo'))
 
-    const result = await CloneOperation.clone(namedSourceRepo, targetDir)
+    // Use file:// protocol for local path
+    const result = await CloneOperation.clone(`file://${namedSourceRepo}`, targetDir)
 
     expect(result.success).toBe(false)
     expect(result.error).toBe('Directory "my-repo" already exists in the target folder')
@@ -101,7 +102,8 @@ describe('CloneOperation.clone', () => {
     await fs.promises.rename(sourceRepoPath, namedSourceRepo)
     sourceRepoPath = namedSourceRepo
 
-    const result = await CloneOperation.clone(namedSourceRepo, targetDir)
+    // Use file:// protocol for local path
+    const result = await CloneOperation.clone(`file://${namedSourceRepo}`, targetDir)
 
     expect(result.success).toBe(true)
     expect(result.repoPath).toBe(path.join(targetDir, 'test-repo'))

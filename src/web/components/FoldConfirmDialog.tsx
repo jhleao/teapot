@@ -50,9 +50,7 @@ export function FoldConfirmDialog({
         <div className="space-y-4">
           {!preview.isEmpty && (
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                Combined commit message
-              </label>
+              <label className="text-foreground text-sm font-medium">Combined commit message</label>
               <textarea
                 className="border-border bg-background text-foreground focus:border-foreground w-full resize-none rounded-md border px-3 py-2 text-sm shadow-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 rows={8}
@@ -81,7 +79,7 @@ export function FoldConfirmDialog({
           )}
 
           {preview.hasPr && (
-            <div className="bg-amber-500/10 text-amber-900 dark:text-amber-200 border-amber-200 dark:border-amber-500 rounded-md border px-3 py-2 text-sm">
+            <div className="rounded-md border border-amber-200 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:border-amber-500 dark:text-amber-200">
               Closing PR #{preview.prNumber} and deleting {preview.targetBranch} after fold.
             </div>
           )}

@@ -47,62 +47,6 @@ export class BranchOperation {
   }
 
   /**
-   * Removes a worktree if the branch is checked out in one.
-   * Returns the worktree path if one was removed, or null if none existed.
-   */
-  private static async removeWorktreeForBranch(
-    repoPath: string,
-    branchName: string,
-    operation: 'cleanup' | 'delete'
-  ): Promise<string | null> {
-    const git = getGitAdapter()
-
-    const currentBranch = await git.currentBranch(repoPath)
-    if (currentBranch === branchName) {
-      throw new Error('Cannot delete the currently checked out branch')
-    }
-
-    const worktrees = await git.listWorktrees(repoPath)
-    const worktreeUsingBranch = worktrees.find((wt) => wt.branch === branchName && !wt.isMain)
-
-    if (!worktreeUsingBranch) {
-      return null
-    }
-
-    if (worktreeUsingBranch.isDirty) {
-      throw new Error(
-        `Cannot ${operation} branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
-      )
-    }
-
-    log.info(
-      `[BranchOperation.${operation}] Branch ${branchName} is used by worktree ${worktreeUsingBranch.path}, removing worktree first`
-    )
-    const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
-    if (!result.success) {
-      throw new Error(`Failed to remove worktree: ${result.error}`)
-    }
-
-    // If the removed worktree was the active one, fall back to main worktree
-    const activeWorktree = configStore.getActiveWorktree(repoPath)
-    if (activeWorktree) {
-      try {
-        const [removedReal, activeReal] = await Promise.all([
-          fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
-          fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
-        ])
-        if (removedReal === activeReal) {
-          configStore.setActiveWorktree(repoPath, null)
-        }
-      } catch {
-        // Best-effort realpath check; ignore resolution errors
-      }
-    }
-
-    return worktreeUsingBranch.path
-  }
-
-  /**
    * Cleans up a merged branch by deleting it both locally and on the remote.
    * If the branch is checked out in a worktree, the worktree is removed first.
    */
@@ -128,9 +72,7 @@ export class BranchOperation {
     // 3. Network errors shouldn't prevent local cleanup of a merged branch
     try {
       await git.deleteRemoteTrackingBranch(repoPath, 'origin', branchName)
-      log.info(
-        `[BranchOperation.cleanup] Deleted remote-tracking ref: origin/${branchName}`
-      )
+      log.info(`[BranchOperation.cleanup] Deleted remote-tracking ref: origin/${branchName}`)
     } catch {
       // Ignore - the remote-tracking ref may not exist
     }
@@ -249,6 +191,62 @@ export class BranchOperation {
         trunkName
       }
     }
+  }
+
+  /**
+   * Removes a worktree if the branch is checked out in one.
+   * Returns the worktree path if one was removed, or null if none existed.
+   */
+  private static async removeWorktreeForBranch(
+    repoPath: string,
+    branchName: string,
+    operation: 'cleanup' | 'delete'
+  ): Promise<string | null> {
+    const git = getGitAdapter()
+
+    const currentBranch = await git.currentBranch(repoPath)
+    if (currentBranch === branchName) {
+      throw new Error('Cannot delete the currently checked out branch')
+    }
+
+    const worktrees = await git.listWorktrees(repoPath)
+    const worktreeUsingBranch = worktrees.find((wt) => wt.branch === branchName && !wt.isMain)
+
+    if (!worktreeUsingBranch) {
+      return null
+    }
+
+    if (worktreeUsingBranch.isDirty) {
+      throw new Error(
+        `Cannot ${operation} branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
+      )
+    }
+
+    log.info(
+      `[BranchOperation.${operation}] Branch ${branchName} is used by worktree ${worktreeUsingBranch.path}, removing worktree first`
+    )
+    const result = await WorktreeOperation.remove(repoPath, worktreeUsingBranch.path)
+    if (!result.success) {
+      throw new Error(`Failed to remove worktree: ${result.error}`)
+    }
+
+    // If the removed worktree was the active one, fall back to main worktree
+    const activeWorktree = configStore.getActiveWorktree(repoPath)
+    if (activeWorktree) {
+      try {
+        const [removedReal, activeReal] = await Promise.all([
+          fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
+          fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
+        ])
+        if (removedReal === activeReal) {
+          configStore.setActiveWorktree(repoPath, null)
+        }
+      } catch {
+        // Best-effort realpath check; ignore resolution errors
+      }
+    }
+
+    return worktreeUsingBranch.path
   }
 
   /**

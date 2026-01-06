@@ -15,7 +15,11 @@ export type SquashValidationResult = {
 }
 
 export class SquashValidator {
-  static validate(repo: Repo, branchToFold: string, forgeState: GitForgeState): SquashValidationResult {
+  static validate(
+    repo: Repo,
+    branchToFold: string,
+    forgeState: GitForgeState
+  ): SquashValidationResult {
     const branchMap = new Map(repo.branches.map((branch) => [branch.ref, branch]))
     const targetBranch = branchMap.get(branchToFold)
     const forgePullRequests = forgeState.pullRequests ?? []

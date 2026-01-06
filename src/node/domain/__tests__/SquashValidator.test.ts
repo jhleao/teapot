@@ -1,15 +1,11 @@
 import type { Branch, Commit, Repo, WorkingTreeStatus } from '@shared/types'
-import type { GitForgeState } from '../../../shared/types/git-forge'
 import { describe, expect, it } from 'vitest'
+import type { GitForgeState } from '../../../shared/types/git-forge'
 import { SquashValidator } from '../SquashValidator'
 
 describe('SquashValidator', () => {
   it('allows squashing linear single-commit branch', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A'),
-      createCommit('C', 'B')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A'), createCommit('C', 'B')]
     const branches = [
       createBranch('main', 'A', { isTrunk: true }),
       createBranch('feature-1', 'B'),
@@ -87,15 +83,8 @@ describe('SquashValidator', () => {
 
   it('blocks multi-commit branches', () => {
     // feature has two commits on top of main
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A'),
-      createCommit('C', 'B')
-    ]
-    const branches = [
-      createBranch('main', 'A', { isTrunk: true }),
-      createBranch('feature', 'C')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A'), createCommit('C', 'B')]
+    const branches = [createBranch('main', 'A', { isTrunk: true }), createBranch('feature', 'C')]
     const repo = createRepo({ commits, branches })
 
     const result = SquashValidator.validate(repo, 'feature', createForgeState())
@@ -105,20 +94,14 @@ describe('SquashValidator', () => {
   })
 
   it('blocks when a descendant has an open PR', () => {
-    const commits = [
-      createCommit('A', ''),
-      createCommit('B', 'A'),
-      createCommit('C', 'B')
-    ]
+    const commits = [createCommit('A', ''), createCommit('B', 'A'), createCommit('C', 'B')]
     const branches = [
       createBranch('main', 'A', { isTrunk: true }),
       createBranch('feature-1', 'B'),
       createBranch('feature-2', 'C')
     ]
     const repo = createRepo({ commits, branches })
-    const forgeState = createForgeState([
-      { number: 1, headRefName: 'feature-2', state: 'open' }
-    ])
+    const forgeState = createForgeState([{ number: 1, headRefName: 'feature-2', state: 'open' }])
 
     const result = SquashValidator.validate(repo, 'feature-1', forgeState)
 

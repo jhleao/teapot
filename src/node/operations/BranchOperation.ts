@@ -19,6 +19,7 @@ import {
   supportsMerge,
   type GitAdapter
 } from '../adapters/git'
+import { ExecutionContextService } from '../services/ExecutionContextService'
 import { gitForgeService } from '../services/ForgeService'
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
@@ -124,6 +125,7 @@ export class BranchOperation {
    * Syncs the trunk branch with origin by fetching and fast-forwarding.
    * Detects the trunk branch automatically (main, master, etc.).
    * This is the ONLY operation that does fast-forwarding.
+   * Automatically uses a clean worktree if the active worktree is dirty.
    */
   static async syncTrunk(repoPath: string): Promise<SyncTrunkResult> {
     const git = getGitAdapter()
@@ -142,14 +144,14 @@ export class BranchOperation {
     const remoteRef = `origin/${trunkName}`
 
     try {
-      // Fetch from origin first
+      // Fetch from origin first (doesn't require clean worktree)
       await git.fetch(repoPath, 'origin')
 
       // Check if local trunk exists
       const localExists = await branchExists(repoPath, trunkName)
 
       if (!localExists) {
-        // Create local trunk from remote
+        // Create local trunk from remote (doesn't require checkout)
         await git.branch(repoPath, trunkName, {
           checkout: false,
           startPoint: remoteRef
@@ -171,20 +173,31 @@ export class BranchOperation {
         }
       }
 
-      // Perform fast-forward
-      const ffResult = await this.fastForwardTrunk(repoPath, trunkName, remoteRef, git)
-      if (!ffResult.success) {
+      // Acquire execution context for checkout/merge operations
+      const context = await ExecutionContextService.acquire(repoPath, 'sync-trunk')
+      try {
+        // Perform fast-forward using the execution path
+        const ffResult = await this.fastForwardTrunk(
+          context.executionPath,
+          trunkName,
+          remoteRef,
+          git
+        )
+        if (!ffResult.success) {
+          return {
+            status: 'error',
+            message: ffResult.error ?? 'Fast-forward failed',
+            trunkName
+          }
+        }
+
         return {
-          status: 'error',
-          message: ffResult.error ?? 'Fast-forward failed',
+          status: 'success',
+          message: `Synced ${trunkName} with origin`,
           trunkName
         }
-      }
-
-      return {
-        status: 'success',
-        message: `Synced ${trunkName} with origin`,
-        trunkName
+      } finally {
+        await ExecutionContextService.release(context)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)

@@ -14,6 +14,7 @@ import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
 import { PrTargetResolver, ShipItNavigator } from '../domain'
 import { RepoModelService } from '../services'
+import { ExecutionContextService } from '../services/ExecutionContextService'
 import { gitForgeService } from '../services/ForgeService'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
 import { configStore } from '../store'
@@ -23,6 +24,10 @@ export type ShipItResult =
       success: true
       message: string
       needsRebase: boolean
+      /** Whether we navigated to the target branch after merge */
+      navigated: boolean
+      /** If navigation was skipped, why */
+      navigationSkippedReason?: 'dirty_worktree' | 'checkout_failed' | 'no_navigation_needed'
     }
   | {
       success: false
@@ -78,6 +83,7 @@ export class PullRequestOperation {
   /**
    * Ships a PR by merging it via GitHub API and handling post-merge navigation.
    * If the user was on the shipped branch, switches to the target branch.
+   * If the active worktree is dirty, skips navigation to preserve uncommitted changes.
    */
   static async shipIt(
     repoPath: string,
@@ -102,6 +108,9 @@ export class PullRequestOperation {
     // Get current branch before merging (for navigation decision)
     const currentBranch = await git.currentBranch(repoPath)
 
+    // Check if active worktree is dirty before merging
+    const isActiveWorktreeDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
+
     // Merge via GitHub API
     try {
       await gitForgeService.mergePullRequest(repoPath, pr.number, mergeStrategy)
@@ -113,6 +122,20 @@ export class PullRequestOperation {
 
     // Fetch to update remote refs
     await git.fetch(repoPath)
+
+    // If worktree is dirty, skip navigation to preserve uncommitted changes
+    if (isActiveWorktreeDirty) {
+      log.info(
+        '[PullRequestOperation.shipIt] Skipping navigation - worktree has uncommitted changes'
+      )
+      return {
+        success: true,
+        message: 'Shipped! Staying on current branch to preserve your changes.',
+        needsRebase: false,
+        navigated: false,
+        navigationSkippedReason: 'dirty_worktree'
+      }
+    }
 
     // Determine navigation using pure domain logic
     const navigation = ShipItNavigator.determineNavigation({
@@ -146,12 +169,20 @@ export class PullRequestOperation {
         return {
           success: true,
           message: 'Shipped! (Could not switch branches automatically)',
-          needsRebase: navigation.needsRebase
+          needsRebase: navigation.needsRebase,
+          navigated: false,
+          navigationSkippedReason: 'checkout_failed'
         }
       }
     }
 
-    return { success: true, message: navigation.message, needsRebase: navigation.needsRebase }
+    return {
+      success: true,
+      message: navigation.message,
+      needsRebase: navigation.needsRebase,
+      navigated: navigation.targetBranch !== null,
+      navigationSkippedReason: navigation.targetBranch === null ? 'no_navigation_needed' : undefined
+    }
   }
 
   /**

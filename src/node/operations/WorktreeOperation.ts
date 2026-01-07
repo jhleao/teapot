@@ -9,6 +9,7 @@
  */
 
 import { exec } from 'child_process'
+import { randomBytes } from 'crypto'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -243,6 +244,51 @@ export class WorktreeOperation {
    */
   static copyPath(worktreePath: string): WorktreeOperationResult {
     return ExternalApps.copyToClipboard(worktreePath)
+  }
+
+  /**
+   * Create a temporary worktree for execution-only operations.
+   * Uses detached HEAD at trunk for fast checkout.
+   *
+   * @param repoPath - Path to the git repository
+   * @param baseDir - Optional base directory for the worktree (defaults to /tmp/teapot/exec)
+   */
+  static async createTemporary(
+    repoPath: string,
+    baseDir?: string
+  ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
+    try {
+      const git = getGitAdapter()
+
+      // Get trunk ref for detached HEAD
+      const branches = await git.listBranches(repoPath)
+      const trunkName =
+        branches.find((b) => b === 'main') ?? branches.find((b) => b === 'master') ?? 'HEAD'
+
+      // Generate unique directory name using crypto
+      const uniqueId = randomBytes(8).toString('hex')
+      const dirName = `teapot-exec-${uniqueId}`
+      const effectiveBaseDir = baseDir ?? path.join(os.tmpdir(), 'teapot', 'exec')
+      const worktreePath = path.join(effectiveBaseDir, dirName)
+
+      // Ensure the parent directory exists
+      await fs.promises.mkdir(effectiveBaseDir, { recursive: true })
+
+      // Create worktree with detached HEAD for faster checkout
+      await execAsync(`git -C "${repoPath}" worktree add --detach "${worktreePath}" "${trunkName}"`)
+
+      // Resolve symlinks to get the canonical path (e.g., /var -> /private/var on macOS)
+      const resolvedPath = await fs.promises.realpath(worktreePath)
+
+      log.info(
+        `[WorktreeOperation] Created temporary worktree ${resolvedPath} at ${trunkName} (detached)`
+      )
+      return { success: true, worktreePath: resolvedPath }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.createTemporary] Failed:`, error)
+      return { success: false, error: message }
+    }
   }
 
   /**

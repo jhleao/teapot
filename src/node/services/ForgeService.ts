@@ -55,6 +55,7 @@ export class GitForgeService {
 
     const adapter = new GitHubAdapter(pat, owner, repo)
     const client = new GitForgeClient(adapter)
+    client.setRepoPath(repoPath) // Enable persistent caching
     this.clients.set(repoPath, client)
     return client
   }

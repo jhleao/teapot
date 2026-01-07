@@ -1,5 +1,5 @@
 import type { DetachedWorktree, LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
-import type { MergeStrategy } from '@shared/types/git-forge'
+import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
 // Rebase session type - defined here to avoid circular imports with SessionService
@@ -13,6 +13,14 @@ export type StoredRebaseSession = {
   autoDetachedWorktrees?: DetachedWorktree[]
 }
 
+/**
+ * Cached forge state for instant UI on app startup.
+ */
+export type CachedForgeState = {
+  state: GitForgeState
+  timestamp: number
+}
+
 interface StoreSchema {
   repos: LocalRepo[]
   githubPat?: string
@@ -20,6 +28,7 @@ interface StoreSchema {
   mergeStrategy?: MergeStrategy
   lastClonePath?: string
   rebaseSessions: Record<string, StoredRebaseSession>
+  forgeStateCache: Record<string, CachedForgeState>
 }
 
 export class ConfigStore {
@@ -30,7 +39,8 @@ export class ConfigStore {
       name: 'config',
       defaults: {
         repos: [],
-        rebaseSessions: {}
+        rebaseSessions: {},
+        forgeStateCache: {}
       }
     })
   }
@@ -162,6 +172,47 @@ export class ConfigStore {
   hasRebaseSession(repoPath: string): boolean {
     const sessions = this.store.get('rebaseSessions', {})
     return repoPath in sessions
+  }
+
+  // Forge state cache methods
+
+  /**
+   * Get cached forge state for a repository.
+   * Returns null if no cache or if cache is too old (> 1 hour).
+   */
+  getCachedForgeState(repoPath: string): CachedForgeState | null {
+    const cache = this.store.get('forgeStateCache', {})
+    const cached = cache[repoPath]
+    if (!cached) return null
+
+    // Expire cache after 1 hour
+    const ONE_HOUR_MS = 60 * 60 * 1000
+    if (Date.now() - cached.timestamp > ONE_HOUR_MS) {
+      return null
+    }
+
+    return cached
+  }
+
+  /**
+   * Set cached forge state for a repository.
+   */
+  setCachedForgeState(repoPath: string, state: GitForgeState): void {
+    const cache = this.store.get('forgeStateCache', {})
+    cache[repoPath] = {
+      state,
+      timestamp: Date.now()
+    }
+    this.store.set('forgeStateCache', cache)
+  }
+
+  /**
+   * Clear cached forge state for a repository.
+   */
+  clearCachedForgeState(repoPath: string): void {
+    const cache = this.store.get('forgeStateCache', {})
+    delete cache[repoPath]
+    this.store.set('forgeStateCache', cache)
   }
 }
 

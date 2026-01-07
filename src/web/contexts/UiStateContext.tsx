@@ -74,7 +74,50 @@ interface UiStateContextValue {
   queuedBranches: string[]
 }
 
-const UiStateContext = createContext<UiStateContextValue | undefined>(undefined)
+// Default context value for graceful degradation during error recovery.
+// When an error occurs and React unmounts/remounts the tree, child components
+// may briefly render before UiStateProvider mounts. This default ensures they
+// get a safe value instead of throwing, allowing the UI to show loading state.
+const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
+  uiState: null,
+  repoError: null,
+  repoPath: null,
+  setFilesStageStatus: async () => {},
+  commit: async () => {},
+  amend: async () => {},
+  discardStaged: async () => {},
+  submitRebaseIntent: async () => {},
+  confirmRebaseIntent: async () => {},
+  cancelRebaseIntent: async () => {},
+  continueRebase: async () => {},
+  abortRebase: async () => {},
+  skipRebaseCommit: async () => {},
+  resumeRebaseQueue: async () => {},
+  dismissRebaseQueue: async () => {},
+  handleStashAndProceed: async () => {},
+  handleDeleteAndProceed: async () => {},
+  checkout: async () => {},
+  deleteBranch: async () => {},
+  cleanupBranch: async () => {},
+  createBranch: async () => {},
+  renameBranch: async () => {},
+  createPullRequest: async () => {},
+  updatePullRequest: async () => {},
+  getFoldPreview: async () => ({ canSquash: false, commits: [], combinedMessage: '' }),
+  foldIntoParent: async () => undefined,
+  uncommit: async () => {},
+  shipIt: async () => {},
+  syncTrunk: async () => {},
+  switchWorktree: async () => {},
+  createWorktree: async () => ({ success: false }),
+  removeWorktree: async () => ({ success: false }),
+  isWorkingTreeDirty: false,
+  isRebasingWithConflicts: false,
+  isOnTrunk: false,
+  queuedBranches: []
+}
+
+const UiStateContext = createContext<UiStateContextValue>(DEFAULT_UI_STATE_CONTEXT)
 
 export function UiStateProvider({
   children,
@@ -752,11 +795,7 @@ export function UiStateProvider({
 
 // eslint-disable-next-line react-refresh/only-export-components
 export function useUiStateContext(): UiStateContextValue {
-  const context = useContext(UiStateContext)
-  if (context === undefined) {
-    throw new Error('useUiStateContext must be used within a UiStateProvider')
-  }
-  return context
+  return useContext(UiStateContext)
 }
 
 function dedupeWorktreeConflicts(conflicts: WorktreeConflict[]): WorktreeConflict[] {

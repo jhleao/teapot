@@ -62,6 +62,14 @@ export type UiBranch = {
    * this contains information about that worktree.
    */
   worktree?: UiWorktreeBadge
+  /**
+   * SHAs of commits "owned" by this branch.
+   * Includes all commits from the branch head back to (but not including)
+   * the nearest parent branch head. Used for multi-commit branch display
+   * and drag operations.
+   * Order: head commit first, oldest owned commit last.
+   */
+  ownedCommitShas?: string[]
 }
 
 /**

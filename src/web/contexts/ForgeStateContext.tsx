@@ -1,5 +1,10 @@
 import { log } from '@shared/logger'
-import type { ForgeStateResult, ForgeStatus, GitForgeState } from '@shared/types/git-forge'
+import type {
+  ForgeStateResult,
+  ForgeStatus,
+  GitForgeState,
+  RateLimitInfo
+} from '@shared/types/git-forge'
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useRequestVersioning } from '../hooks/use-request-versioning'
 
@@ -12,6 +17,8 @@ interface ForgeStateContextValue {
   forgeError: string | null
   /** Timestamp of last successful fetch */
   lastSuccessfulFetch: number | null
+  /** Rate limit information from GitHub API */
+  rateLimit: RateLimitInfo | null
   /** Manually trigger a refresh of forge state */
   refreshForge: () => Promise<void>
   /** Optimistically mark a PR as merged (prevents Ship It button race condition) */
@@ -45,6 +52,7 @@ export function ForgeStateProvider({
   const [forgeStatus, setForgeStatus] = useState<ForgeStatus>('idle')
   const [forgeError, setForgeError] = useState<string | null>(null)
   const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<number | null>(null)
+  const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
 
   /**
    * Optimistically marks a PR as merged by branch name.
@@ -91,7 +99,10 @@ export function ForgeStateProvider({
               // Add checks_pending blocker if not already present
               blockers: pr.mergeReadiness.blockers.includes('checks_pending')
                 ? pr.mergeReadiness.blockers
-                : [...pr.mergeReadiness.blockers.filter((b) => b !== 'checks_failed'), 'checks_pending']
+                : [
+                    ...pr.mergeReadiness.blockers.filter((b) => b !== 'checks_failed'),
+                    'checks_pending'
+                  ]
             }
           }
         })
@@ -99,41 +110,51 @@ export function ForgeStateProvider({
     })
   }, [])
 
-  const refreshForge = useCallback(async () => {
-    if (!repoPath) {
-      setForgeState(null)
-      setForgeStatus('idle')
-      setForgeError(null)
-      return
-    }
-
-    const version = acquireVersion()
-    setForgeStatus('fetching')
-
-    try {
-      const result: ForgeStateResult = await window.api.getForgeState({ repoPath })
-
-      if (!checkVersion(version)) {
-        log.debug('[ForgeStateContext] Discarding stale response')
+  const fetchForgeState = useCallback(
+    async (forceRefresh = false) => {
+      if (!repoPath) {
+        setForgeState(null)
+        setForgeStatus('idle')
+        setForgeError(null)
         return
       }
 
-      setForgeState(result.state)
-      setForgeStatus(result.status)
-      setForgeError(result.error ?? null)
-      if (result.lastSuccessfulFetch) {
-        setLastSuccessfulFetch(result.lastSuccessfulFetch)
-      }
-    } catch (error) {
-      if (!checkVersion(version)) return
+      const version = acquireVersion()
+      setForgeStatus('fetching')
 
-      // Network error or IPC failure - keep stale state
-      log.error('Failed to fetch forge state:', error)
-      setForgeStatus('error')
-      setForgeError(error instanceof Error ? error.message : 'Failed to connect to GitHub')
-      // Don't clear forgeState - keep showing stale data
-    }
-  }, [repoPath, acquireVersion, checkVersion])
+      try {
+        const result: ForgeStateResult = await window.api.getForgeState({ repoPath, forceRefresh })
+
+        if (!checkVersion(version)) {
+          log.debug('[ForgeStateContext] Discarding stale response')
+          return
+        }
+
+        setForgeState(result.state)
+        setForgeStatus(result.status)
+        setForgeError(result.error ?? null)
+        if (result.lastSuccessfulFetch) {
+          setLastSuccessfulFetch(result.lastSuccessfulFetch)
+        }
+        if (result.rateLimit) {
+          setRateLimit(result.rateLimit)
+        }
+      } catch (error) {
+        if (!checkVersion(version)) return
+
+        // Network error or IPC failure - keep stale state
+        log.error('Failed to fetch forge state:', error)
+        setForgeStatus('error')
+        setForgeError(error instanceof Error ? error.message : 'Failed to connect to GitHub')
+        // Don't clear forgeState - keep showing stale data
+      }
+    },
+    [repoPath, acquireVersion, checkVersion]
+  )
+
+  const refreshForge = useCallback(async () => {
+    await fetchForgeState(false)
+  }, [fetchForgeState])
 
   // Reset state and fetch when repoPath changes
   useEffect(() => {
@@ -143,28 +164,60 @@ export function ForgeStateProvider({
     refreshForge()
   }, [refreshForge])
 
-  // Refresh on window focus
+  // Refresh on window focus (invalidate cache to ensure fresh data)
   useEffect(() => {
     const handleFocus = (): void => {
-      refreshForge()
+      fetchForgeState(true)
     }
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
-  }, [refreshForge])
+  }, [fetchForgeState])
 
-  // Periodic refresh every 5 seconds when tab is visible
+  // Adaptive polling based on state:
+  // - 5s when CI checks are pending (need to show status changes quickly)
+  // - 15s when active (default)
+  // - 30s when background tab or rate limit is low
   useEffect(() => {
     if (!repoPath) return
 
-    const REFRESH_INTERVAL_MS = 5_000
-    const intervalId = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        refreshForge()
+    const getPollingInterval = (): number => {
+      // Slow down polling if rate limit is low
+      if (rateLimit && rateLimit.remaining < rateLimit.limit * 0.1) {
+        return 60_000 // 1 minute when rate limited
       }
-    }, REFRESH_INTERVAL_MS)
 
-    return () => clearInterval(intervalId)
-  }, [repoPath, refreshForge])
+      // Poll faster when CI checks are pending
+      const hasPendingChecks = forgeState?.pullRequests.some(
+        (pr) => pr.mergeReadiness?.checksStatus === 'pending'
+      )
+      if (hasPendingChecks) {
+        return 5_000 // 5s for pending checks
+      }
+
+      // Slow down polling when tab is in background
+      if (document.visibilityState === 'hidden') {
+        return 30_000 // 30s when hidden
+      }
+
+      return 15_000 // Default 15s
+    }
+
+    let timeoutId: ReturnType<typeof setTimeout>
+
+    const scheduleNext = (): void => {
+      const interval = getPollingInterval()
+      timeoutId = setTimeout(async () => {
+        if (document.visibilityState === 'visible') {
+          await refreshForge()
+        }
+        scheduleNext()
+      }, interval)
+    }
+
+    scheduleNext()
+
+    return () => clearTimeout(timeoutId)
+  }, [repoPath, refreshForge, forgeState, rateLimit])
 
   return (
     <ForgeStateContext.Provider
@@ -173,6 +226,7 @@ export function ForgeStateProvider({
         forgeStatus,
         forgeError,
         lastSuccessfulFetch,
+        rateLimit,
         refreshForge,
         markPrAsMerged,
         markPrChecksPending

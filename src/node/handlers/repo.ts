@@ -67,7 +67,10 @@ const getRepo: IpcHandlerOf<'getRepo'> = async (_event, { repoPath, declutterTru
   return UiStateOperation.getUiState(repoPath, { declutterTrunk })
 }
 
-const getForgeState: IpcHandlerOf<'getForgeState'> = async (_event, { repoPath }) => {
+const getForgeState: IpcHandlerOf<'getForgeState'> = async (_event, { repoPath, forceRefresh }) => {
+  if (forceRefresh) {
+    return gitForgeService.refreshWithStatus(repoPath)
+  }
   return gitForgeService.getStateWithStatus(repoPath)
 }
 

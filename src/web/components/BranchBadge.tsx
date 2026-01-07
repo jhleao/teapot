@@ -63,6 +63,32 @@ export const BranchBadge = memo(function BranchBadge({
     }
   }, [createWorktree, data.name, isCreatingWorktree])
 
+  const handleOpenInEditor = useCallback(async () => {
+    if (!data.worktree) return
+    const result = await window.api.openWorktreeInEditor({ worktreePath: data.worktree.path })
+    if (!result.success) {
+      toast.error('Failed to open in editor', { description: result.error })
+    }
+  }, [data.worktree])
+
+  const handleOpenInTerminal = useCallback(async () => {
+    if (!data.worktree) return
+    const result = await window.api.openWorktreeInTerminal({ worktreePath: data.worktree.path })
+    if (!result.success) {
+      toast.error('Failed to open terminal', { description: result.error })
+    }
+  }, [data.worktree])
+
+  const handleCopyPath = useCallback(async () => {
+    if (!data.worktree) return
+    const result = await window.api.copyWorktreePath({ worktreePath: data.worktree.path })
+    if (result.success) {
+      toast.success('Path copied to clipboard')
+    } else {
+      toast.error('Failed to copy path', { description: result.error })
+    }
+  }, [data.worktree])
+
   const handleOpenFoldDialog = useCallback(async () => {
     if (isWorkingTreeDirty) {
       toast.error('Cannot fold while working tree has changes')
@@ -117,6 +143,15 @@ export const BranchBadge = memo(function BranchBadge({
         content={
           <>
             <ContextMenuItem onClick={handleCopy}>Copy branch name</ContextMenuItem>
+            {hasWorktree && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={handleOpenInEditor}>Open in Editor</ContextMenuItem>
+                <ContextMenuItem onClick={handleOpenInTerminal}>Open in Terminal</ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyPath}>Copy Path</ContextMenuItem>
+                <ContextMenuSeparator />
+              </>
+            )}
             <ContextMenuItem onClick={handleRename} disabled={data.isRemote}>
               Rename branch
             </ContextMenuItem>

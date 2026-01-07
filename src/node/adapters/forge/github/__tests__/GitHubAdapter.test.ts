@@ -1,6 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GitHubAdapter } from '../GitHubAdapter'
 
+// Mock the GraphQL client to throw by default (falls back to REST)
+const mockGraphQLClient = {
+  query: vi.fn().mockRejectedValue(new Error('GraphQL disabled for test')),
+  getRateLimitInfo: vi.fn().mockReturnValue(null),
+  invalidateCache: vi.fn()
+}
+
+vi.mock('../GitHubGraphQLClient', () => ({
+  GitHubGraphQLClient: class MockGitHubGraphQLClient {
+    query = mockGraphQLClient.query
+    getRateLimitInfo = mockGraphQLClient.getRateLimitInfo
+    invalidateCache = mockGraphQLClient.invalidateCache
+  },
+  FETCH_PRS_QUERY: 'mock query'
+}))
+
 // Mock undici's request function and Agent class
 vi.mock('undici', () => {
   // Create a mock Agent class

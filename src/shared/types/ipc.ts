@@ -165,7 +165,7 @@ export interface IpcContract {
     response: UiState | null
   }
   [IPC_CHANNELS.getForgeState]: {
-    request: { repoPath: string }
+    request: { repoPath: string; forceRefresh?: boolean }
     response: ForgeStateResult
   }
   [IPC_CHANNELS.submitRebaseIntent]: {

@@ -1,3 +1,4 @@
+import { log } from '@shared/logger'
 import {
   CheckStatus,
   ForgePullRequest,
@@ -6,9 +7,18 @@ import {
   MergeBlocker,
   MergeReadiness,
   MergeStrategy,
+  RateLimitInfo,
   StatusCheck
 } from '@shared/types/git-forge'
 import { Agent, request } from 'undici'
+import {
+  FETCH_PRS_QUERY,
+  GitHubGraphQLClient,
+  GraphQLCheckRun,
+  GraphQLPullRequest,
+  GraphQLPullRequestsResponse,
+  GraphQLStatusContext
+} from './GitHubGraphQLClient'
 
 /**
  * Shared HTTP agent with timeout configuration for GitHub API requests.
@@ -23,20 +33,270 @@ const githubAgent = new Agent({
 /** Per-request timeout for GitHub API calls */
 const REQUEST_TIMEOUT_MS = 15_000
 
+/**
+ * Extended forge state that includes rate limit information.
+ * Used internally by GitHubAdapter to pass rate limit data.
+ */
+export type GitForgeStateWithRateLimit = GitForgeState & {
+  rateLimit?: RateLimitInfo
+}
+
 export class GitHubAdapter implements GitForgeAdapter {
+  private readonly graphqlClient: GitHubGraphQLClient
+
   constructor(
     private readonly pat: string,
     private readonly owner: string,
     private readonly repo: string
-  ) {}
+  ) {
+    this.graphqlClient = new GitHubGraphQLClient(pat, owner, repo)
+  }
 
-  async fetchState(): Promise<GitForgeState> {
+  /**
+   * Returns the current rate limit information from the last API request.
+   */
+  getRateLimitInfo(): RateLimitInfo | null {
+    return this.graphqlClient.getRateLimitInfo()
+  }
+
+  /**
+   * Fetches the current state of pull requests using GraphQL API.
+   * This is much more efficient than REST - single request vs ~16 requests.
+   *
+   * Returns extended state including rate limit information.
+   */
+  async fetchState(): Promise<GitForgeStateWithRateLimit> {
+    try {
+      return await this.fetchStateGraphQL()
+    } catch (error) {
+      // Log the error and fall back to REST if GraphQL fails
+      log.warn('[GitHubAdapter] GraphQL fetch failed, falling back to REST:', error)
+      return this.fetchStateREST()
+    }
+  }
+
+  /**
+   * Fetches PR state using GitHub GraphQL API.
+   * Single request gets all PR data including check status.
+   */
+  private async fetchStateGraphQL(): Promise<GitForgeStateWithRateLimit> {
+    const response = await this.graphqlClient.query<GraphQLPullRequestsResponse>(FETCH_PRS_QUERY, {
+      owner: this.owner,
+      repo: this.repo,
+      first: 100
+    })
+
+    if (!response.data?.repository) {
+      throw new Error('Repository not found or not accessible')
+    }
+
+    const pullRequests: ForgePullRequest[] = response.data.repository.pullRequests.nodes.map((pr) =>
+      this.mapGraphQLPullRequest(pr)
+    )
+
+    return {
+      pullRequests,
+      rateLimit: response.rateLimit ?? undefined
+    }
+  }
+
+  /**
+   * Maps a GraphQL PR response to our ForgePullRequest type.
+   */
+  private mapGraphQLPullRequest(pr: GraphQLPullRequest): ForgePullRequest {
+    const state = this.mapGraphQLPrState(pr)
+    const checks = this.extractGraphQLChecks(pr)
+    const mergeReadiness = this.buildGraphQLMergeReadiness(pr, checks)
+
+    return {
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      state,
+      headRefName: pr.headRefName,
+      headSha: pr.headRefOid,
+      baseRefName: pr.baseRefName,
+      createdAt: pr.createdAt,
+      isMergeable: pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN',
+      mergeReadiness: state === 'open' || state === 'draft' ? mergeReadiness : undefined
+    }
+  }
+
+  /**
+   * Maps GraphQL PR state to our internal state.
+   */
+  private mapGraphQLPrState(pr: GraphQLPullRequest): ForgePullRequest['state'] {
+    if (pr.isDraft) return 'draft'
+    if (pr.state === 'MERGED') return 'merged'
+    if (pr.state === 'CLOSED') return 'closed'
+    return 'open'
+  }
+
+  /**
+   * Extracts status checks from GraphQL PR response.
+   */
+  private extractGraphQLChecks(pr: GraphQLPullRequest): StatusCheck[] {
+    const lastCommit = pr.commits.nodes[0]
+    if (!lastCommit?.commit.statusCheckRollup) {
+      return []
+    }
+
+    const contexts = lastCommit.commit.statusCheckRollup.contexts.nodes
+    return contexts.map((ctx) => {
+      if (ctx.__typename === 'CheckRun') {
+        return this.mapGraphQLCheckRun(ctx)
+      } else {
+        return this.mapGraphQLStatusContext(ctx)
+      }
+    })
+  }
+
+  /**
+   * Maps a GraphQL CheckRun to our StatusCheck type.
+   */
+  private mapGraphQLCheckRun(run: GraphQLCheckRun): StatusCheck {
+    let status: CheckStatus = 'pending'
+
+    if (run.status === 'COMPLETED') {
+      switch (run.conclusion) {
+        case 'SUCCESS':
+          status = 'success'
+          break
+        case 'FAILURE':
+        case 'TIMED_OUT':
+        case 'ACTION_REQUIRED':
+        case 'STARTUP_FAILURE':
+          status = 'failure'
+          break
+        case 'NEUTRAL':
+        case 'SKIPPED':
+        case 'CANCELLED':
+        case 'STALE':
+          status = 'neutral'
+          break
+        default:
+          status = 'pending'
+      }
+    }
+
+    return {
+      name: run.name,
+      status,
+      description: run.summary ?? undefined,
+      detailsUrl: run.detailsUrl ?? undefined
+    }
+  }
+
+  /**
+   * Maps a GraphQL StatusContext (legacy commit status) to our StatusCheck type.
+   */
+  private mapGraphQLStatusContext(ctx: GraphQLStatusContext): StatusCheck {
+    let status: CheckStatus = 'pending'
+
+    switch (ctx.state) {
+      case 'SUCCESS':
+        status = 'success'
+        break
+      case 'FAILURE':
+      case 'ERROR':
+        status = 'failure'
+        break
+      case 'PENDING':
+      case 'EXPECTED':
+        status = 'pending'
+        break
+    }
+
+    return {
+      name: ctx.context,
+      status,
+      description: ctx.description ?? undefined,
+      detailsUrl: ctx.targetUrl ?? undefined
+    }
+  }
+
+  /**
+   * Builds MergeReadiness from GraphQL PR data.
+   */
+  private buildGraphQLMergeReadiness(
+    pr: GraphQLPullRequest,
+    checks: StatusCheck[]
+  ): MergeReadiness {
+    const canMerge = pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN'
+    const blockers = this.deriveGraphQLBlockers(pr, checks)
+    const checksStatus = this.deriveChecksStatus(checks)
+
+    return {
+      canMerge,
+      blockers,
+      checksStatus,
+      checks
+    }
+  }
+
+  /**
+   * Derives merge blockers from GraphQL PR state.
+   */
+  private deriveGraphQLBlockers(pr: GraphQLPullRequest, checks: StatusCheck[]): MergeBlocker[] {
+    const blockers: MergeBlocker[] = []
+
+    // Unknown mergeable state - still computing
+    if (pr.mergeable === 'UNKNOWN') {
+      blockers.push('computing')
+    }
+
+    // Merge conflicts
+    if (pr.mergeable === 'CONFLICTING') {
+      blockers.push('conflicts')
+    }
+
+    // Map mergeStateStatus to blockers
+    switch (pr.mergeStateStatus) {
+      case 'BLOCKED':
+        if (checks.some((c) => c.status === 'failure')) {
+          blockers.push('checks_failed')
+        } else if (checks.some((c) => c.status === 'pending')) {
+          blockers.push('checks_pending')
+        } else {
+          blockers.push('reviews_required')
+        }
+        break
+      case 'UNSTABLE':
+        if (!blockers.includes('checks_pending')) {
+          blockers.push('checks_pending')
+        }
+        break
+      case 'DIRTY':
+        if (!blockers.includes('conflicts')) {
+          blockers.push('conflicts')
+        }
+        break
+      case 'BEHIND':
+        blockers.push('branch_protection')
+        break
+    }
+
+    // Add check-based blockers if not already present
+    if (checks.some((c) => c.status === 'failure') && !blockers.includes('checks_failed')) {
+      blockers.push('checks_failed')
+    }
+    if (
+      checks.some((c) => c.status === 'pending') &&
+      !blockers.includes('checks_pending') &&
+      !blockers.includes('computing')
+    ) {
+      blockers.push('checks_pending')
+    }
+
+    return blockers
+  }
+
+  /**
+   * Fallback REST implementation.
+   * Used when GraphQL fails or for testing.
+   */
+  private async fetchStateREST(): Promise<GitForgeState> {
     // Fetch PRs with all states (open, closed, merged)
-    // This allows us to detect merged PRs and show appropriate UI
-    // Docs: https://docs.github.com/en/rest/pulls/pulls?apiVersion=2022-11-28#list-pull-requests
-    //
-    // Note: GitHub API returns state='closed' for both closed and merged PRs.
-    // We distinguish merged PRs by checking the `merged_at` field (non-null = merged).
     const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`
 
     const { body, statusCode } = await request(url, {

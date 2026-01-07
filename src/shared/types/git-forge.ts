@@ -5,6 +5,21 @@
 export type MergeStrategy = 'squash' | 'merge' | 'rebase'
 
 /**
+ * Rate limit information from GitHub API.
+ * All fields are from X-RateLimit-* headers.
+ */
+export type RateLimitInfo = {
+  /** Maximum requests allowed per hour */
+  limit: number
+  /** Remaining requests in current window */
+  remaining: number
+  /** Unix timestamp (seconds) when the rate limit resets */
+  reset: number
+  /** Number of requests used in current window */
+  used: number
+}
+
+/**
  * Status of an individual CI check.
  */
 export type CheckStatus = 'pending' | 'success' | 'failure' | 'neutral' | 'skipped'
@@ -71,6 +86,8 @@ export type ForgeStateResult = {
   error?: string
   /** Timestamp of last successful fetch (ms since epoch) */
   lastSuccessfulFetch?: number
+  /** Rate limit information from the API (if available) */
+  rateLimit?: RateLimitInfo
 }
 
 /** Possible states for a pull request */

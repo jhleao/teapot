@@ -219,7 +219,7 @@ export const GitForgeSection = memo(function GitForgeSection({
           disabled: false
         }
       }
-      if (isWorkingTreeDirty) {
+      if (isWorkingTreeDirty && branchWithPr?.isCurrent) {
         return {
           label: 'Uncommitted changes',
           style: 'border-border bg-muted text-muted-foreground',

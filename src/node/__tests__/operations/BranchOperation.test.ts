@@ -16,7 +16,9 @@ vi.mock('../../store', () => ({
 // Mock the forge service
 vi.mock('../../services/ForgeService', () => ({
   gitForgeService: {
-    deleteRemoteBranch: vi.fn()
+    deleteRemoteBranch: vi.fn(),
+    getStateWithStatus: vi.fn().mockResolvedValue({ state: { pullRequests: [] } }),
+    closePullRequest: vi.fn()
   }
 }))
 
@@ -460,5 +462,178 @@ describe('deleteBranch', () => {
         // Ignore if already removed
       }
     }
+  })
+
+  it('should close PR when deleting a branch with an open PR', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Mock an open PR for the feature branch
+    vi.mocked(gitForgeService.getStateWithStatus).mockResolvedValueOnce({
+      state: {
+        pullRequests: [
+          {
+            number: 123,
+            headRefName: 'feature',
+            state: 'open',
+            title: 'Test PR',
+            url: 'https://github.com/test/repo/pull/123',
+            headSha: 'abc123',
+            baseRefName: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            isMergeable: true
+          }
+        ]
+      },
+      status: 'idle',
+      error: undefined,
+      lastSuccessfulFetch: undefined
+    })
+
+    // Delete the feature branch
+    await BranchOperation.delete(repoPath, 'feature')
+
+    // PR should have been closed
+    expect(gitForgeService.closePullRequest).toHaveBeenCalledWith(repoPath, 123)
+
+    // Local branch should be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+  })
+
+  it('should not call closePullRequest when branch has no open PR', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Mock no PRs
+    vi.mocked(gitForgeService.getStateWithStatus).mockResolvedValueOnce({
+      state: { pullRequests: [] },
+      status: 'idle',
+      error: undefined,
+      lastSuccessfulFetch: undefined
+    })
+
+    // Delete the feature branch
+    await BranchOperation.delete(repoPath, 'feature')
+
+    // closePullRequest should not have been called
+    expect(gitForgeService.closePullRequest).not.toHaveBeenCalled()
+
+    // Local branch should be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+  })
+
+  it('should still delete branch when PR closing fails', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Mock an open PR for the feature branch
+    vi.mocked(gitForgeService.getStateWithStatus).mockResolvedValueOnce({
+      state: {
+        pullRequests: [
+          {
+            number: 456,
+            headRefName: 'feature',
+            state: 'open',
+            title: 'Test PR',
+            url: 'https://github.com/test/repo/pull/456',
+            headSha: 'def456',
+            baseRefName: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            isMergeable: true
+          }
+        ]
+      },
+      status: 'idle',
+      error: undefined,
+      lastSuccessfulFetch: undefined
+    })
+
+    // Mock closePullRequest to fail
+    vi.mocked(gitForgeService.closePullRequest).mockRejectedValueOnce(new Error('API error'))
+
+    // Delete should still succeed (PR close failure is non-blocking)
+    await BranchOperation.delete(repoPath, 'feature')
+
+    // closePullRequest should have been attempted
+    expect(gitForgeService.closePullRequest).toHaveBeenCalledWith(repoPath, 456)
+
+    // Local branch should still be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+  })
+
+  it('should not close PR when it is already closed', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Mock a closed PR for the feature branch (should be ignored)
+    vi.mocked(gitForgeService.getStateWithStatus).mockResolvedValueOnce({
+      state: {
+        pullRequests: [
+          {
+            number: 789,
+            headRefName: 'feature',
+            state: 'closed',
+            title: 'Already closed PR',
+            url: 'https://github.com/test/repo/pull/789',
+            headSha: 'ghi789',
+            baseRefName: 'main',
+            createdAt: '2024-01-01T00:00:00Z',
+            isMergeable: false
+          }
+        ]
+      },
+      status: 'idle',
+      error: undefined,
+      lastSuccessfulFetch: undefined
+    })
+
+    // Delete the feature branch
+    await BranchOperation.delete(repoPath, 'feature')
+
+    // closePullRequest should not have been called (PR is already closed)
+    expect(gitForgeService.closePullRequest).not.toHaveBeenCalled()
+
+    // Local branch should be gone
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
   })
 })

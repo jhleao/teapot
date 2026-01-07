@@ -8,6 +8,7 @@
  */
 
 import { log } from '@shared/logger'
+import { findOpenPr } from '@shared/types/git-forge'
 import type { CheckoutResult } from '@shared/types/repo'
 import fs from 'fs'
 import {
@@ -94,11 +95,14 @@ export class BranchOperation {
   /**
    * Deletes a local branch.
    * If the branch is checked out in a worktree, the worktree is removed first.
+   * If the branch has an open PR, the PR is closed first.
    */
   static async delete(repoPath: string, branchName: string): Promise<void> {
     const git = getGitAdapter()
 
     await this.removeWorktreeForBranch(repoPath, branchName, 'delete')
+
+    await this.closePullRequestForBranch(repoPath, branchName)
 
     await git.deleteBranch(repoPath, branchName)
     log.info(`[BranchOperation.delete] Deleted local branch: ${branchName}`)
@@ -190,6 +194,27 @@ export class BranchOperation {
         message: `Sync failed: ${message}`,
         trunkName
       }
+    }
+  }
+
+  /**
+   * Closes the PR associated with a branch if one exists.
+   */
+  private static async closePullRequestForBranch(
+    repoPath: string,
+    branchName: string
+  ): Promise<void> {
+    try {
+      const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
+      const pr = findOpenPr(branchName, forgeState.pullRequests)
+      if (pr) {
+        log.info(
+          `[BranchOperation.delete] Closing associated PR #${pr.number} for branch ${branchName}`
+        )
+        await gitForgeService.closePullRequest(repoPath, pr.number)
+      }
+    } catch (e) {
+      log.warn('[BranchOperation.delete] Failed to close PR during branch deletion:', e)
     }
   }
 

@@ -97,13 +97,9 @@ describe('CloneOperation.clone', () => {
   })
 
   it('clones repository and returns success with repoPath', async () => {
-    // Rename source repo to have a predictable name
-    const namedSourceRepo = path.join(path.dirname(sourceRepoPath), 'test-repo')
-    await fs.promises.rename(sourceRepoPath, namedSourceRepo)
-    sourceRepoPath = namedSourceRepo
-
-    // Use file:// protocol for local path
-    const result = await CloneOperation.clone(`file://${namedSourceRepo}`, targetDir)
+    // Use the source repo directly - extract repo name from the temp path
+    // The temp path ends with random chars, so we use a custom folder name instead
+    const result = await CloneOperation.clone(`file://${sourceRepoPath}`, targetDir, 'test-repo')
 
     expect(result.success).toBe(true)
     expect(result.repoPath).toBe(path.join(targetDir, 'test-repo'))
@@ -121,14 +117,9 @@ describe('CloneOperation.clone', () => {
   })
 
   it('uses custom folder name when provided', async () => {
-    // Rename source repo to have a predictable name
-    const namedSourceRepo = path.join(path.dirname(sourceRepoPath), 'original-name')
-    await fs.promises.rename(sourceRepoPath, namedSourceRepo)
-    sourceRepoPath = namedSourceRepo
-
     // Use file:// protocol for local path, with custom folder name
     const result = await CloneOperation.clone(
-      `file://${namedSourceRepo}`,
+      `file://${sourceRepoPath}`,
       targetDir,
       'custom-folder-name'
     )

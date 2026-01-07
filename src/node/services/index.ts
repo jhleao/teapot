@@ -1,4 +1,5 @@
 export * as CacheService from './CacheService'
+export { ExecutionContextService } from './ExecutionContextService'
 export { GitForgeService, gitForgeService } from './ForgeService'
 export { GitWatcher } from './GitWatcherService'
 export * as RepoModelService from './RepoModelService'

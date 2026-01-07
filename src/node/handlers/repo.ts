@@ -35,6 +35,7 @@ import {
   WorkingTreeOperation,
   WorktreeOperation
 } from '../operations'
+import { ExecutionContextService } from '../services/ExecutionContextService'
 
 // ============================================================================
 // Path Resolution
@@ -57,6 +58,11 @@ function resolveWorkingPath(repoPath: string): string {
 
 const watchRepo: IpcHandlerOf<'watchRepo'> = (event, { repoPath }) => {
   GitWatcher.getInstance().watch(resolveWorkingPath(repoPath), event.sender)
+
+  // Clean up orphaned temp worktrees on startup (best-effort, async)
+  ExecutionContextService.cleanupOrphans(repoPath).catch((error) => {
+    log.warn('[watchRepo] Failed to cleanup orphan worktrees:', error)
+  })
 }
 
 const unwatchRepo: IpcHandlerOf<'unwatchRepo'> = () => {

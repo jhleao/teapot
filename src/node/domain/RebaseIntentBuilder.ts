@@ -8,6 +8,7 @@
 
 import { log } from '@shared/logger'
 import type { Branch, Commit, RebaseIntent, Repo, StackNodeState } from '@shared/types'
+import { buildTrunkShaSet, calculateCommitOwnership } from './CommitOwnership'
 import { StackAnalyzer } from './StackAnalyzer'
 
 export class RebaseIntentBuilder {
@@ -28,6 +29,14 @@ export class RebaseIntentBuilder {
       targetBaseSha: baseSha.slice(0, 8)
     })
 
+    // Early validation: no-op rebase (head === base) is not useful
+    if (headSha === baseSha) {
+      log.debug('[RebaseIntentBuilder.build] No-op rebase: headSha equals baseSha', {
+        sha: headSha.slice(0, 8)
+      })
+      return null
+    }
+
     const commitMap = new Map<string, Commit>(repo.commits.map((commit) => [commit.sha, commit]))
     if (!commitMap.has(headSha) || !commitMap.has(baseSha)) {
       log.warn('[RebaseIntentBuilder.build] Commit not found in map', {
@@ -38,10 +47,16 @@ export class RebaseIntentBuilder {
     }
 
     const branchHeadIndex = StackAnalyzer.buildBranchHeadIndex(repo.branches)
+
+    // Build trunk SHA set once - reused for all ownership calculations
+    const trunkBranch = repo.branches.find((b) => b.isTrunk && !b.isRemote)
+    const trunkShas = buildTrunkShaSet(trunkBranch?.headSha, commitMap)
+
     const node = RebaseIntentBuilder.buildStackNodeState(
       repo,
       commitMap,
       branchHeadIndex,
+      trunkShas,
       headSha,
       new Set()
     )
@@ -81,6 +96,7 @@ export class RebaseIntentBuilder {
     repo: Repo,
     commitMap: Map<string, Commit>,
     branchHeadIndex: Map<string, string[]>,
+    trunkShas: Set<string>,
     headSha: string,
     visited: Set<string>,
     specificBranchName?: string
@@ -106,12 +122,12 @@ export class RebaseIntentBuilder {
     visited.add(visitedKey)
 
     // Find the base SHA by walking backwards through commits
-    const baseSha = RebaseIntentBuilder.findBaseSha(
+    const baseSha = RebaseIntentBuilder.calculateBranchBase(
       headSha,
       branchName,
       commitMap,
       branchHeadIndex,
-      repo.branches
+      trunkShas
     )
 
     // Find child branches - branches that depend on this branch's lineage
@@ -119,9 +135,9 @@ export class RebaseIntentBuilder {
       repo,
       commitMap,
       branchHeadIndex,
+      trunkShas,
       headSha,
-      branchName,
-      baseSha
+      branchName
     )
     const children: StackNodeState[] = []
 
@@ -130,6 +146,7 @@ export class RebaseIntentBuilder {
         repo,
         commitMap,
         branchHeadIndex,
+        trunkShas,
         childBranch.headSha,
         visited,
         childBranch.ref
@@ -157,26 +174,26 @@ export class RebaseIntentBuilder {
    * 2. It points to the same commit as parent (sibling at same commit), OR
    * 3. Its lineage intersects with parent's lineage (shares commits that will be rebased)
    *
-   * Note: Uses findForkPoint (not findBaseSha) for child detection to correctly
+   * Note: Uses calculateBranchBase for child detection to correctly
    * identify stacked branch relationships even when there are branchless commits.
    */
   private static findChildBranchesWithForkPoint(
     repo: Repo,
     commitMap: Map<string, Commit>,
     branchHeadIndex: Map<string, string[]>,
+    trunkShas: Set<string>,
     parentHeadSha: string,
-    parentBranchName: string,
-    _parentBaseSha: string
+    parentBranchName: string
   ): Branch[] {
     const childBranches: Branch[] = []
 
     // Use fork point for parent lineage calculation (for Case 3 intersection check)
-    const parentForkPoint = RebaseIntentBuilder.findForkPoint(
+    const parentForkPoint = RebaseIntentBuilder.calculateBranchBase(
       parentHeadSha,
       parentBranchName,
       commitMap,
       branchHeadIndex,
-      repo.branches
+      trunkShas
     )
     const parentLineage = RebaseIntentBuilder.collectLineage(
       parentHeadSha,
@@ -201,12 +218,12 @@ export class RebaseIntentBuilder {
       }
 
       // Calculate this branch's fork point (for child detection)
-      const branchForkPoint = RebaseIntentBuilder.findForkPoint(
+      const branchForkPoint = RebaseIntentBuilder.calculateBranchBase(
         branch.headSha,
         branch.ref,
         commitMap,
         branchHeadIndex,
-        repo.branches
+        trunkShas
       )
 
       // Case 2: Direct child (fork point === parentHeadSha)
@@ -232,93 +249,38 @@ export class RebaseIntentBuilder {
   }
 
   /**
-   * Finds the base SHA for a branch - the immediate parent of the head commit.
-   *
-   * In Teapot's model, a branch "owns" only its head commit. Any commits between
-   * the head and the next branch are "branchless" and can be orphaned when rebasing.
+   * Calculates the base SHA for a branch - the parent of the oldest "owned" commit.
+   * This is used both for determining rebase bases and for detecting stacked branch
+   * relationships (fork points). Delegates to the shared CommitOwnership utility
+   * for consistent behavior with UiStateBuilder.
    *
    * Example:
    *   trunk (A) → B (no branch) → C (feature)
-   *   findBaseSha(C, "feature") returns B
-   *   When rebasing feature onto A, only C is moved, orphaning B.
-   *
-   * This differs from git's default behavior where a branch includes all commits
-   * back to the merge-base.
+   *   calculateBranchBase(C, "feature") returns A (trunk)
+   *   When rebasing feature, both B and C move together.
    */
-  private static findBaseSha(
-    headSha: string,
-    _branchRef: string,
-    commitMap: Map<string, Commit>,
-    _branchHeadIndex: Map<string, string[]>,
-    _allBranches: Branch[]
-  ): string {
-    const headCommit = commitMap.get(headSha)
-    // Return immediate parent, or head itself if no parent (root commit)
-    return headCommit?.parentSha || headSha
-  }
-
-  /**
-   * Finds the fork point for child branch detection.
-   * This walks backwards to find the first commit whose parent has another branch.
-   * Used for detecting stacked branch relationships (not for rebase base calculation).
-   */
-  private static findForkPoint(
+  private static calculateBranchBase(
     headSha: string,
     branchRef: string,
     commitMap: Map<string, Commit>,
     branchHeadIndex: Map<string, string[]>,
-    allBranches: Branch[]
+    trunkShas: Set<string>
   ): string {
-    // Build set of trunk SHAs for quick lookup
-    const trunkBranch = allBranches.find((b) => b.isTrunk && !b.isRemote)
-    const trunkShas = new Set<string>()
+    const result = calculateCommitOwnership({
+      headSha,
+      branchRef,
+      commitMap,
+      branchHeadIndex,
+      trunkShas
+    })
 
-    if (trunkBranch) {
-      let currentSha: string | undefined = trunkBranch.headSha
-      const visited = new Set<string>()
-      while (currentSha && !visited.has(currentSha)) {
-        visited.add(currentSha)
-        trunkShas.add(currentSha)
-        const commit = commitMap.get(currentSha)
-        currentSha = commit?.parentSha || undefined
-      }
-    }
-
-    // Walk backwards from head to find fork point
-    let currentSha: string | undefined = headSha
-    const visited = new Set<string>()
-
-    while (currentSha && !visited.has(currentSha)) {
-      visited.add(currentSha)
-      const commit = commitMap.get(currentSha)
-      if (!commit) break
-
-      const parentSha = commit.parentSha
-      if (!parentSha) {
-        return currentSha
-      }
-
-      if (trunkShas.has(parentSha)) {
-        return parentSha
-      }
-
-      const branchesAtParent = branchHeadIndex.get(parentSha) ?? []
-      const otherBranches = branchesAtParent.filter((b) => b !== branchRef)
-
-      if (otherBranches.length > 0) {
-        return parentSha
-      }
-
-      currentSha = parentSha
-    }
-
-    const headCommit = commitMap.get(headSha)
-    return headCommit?.parentSha || headSha
+    return result.baseSha
   }
 
   /**
    * Collects all commit SHAs from headSha down to (but not including) baseSha.
    * Returns the set of commits that will be affected by a rebase.
+   * Includes cycle detection to prevent infinite loops on corrupted repositories.
    */
   private static collectLineage(
     headSha: string,
@@ -329,6 +291,15 @@ export class RebaseIntentBuilder {
     let current: string | undefined = headSha
 
     while (current && current !== baseSha) {
+      // Cycle detection: if we've already seen this commit, we have a cycle
+      if (lineage.has(current)) {
+        log.warn('[RebaseIntentBuilder] Cycle detected in commit graph', {
+          sha: current.slice(0, 8),
+          headSha: headSha.slice(0, 8),
+          baseSha: baseSha.slice(0, 8)
+        })
+        break
+      }
       lineage.add(current)
       const commit = commitMap.get(current)
       if (!commit?.parentSha) break

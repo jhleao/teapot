@@ -22,6 +22,7 @@ import type {
   Worktree
 } from '@shared/types'
 import type { GitForgeState } from '../../shared/types/git-forge'
+import { calculateCommitOwnership } from './CommitOwnership'
 import { RebaseStateMachine } from './RebaseStateMachine'
 import { TrunkResolver } from './TrunkResolver'
 
@@ -38,6 +39,8 @@ type BuildState = {
   worktreeByBranch: Map<string, Worktree>
   /** The path of the current/active worktree */
   currentWorktreePath: string
+  /** Map from commit SHA to branch names at that SHA (for determining commit ownership boundaries) */
+  branchHeadIndex: Map<string, string[]>
 }
 
 type TrunkBuildResult = {
@@ -105,6 +108,16 @@ export class UiStateBuilder {
     // Determine the current worktree path for badge status comparison
     const currentWorktreePath = repo.activeWorktreePath ?? repo.path
 
+    // Build index mapping commit SHA to branch names for commit ownership calculation
+    // Only include local branches (remote branches don't affect local ownership)
+    const branchHeadIndex = new Map<string, string[]>()
+    for (const branch of UiStackBranches) {
+      if (!branch.headSha || branch.isRemote) continue
+      const existing = branchHeadIndex.get(branch.headSha) ?? []
+      existing.push(branch.ref)
+      branchHeadIndex.set(branch.headSha, existing)
+    }
+
     const state: BuildState = {
       commitMap,
       commitNodes: new Map(),
@@ -113,7 +126,8 @@ export class UiStateBuilder {
       trunkShas: new Set(),
       UiStackMembership: new Map(),
       worktreeByBranch,
-      currentWorktreePath
+      currentWorktreePath,
+      branchHeadIndex
     }
 
     if (!trunk) {
@@ -486,6 +500,27 @@ export class UiStateBuilder {
   // Private: Branch annotation
   // ─────────────────────────────────────────────────────────────────────────
 
+  /**
+   * Collects the SHAs of commits "owned" by a branch.
+   * Delegates to the shared CommitOwnership utility for consistent behavior
+   * with RebaseIntentBuilder.
+   */
+  private static collectOwnedCommitShas(
+    branchHeadSha: string,
+    branchRef: string,
+    state: BuildState
+  ): string[] {
+    const result = calculateCommitOwnership({
+      headSha: branchHeadSha,
+      branchRef,
+      commitMap: state.commitMap,
+      branchHeadIndex: state.branchHeadIndex,
+      trunkShas: state.trunkShas
+    })
+
+    return result.ownedShas
+  }
+
   private static annotateBranchHeads(
     branches: Branch[],
     state: BuildState,
@@ -562,6 +597,13 @@ export class UiStateBuilder {
         }
       }
 
+      // Calculate owned commits for local, non-trunk branches
+      // (only these branches can be dragged, and this info is used for drag operations)
+      let ownedCommitShas: string[] | undefined
+      if (!branch.isRemote && !branch.isTrunk) {
+        ownedCommitShas = UiStateBuilder.collectOwnedCommitShas(branch.headSha, branch.ref, state)
+      }
+
       commitNode.branches.push({
         name: branch.ref,
         isCurrent: branch.ref === state.currentBranch,
@@ -570,7 +612,8 @@ export class UiStateBuilder {
         pullRequest,
         isMerged,
         hasStaleTarget: hasStaleTarget || undefined,
-        worktree
+        worktree,
+        ownedCommitShas
       })
     })
   }

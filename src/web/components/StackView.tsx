@@ -1,4 +1,5 @@
-import type { UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
+import { log } from '@shared/logger'
+import type { UiBranch, UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
 import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDragContext } from '../contexts/DragContext'
@@ -6,6 +7,7 @@ import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
+import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
 import { GitForgeSection } from './GitForgeSection'
@@ -22,6 +24,8 @@ interface StackProps {
   baseSha?: string
   /** Whether this is the root/topmost stack (shows sync button) */
   isRoot?: boolean
+  /** Pre-computed set of commit SHAs that are part of the current drag/rebase operation (passed from parent) */
+  parentDraggedCommitSet?: Set<string> | null
 }
 
 interface CommitProps {
@@ -30,14 +34,117 @@ interface CommitProps {
   workingTree: UiWorkingTreeFile[]
   /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
   baseSha?: string
+  /** Pre-computed set of commit SHAs that are part of the current drag/rebase operation */
+  draggedCommitSet: Set<string> | null
 }
 
 export function StackView({
   data,
   className,
   workingTree,
-  baseSha = ''
+  baseSha = '',
+  parentDraggedCommitSet
 }: StackProps): React.JSX.Element {
+  const { draggingCommitSha, pendingRebase } = useDragContext()
+
+  // Track which branches have their owned commits expanded
+  const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set())
+
+  // Clean up stale branch names from expandedBranches when branches are deleted
+  useEffect(() => {
+    const currentBranchNames = new Set<string>()
+    for (const commit of data.commits) {
+      for (const branch of commit.branches) {
+        currentBranchNames.add(branch.name)
+      }
+    }
+
+    setExpandedBranches((prev) => {
+      const filtered = new Set([...prev].filter((name) => currentBranchNames.has(name)))
+      // Only update if something was actually removed (avoids unnecessary re-renders)
+      return filtered.size === prev.size ? prev : filtered
+    })
+  }, [data.commits])
+
+  // Build the set of commits that will be affected by the current drag/rebase operation
+  // If we have a parent set (from root StackView), use that. Otherwise compute for this stack.
+  // The root StackView builds a set that includes all spinoffs recursively.
+  const rebasingSha = draggingCommitSha || pendingRebase?.headSha
+  const draggedCommitSet = useMemo(() => {
+    // If parent already computed the set, use it (avoids recomputation in nested StackViews)
+    if (parentDraggedCommitSet !== undefined) {
+      return parentDraggedCommitSet
+    }
+    // Only compute when there's actually a drag/rebase in progress
+    if (!rebasingSha) return null
+    return buildDraggedCommitSet(rebasingSha, data)
+  }, [parentDraggedCommitSet, rebasingSha, data])
+
+  const toggleBranchExpanded = useCallback((branchName: string) => {
+    setExpandedBranches((prev) => {
+      const next = new Set(prev)
+      if (next.has(branchName)) {
+        next.delete(branchName)
+      } else {
+        next.add(branchName)
+      }
+      return next
+    })
+  }, [])
+
+  // Build a map of branches that have multiple owned commits (for collapse/expand UI)
+  // This only depends on data.commits, not on expandedBranches state
+  const collapsibleBranches = useMemo(() => {
+    const collapsible = new Map<string, { branch: UiBranch; ownedCount: number }>()
+
+    for (const commit of data.commits) {
+      for (const branch of commit.branches) {
+        // Validation: local non-trunk branches should always have ownedCommitShas with at least 1 entry
+        if (!branch.isRemote && !branch.isTrunk) {
+          if (!branch.ownedCommitShas) {
+            log.warn('[StackView] Branch is missing ownedCommitShas', {
+              branchName: branch.name,
+              hint: 'This may indicate a bug in UiStateBuilder'
+            })
+          } else if (branch.ownedCommitShas.length === 0) {
+            log.warn('[StackView] Branch has empty ownedCommitShas array', {
+              branchName: branch.name,
+              hint: 'This may indicate incomplete commit data'
+            })
+          }
+        }
+
+        const ownedShas = branch.ownedCommitShas
+        if (ownedShas && ownedShas.length > 1) {
+          // This branch owns multiple commits (head + parents)
+          collapsible.set(branch.name, { branch, ownedCount: ownedShas.length - 1 })
+        }
+      }
+    }
+
+    return collapsible
+  }, [data.commits])
+
+  // Compute which commits should be hidden based on expansion state
+  // This depends on both collapsibleBranches and expandedBranches
+  const hiddenCommitShas = useMemo(() => {
+    const hidden = new Set<string>()
+
+    for (const [branchName, info] of collapsibleBranches) {
+      // If not expanded, hide all owned commits except the head
+      if (!expandedBranches.has(branchName)) {
+        const ownedShas = info.branch.ownedCommitShas
+        if (ownedShas) {
+          for (let i = 1; i < ownedShas.length; i++) {
+            hidden.add(ownedShas[i])
+          }
+        }
+      }
+    }
+
+    return hidden
+  }, [collapsibleBranches, expandedBranches])
+
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
 
@@ -50,15 +157,44 @@ export function StackView({
         </div>
       )}
       <div className={cn('flex flex-col', className)}>
-        {childrenFirst.map((commit, index) => (
-          <CommitView
-            key={`${commit.name}-${commit.timestampMs}-${index}`}
-            data={commit}
-            stack={data}
-            workingTree={workingTree}
-            baseSha={baseSha}
-          />
-        ))}
+        {childrenFirst.map((commit) => {
+          // Skip hidden commits (owned by a collapsed branch)
+          if (hiddenCommitShas.has(commit.sha)) {
+            return null
+          }
+
+          // Find if this commit's branch has collapsible owned commits
+          const branchWithOwnedCommits = commit.branches.find(
+            (b) => collapsibleBranches.has(b.name)
+          )
+          const collapsibleInfo = branchWithOwnedCommits
+            ? collapsibleBranches.get(branchWithOwnedCommits.name)
+            : null
+
+          return (
+            <React.Fragment key={commit.sha}>
+              <CommitView
+                data={commit}
+                stack={data}
+                workingTree={workingTree}
+                baseSha={baseSha}
+                draggedCommitSet={draggedCommitSet}
+              />
+              {collapsibleInfo && (
+                <div className="pl-2">
+                  <div className="border-border flex border-l-2">
+                    <CollapsedCommits
+                      count={collapsibleInfo.ownedCount}
+                      isExpanded={expandedBranches.has(collapsibleInfo.branch.name)}
+                      onToggle={() => toggleBranchExpanded(collapsibleInfo.branch.name)}
+                      className="ml-2"
+                    />
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
+          )
+        })}
       </div>
     </div>
   )
@@ -68,16 +204,11 @@ export const CommitView = memo(function CommitView({
   data,
   stack,
   workingTree,
-  baseSha = ''
+  baseSha = '',
+  draggedCommitSet
 }: CommitProps): React.JSX.Element {
   const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
-  const {
-    handleCommitDotMouseDown,
-    registerCommitRef,
-    unregisterCommitRef,
-    draggingCommitSha,
-    pendingRebase
-  } = useDragContext()
+  const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
   const {
     confirmRebaseIntent,
     cancelRebaseIntent,
@@ -108,11 +239,7 @@ export const CommitView = memo(function CommitView({
     isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
-  const isBeingDragged = useMemo(() => {
-    const rebasingSha = draggingCommitSha || pendingRebase?.headSha
-    if (!rebasingSha) return false
-    return isPartOfDraggedStack(data.sha, rebasingSha, stack)
-  }, [data.sha, draggingCommitSha, pendingRebase, stack])
+  const isBeingDragged = isPartOfDraggedStack(data.sha, draggedCommitSet)
 
   const hasSpinoffs = data.spinoffs.length > 0
 
@@ -176,17 +303,24 @@ export const CommitView = memo(function CommitView({
       {hasSpinoffs && (
         <div className={cn('border-border flex h-auto w-full border-l-2 pt-2')}>
           <div className="ml-[-2px] w-full">
-            {data.spinoffs.map((spinoff, index) => (
-              <div key={`spinoff-${data.name}-${index}`}>
-                <StackView
-                  className="ml-[12px]"
-                  data={spinoff}
-                  workingTree={workingTree}
-                  baseSha={data.sha}
-                />
-                <SineCurve />
-              </div>
-            ))}
+            {data.spinoffs.map((spinoff) => {
+              // Use branch name as key (more stable across rebases), fallback to SHA
+              const firstCommit = spinoff.commits[0]
+              const branchName = firstCommit?.branches.find((b) => !b.isRemote)?.name
+              const stableKey = branchName ?? firstCommit?.sha ?? 'empty'
+              return (
+                <div key={`spinoff-${stableKey}`}>
+                  <StackView
+                    className="ml-[12px]"
+                    data={spinoff}
+                    workingTree={workingTree}
+                    baseSha={data.sha}
+                    parentDraggedCommitSet={draggedCommitSet}
+                  />
+                  <SineCurve />
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -268,9 +402,9 @@ export const CommitView = memo(function CommitView({
             {/* Worktree badges - show for branches checked out in other worktrees */}
             {data.branches
               .filter((b): b is typeof b & { worktree: UiWorktreeBadge } => b.worktree != null)
-              .map((branch, index) => (
+              .map((branch) => (
                 <WorktreeBadge
-                  key={`wt-${branch.name}-${index}`}
+                  key={`wt-${branch.name}`}
                   data={branch.worktree}
                   onSwitch={handleSwitchWorktree}
                 />
@@ -367,16 +501,96 @@ function getCommitDotLayout(
   return { showTopLine, showBottomLine }
 }
 
+/**
+ * Builds a set of all commit SHAs that would be affected when dragging from a given commit.
+ * This includes commits at or after the drag point, plus all commits owned by branches at the drag point.
+ * Searches recursively through spinoffs to find the drag point in nested stacks.
+ */
+function buildDraggedCommitSet(draggingCommitSha: string, stack: UiStack): Set<string> | null {
+  const draggedShas = new Set<string>()
+
+  // Try to find the dragging commit in this stack or its spinoffs
+  const found = findAndCollectDraggedCommits(draggingCommitSha, stack, draggedShas)
+
+  return found ? draggedShas : null
+}
+
+/**
+ * Recursively searches for the dragging commit and collects all affected SHAs.
+ * Returns true if the dragging commit was found in this stack or its spinoffs.
+ */
+function findAndCollectDraggedCommits(
+  draggingCommitSha: string,
+  stack: UiStack,
+  draggedShas: Set<string>
+): boolean {
+  // Check if the dragging commit is in this stack
+  const draggingIdx = stack.commits.findIndex((c) => c.sha === draggingCommitSha)
+
+  if (draggingIdx !== -1) {
+    // Found the commit in this stack - collect all commits at or after this point
+    // and all their spinoffs (child branches that will also move)
+    for (let i = draggingIdx; i < stack.commits.length; i++) {
+      const commit = stack.commits[i]
+      draggedShas.add(commit.sha)
+
+      // Include all commits owned by branches at this commit
+      for (const branch of commit.branches) {
+        if (branch.ownedCommitShas) {
+          for (const sha of branch.ownedCommitShas) {
+            draggedShas.add(sha)
+          }
+        }
+      }
+
+      // Include all spinoffs of this commit (child branches that will move with the rebase)
+      for (const spinoff of commit.spinoffs) {
+        collectAllCommitsInStack(spinoff, draggedShas)
+      }
+    }
+    return true
+  }
+
+  // Not found in this stack - search spinoffs of each commit
+  for (const commit of stack.commits) {
+    for (const spinoff of commit.spinoffs) {
+      if (findAndCollectDraggedCommits(draggingCommitSha, spinoff, draggedShas)) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+/**
+ * Collects all commit SHAs from a stack and its spinoffs recursively.
+ * Used to include all child branches when dragging a parent branch.
+ */
+function collectAllCommitsInStack(stack: UiStack, draggedShas: Set<string>): void {
+  for (const commit of stack.commits) {
+    draggedShas.add(commit.sha)
+
+    // Include owned commits from branches
+    for (const branch of commit.branches) {
+      if (branch.ownedCommitShas) {
+        for (const sha of branch.ownedCommitShas) {
+          draggedShas.add(sha)
+        }
+      }
+    }
+
+    // Recurse into spinoffs
+    for (const spinoff of commit.spinoffs) {
+      collectAllCommitsInStack(spinoff, draggedShas)
+    }
+  }
+}
+
 function isPartOfDraggedStack(
   commitSha: string,
-  draggingCommitSha: string,
-  stack: UiStack
+  draggedCommitSet: Set<string> | null
 ): boolean {
-  const draggingIdx = stack.commits.findIndex((c) => c.sha === draggingCommitSha)
-  if (draggingIdx === -1) return false
-
-  const commitIdx = stack.commits.findIndex((c) => c.sha === commitSha)
-  if (commitIdx === -1) return false
-
-  return commitIdx >= draggingIdx
+  if (!draggedCommitSet) return false
+  return draggedCommitSet.has(commitSha)
 }

@@ -302,14 +302,16 @@ export class StackAnalyzer {
    */
   public static collectLinearDescendants(
     branch: string,
-    childrenIndex: Map<string, string[]>
+    childrenIndex: Map<string, string[]>,
+    maxDepth: number = 1000
   ): string[] | null {
     const result: string[] = []
     const visited = new Set<string>()
     let current = branch
 
-    while (true) {
+    while (result.length < maxDepth) {
       if (visited.has(current)) {
+        // Cycle detected
         return null
       }
       visited.add(current)
@@ -319,6 +321,7 @@ export class StackAnalyzer {
         break
       }
       if (children.length > 1) {
+        // Branching encountered - not linear
         return null
       }
 

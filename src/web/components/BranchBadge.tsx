@@ -17,7 +17,8 @@ export const BranchBadge = memo(function BranchBadge({
     isWorkingTreeDirty,
     createWorktree,
     getFoldPreview,
-    foldIntoParent
+    foldIntoParent,
+    repoPath
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
@@ -63,31 +64,34 @@ export const BranchBadge = memo(function BranchBadge({
     }
   }, [createWorktree, data.name, isCreatingWorktree])
 
+  // Path for "Open in..." actions: use worktree path if available, or repoPath if this is the current branch
+  const openablePath = data.worktree?.path ?? (data.isCurrent ? repoPath : null)
+
   const handleOpenInEditor = useCallback(async () => {
-    if (!data.worktree) return
-    const result = await window.api.openWorktreeInEditor({ worktreePath: data.worktree.path })
+    if (!openablePath) return
+    const result = await window.api.openWorktreeInEditor({ worktreePath: openablePath })
     if (!result.success) {
       toast.error('Failed to open in editor', { description: result.error })
     }
-  }, [data.worktree])
+  }, [openablePath])
 
   const handleOpenInTerminal = useCallback(async () => {
-    if (!data.worktree) return
-    const result = await window.api.openWorktreeInTerminal({ worktreePath: data.worktree.path })
+    if (!openablePath) return
+    const result = await window.api.openWorktreeInTerminal({ worktreePath: openablePath })
     if (!result.success) {
       toast.error('Failed to open terminal', { description: result.error })
     }
-  }, [data.worktree])
+  }, [openablePath])
 
   const handleCopyPath = useCallback(async () => {
-    if (!data.worktree) return
-    const result = await window.api.copyWorktreePath({ worktreePath: data.worktree.path })
+    if (!openablePath) return
+    const result = await window.api.copyWorktreePath({ worktreePath: openablePath })
     if (result.success) {
       toast.success('Path copied to clipboard')
     } else {
       toast.error('Failed to copy path', { description: result.error })
     }
-  }, [data.worktree])
+  }, [openablePath])
 
   const handleOpenFoldDialog = useCallback(async () => {
     if (isWorkingTreeDirty) {
@@ -136,6 +140,8 @@ export const BranchBadge = memo(function BranchBadge({
 
   // Can't create worktree for branch that already has one
   const hasWorktree = data.worktree != null
+  // Show "Open in..." options if we have an openable path
+  const canOpen = openablePath != null
 
   return (
     <>
@@ -143,7 +149,7 @@ export const BranchBadge = memo(function BranchBadge({
         content={
           <>
             <ContextMenuItem onClick={handleCopy}>Copy branch name</ContextMenuItem>
-            {hasWorktree && (
+            {canOpen && (
               <>
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={handleOpenInEditor}>Open in Editor</ContextMenuItem>

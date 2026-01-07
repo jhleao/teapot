@@ -22,7 +22,9 @@ function AppWithProviders(): React.JSX.Element {
       <UiStateProvider selectedRepoPath={repoPath}>
         <UtilityModalsProvider>
           <DragProvider>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
             <DragCursor />
           </DragProvider>
         </UtilityModalsProvider>
@@ -34,11 +36,9 @@ function AppWithProviders(): React.JSX.Element {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
-      <ErrorBoundary>
-        <LocalStateProvider>
-          <AppWithProviders />
-        </LocalStateProvider>
-      </ErrorBoundary>
+      <LocalStateProvider>
+        <AppWithProviders />
+      </LocalStateProvider>
     </ThemeProvider>
   </StrictMode>
 )

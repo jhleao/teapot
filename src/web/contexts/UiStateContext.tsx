@@ -151,19 +151,28 @@ export function UiStateProvider({
 
     const version = acquireVersion()
 
+    // Set a timeout to detect stuck IPC calls (e.g., after wake from sleep)
+    const timeoutId = setTimeout(() => {
+      if (checkVersion(version)) {
+        setRepoError('Connection timed out. Try reloading the app.')
+      }
+    }, 10000)
+
     try {
-      const uiState = await window.api.getRepo({ repoPath })
+      const result = await window.api.getRepo({ repoPath })
+      clearTimeout(timeoutId)
 
       if (!checkVersion(version)) {
         log.debug('[UiStateContext] Discarding stale response')
         return
       }
 
-      if (uiState) {
-        setUiState(uiState)
+      if (result) {
+        setUiState(result)
         setRepoError(null)
       }
     } catch (error) {
+      clearTimeout(timeoutId)
       if (!checkVersion(version)) return
 
       log.error('Failed to refresh repo:', error)

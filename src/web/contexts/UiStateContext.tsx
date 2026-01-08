@@ -31,6 +31,7 @@ interface UiStateContextValue {
   setFilesStageStatus: (params: { staged: boolean; files: string[] }) => Promise<void>
   commit: (params: { message: string; newBranchName?: string }) => Promise<void>
   amend: (params: { message?: string }) => Promise<void>
+  getCommitMessage: (commitSha: string) => Promise<string>
   discardStaged: () => Promise<void>
   submitRebaseIntent: (params: { headSha: string; baseSha: string }) => Promise<void>
   confirmRebaseIntent: () => Promise<void>
@@ -85,6 +86,7 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   setFilesStageStatus: async () => {},
   commit: async () => {},
   amend: async () => {},
+  getCommitMessage: async () => '',
   discardStaged: async () => {},
   submitRebaseIntent: async () => {},
   confirmRebaseIntent: async () => {},
@@ -261,6 +263,14 @@ export function UiStateProvider({
       await callApi(window.api.amend({ repoPath, ...params }))
     },
     [repoPath, callApi]
+  )
+
+  const getCommitMessage = useCallback(
+    async (commitSha: string): Promise<string> => {
+      if (!repoPath) return ''
+      return window.api.getCommitMessage({ repoPath, commitSha })
+    },
+    [repoPath]
   )
 
   const discardStaged = useCallback(async () => {
@@ -713,6 +723,7 @@ export function UiStateProvider({
       setFilesStageStatus,
       commit,
       amend,
+      getCommitMessage,
       discardStaged,
       submitRebaseIntent,
       confirmRebaseIntent,
@@ -751,6 +762,7 @@ export function UiStateProvider({
       setFilesStageStatus,
       commit,
       amend,
+      getCommitMessage,
       discardStaged,
       submitRebaseIntent,
       confirmRebaseIntent,

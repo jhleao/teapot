@@ -83,12 +83,14 @@ export function ContextMenuItem({
   children,
   onClick,
   className,
-  disabled
+  disabled,
+  title
 }: {
   children: React.ReactNode
   onClick?: () => void
   className?: string
   disabled?: boolean
+  title?: string
 }) {
   return (
     <div
@@ -97,6 +99,7 @@ export function ContextMenuItem({
         // Don't stop propagation here so the menu container can catch it and close
         onClick?.()
       }}
+      title={title}
       className={cn(
         'relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none',
         'hover:bg-accent hover:text-accent-foreground',

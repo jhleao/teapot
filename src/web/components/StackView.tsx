@@ -8,8 +8,9 @@ import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { CollapsedCommits } from './CollapsedCommits'
-import { ContextMenu, ContextMenuItem } from './ContextMenu'
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
+import { EditCommitMessageDialog } from './EditCommitMessageDialog'
 import { GitForgeSection } from './GitForgeSection'
 import { MultiBranchBadge } from './MultiBranchBadge'
 import { CommitDot, SineCurve } from './SvgPaths'
@@ -164,8 +165,8 @@ export function StackView({
           }
 
           // Find if this commit's branch has collapsible owned commits
-          const branchWithOwnedCommits = commit.branches.find(
-            (b) => collapsibleBranches.has(b.name)
+          const branchWithOwnedCommits = commit.branches.find((b) =>
+            collapsibleBranches.has(b.name)
           )
           const collapsibleInfo = branchWithOwnedCommits
             ? collapsibleBranches.get(branchWithOwnedCommits.name)
@@ -246,6 +247,7 @@ export const CommitView = memo(function CommitView({
   const [isCanceling, setIsCanceling] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
   const [isUncommitting, setIsUncommitting] = useState(false)
+  const [isEditMessageDialogOpen, setIsEditMessageDialogOpen] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
     setIsConfirming(true)
@@ -368,7 +370,19 @@ export const CommitView = memo(function CommitView({
           )}
         </div>
         <ContextMenu
-          content={<ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>}
+          content={
+            <>
+              <ContextMenuItem
+                onClick={() => setIsEditMessageDialogOpen(true)}
+                disabled={!isCurrent}
+                title={!isCurrent ? 'Only the current commit message can be edited' : undefined}
+              >
+                Edit message
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
+            </>
+          }
         >
           <div
             className={cn(
@@ -432,6 +446,11 @@ export const CommitView = memo(function CommitView({
           </div>
         )}
       </div>
+      <EditCommitMessageDialog
+        open={isEditMessageDialogOpen}
+        onOpenChange={setIsEditMessageDialogOpen}
+        commitSha={data.sha}
+      />
     </div>
   )
 })
@@ -587,10 +606,7 @@ function collectAllCommitsInStack(stack: UiStack, draggedShas: Set<string>): voi
   }
 }
 
-function isPartOfDraggedStack(
-  commitSha: string,
-  draggedCommitSet: Set<string> | null
-): boolean {
+function isPartOfDraggedStack(commitSha: string, draggedCommitSet: Set<string> | null): boolean {
   if (!draggedCommitSet) return false
   return draggedCommitSet.has(commitSha)
 }

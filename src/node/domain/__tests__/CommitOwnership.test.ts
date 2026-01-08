@@ -304,9 +304,7 @@ describe('CommitOwnership', () => {
     })
 
     it('returns empty set when trunk head is missing from map', () => {
-      const commitMap = new Map<string, Commit>([
-        ['A', createCommit('A', '')]
-      ])
+      const commitMap = new Map<string, Commit>([['A', createCommit('A', '')]])
 
       const result = buildTrunkShaSet('nonexistent', commitMap)
 

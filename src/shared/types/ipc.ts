@@ -99,6 +99,7 @@ export const IPC_CHANNELS = {
   getRebaseStatus: 'getRebaseStatus',
   discardStaged: 'discardStaged',
   amend: 'amend',
+  getCommitMessage: 'getCommitMessage',
   commit: 'commit',
   setFilesStageStatus: 'setFilesStageStatus',
   getLocalRepos: 'getLocalRepos',
@@ -212,6 +213,10 @@ export interface IpcContract {
   [IPC_CHANNELS.amend]: {
     request: { repoPath: string; message?: string }
     response: UiState | null
+  }
+  [IPC_CHANNELS.getCommitMessage]: {
+    request: { repoPath: string; commitSha: string }
+    response: string
   }
   [IPC_CHANNELS.commit]: {
     request: { repoPath: string; message: string; newBranchName?: string }

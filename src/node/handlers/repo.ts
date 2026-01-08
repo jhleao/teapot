@@ -238,6 +238,16 @@ const amend: IpcHandlerOf<'amend'> = async (_event, { repoPath, message }) => {
   return UiStateOperation.getUiState(repoPath)
 }
 
+const getCommitMessage: IpcHandlerOf<'getCommitMessage'> = async (
+  _event,
+  { repoPath, commitSha }
+) => {
+  const workingPath = resolveWorkingPath(repoPath)
+  const git = getGitAdapter()
+  const commit = await git.readCommit(workingPath, commitSha)
+  return commit.message
+}
+
 const commit: IpcHandlerOf<'commit'> = async (_event, { repoPath, message, newBranchName }) => {
   const workingPath = resolveWorkingPath(repoPath)
   await CommitOperation.commitToNewBranch(workingPath, message, newBranchName)
@@ -516,6 +526,7 @@ export function registerRepoHandlers(): void {
   // Working tree
   ipcMain.handle(IPC_CHANNELS.discardStaged, discardStaged)
   ipcMain.handle(IPC_CHANNELS.amend, amend)
+  ipcMain.handle(IPC_CHANNELS.getCommitMessage, getCommitMessage)
   ipcMain.handle(IPC_CHANNELS.commit, commit)
   ipcMain.handle(IPC_CHANNELS.setFilesStageStatus, setFilesStageStatus)
 

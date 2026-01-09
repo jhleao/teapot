@@ -7,6 +7,7 @@ import { SettingsDialog } from './components/SettingsDialog'
 import { StackView } from './components/StackView'
 import { TitleBar } from './components/TitleBar'
 import { Toaster } from './components/Toaster'
+import { TooltipProvider } from './components/Tooltip'
 import { Topbar } from './components/Topbar'
 import { ScrollArea, ScrollBar } from './components/ui/scroll-area'
 import { useForgeStateContext } from './contexts/ForgeStateContext'
@@ -37,42 +38,44 @@ function App(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <TitleBar />
-      <ScrollArea className="flex-1">
-        <div className="px-6 pt-2 pb-32">
-          <Topbar />
+    <TooltipProvider>
+      <div className="flex h-screen flex-col">
+        <TitleBar />
+        <ScrollArea className="flex-1">
+          <div className="px-6 pt-2 pb-32">
+            <Topbar />
 
-          <div className="">
-            {!selectedRepo ? (
-              <EmptyState variant="no-repo" onAction={handleAddRepo} />
-            ) : repoError ? (
-              <EmptyState variant="error" errorMessage={repoError} />
-            ) : enrichedStack ? (
-              <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
-            ) : (
-              <EmptyState variant="loading" />
-            )}
+            <div className="">
+              {!selectedRepo ? (
+                <EmptyState variant="no-repo" onAction={handleAddRepo} />
+              ) : repoError ? (
+                <EmptyState variant="error" errorMessage={repoError} />
+              ) : enrichedStack ? (
+                <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
+              ) : (
+                <EmptyState variant="loading" />
+              )}
+            </div>
           </div>
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
-      <button
-        onClick={() => setIsSettingsOpen(true)}
-        className="focus:ring-foreground bg-secondary text-secondary-foreground hover:bg-secondary/80 fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
-        aria-label="Settings"
-      >
-        <Settings className="h-5 w-5" />
-      </button>
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="focus:ring-foreground bg-secondary text-secondary-foreground hover:bg-secondary/80 fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
+          aria-label="Settings"
+        >
+          <Settings className="h-5 w-5" />
+        </button>
 
-      <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
-      {isRebasingWithConflicts && <ConflictResolutionDialog />}
-      {queuedBranches.length > 0 && !isRebasingWithConflicts && (
-        <ResumeQueueDialog queuedBranches={queuedBranches} />
-      )}
-      <Toaster />
-    </div>
+        <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
+        {isRebasingWithConflicts && <ConflictResolutionDialog />}
+        {queuedBranches.length > 0 && !isRebasingWithConflicts && (
+          <ResumeQueueDialog queuedBranches={queuedBranches} />
+        )}
+        <Toaster />
+      </div>
+    </TooltipProvider>
   )
 }
 

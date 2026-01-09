@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '../utils/cn'
+import { Tooltip, TooltipContainerProvider } from './Tooltip'
 
 interface ContextMenuProps {
   children: React.ReactNode
@@ -10,6 +11,12 @@ interface ContextMenuProps {
 
 export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
+  // Use state instead of ref to trigger re-render when element is attached
+  const [menuElement, setMenuElement] = useState<HTMLDivElement | null>(null)
+
+  const menuRef = useCallback((node: HTMLDivElement | null) => {
+    setMenuElement(node)
+  }, [])
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (disabled) return
@@ -30,6 +37,8 @@ export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
         <ContextMenuPortal>
           <ContextMenuOverlay onClick={close} />
           <div
+            ref={menuRef}
+            role="menu"
             className={cn(
               'bg-popover text-popover-foreground animate-in fade-in zoom-in-95 fixed z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-md',
               'border-border bg-background'
@@ -41,7 +50,9 @@ export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
               close()
             }}
           >
-            {content}
+            <TooltipContainerProvider container={menuElement}>
+              {content}
+            </TooltipContainerProvider>
           </div>
         </ContextMenuPortal>
       )}
@@ -84,34 +95,46 @@ export function ContextMenuItem({
   onClick,
   className,
   disabled,
-  title
+  disabledReason
 }: {
   children: React.ReactNode
   onClick?: () => void
   className?: string
   disabled?: boolean
-  title?: string
+  /** Tooltip explaining why the item is disabled. Only shown when disabled=true. */
+  disabledReason?: string
 }) {
-  return (
+  const item = (
     <div
+      role="menuitem"
+      aria-disabled={disabled}
       onClick={() => {
         if (disabled) return
         // Don't stop propagation here so the menu container can catch it and close
         onClick?.()
       }}
-      title={title}
       className={cn(
         'relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none',
-        'hover:bg-accent hover:text-accent-foreground',
-        disabled && 'pointer-events-none opacity-50',
+        !disabled && 'hover:bg-accent hover:text-accent-foreground',
+        disabled && 'cursor-not-allowed opacity-50',
         className
       )}
     >
       {children}
     </div>
   )
+
+  if (disabled && disabledReason) {
+    return (
+      <Tooltip content={disabledReason} side="left">
+        {item}
+      </Tooltip>
+    )
+  }
+
+  return item
 }
 
 export function ContextMenuSeparator({ className }: { className?: string }) {
-  return <div className={cn('bg-border -mx-1 my-1 h-px', className)} />
+  return <div role="separator" className={cn('bg-border -mx-1 my-1 h-px', className)} />
 }

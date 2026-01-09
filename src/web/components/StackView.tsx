@@ -6,6 +6,7 @@ import { useDragContext } from '../contexts/DragContext'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
+import { getEditMessageState } from '../utils/edit-message-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
@@ -208,7 +209,8 @@ export const CommitView = memo(function CommitView({
   baseSha = '',
   draggedCommitSet
 }: CommitProps): React.JSX.Element {
-  const isCurrent = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
+  const isHead = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
+  const editMessageState = getEditMessageState({ isHead, isTrunk: stack.isTrunk })
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
   const {
     confirmRebaseIntent,
@@ -237,7 +239,7 @@ export const CommitView = memo(function CommitView({
   const isPartOfRebasePlan = Boolean(data.rebaseStatus)
 
   const showWorkingTree =
-    isCurrent && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
+    isHead && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
   const isBeingDragged = isPartOfDraggedStack(data.sha, draggedCommitSet)
@@ -361,7 +363,7 @@ export const CommitView = memo(function CommitView({
           <CommitDot
             top={showTopLine}
             bottom={showBottomLine}
-            variant={isCurrent ? 'current' : 'default'}
+            variant={isHead ? 'current' : 'default'}
             accentLines={showWorkingTree ? 'top' : 'none'}
           />
           {data.branches.length > 0 && <MultiBranchBadge branches={data.branches} />}
@@ -374,10 +376,10 @@ export const CommitView = memo(function CommitView({
             <>
               <ContextMenuItem
                 onClick={() => setIsEditMessageDialogOpen(true)}
-                disabled={!isCurrent}
-                title={!isCurrent ? 'Only the current commit message can be edited' : undefined}
+                disabled={!editMessageState.canEdit}
+                disabledReason={editMessageState.disabledReason}
               >
-                Edit message
+                Amend message
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
@@ -387,7 +389,7 @@ export const CommitView = memo(function CommitView({
           <div
             className={cn(
               'text-sm whitespace-nowrap',
-              isCurrent && 'font-semibold',
+              isHead && 'font-semibold',
               data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
             )}
           >
@@ -404,7 +406,7 @@ export const CommitView = memo(function CommitView({
               trunkHeadSha={trunkHeadSha}
               baseSha={baseSha}
             />
-            {!stack.isTrunk && isCurrent && (
+            {!stack.isTrunk && isHead && (
               <button
                 onClick={handleUncommit}
                 disabled={isUncommitting}

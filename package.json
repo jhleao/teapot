@@ -33,6 +33,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@radix-ui/react-scroll-area": "^1.2.10",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",

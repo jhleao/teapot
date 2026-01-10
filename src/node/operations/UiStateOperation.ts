@@ -118,7 +118,12 @@ export class UiStateOperation {
     }
 
     // Handle rebase state - apply status markers to commits
-    if (reconciledSession) {
+    // If projectedStack exists, the status markers (prompting/idle) were already
+    // applied by buildFullUiState - we're in the planning phase showing a preview.
+    // Only apply queued/conflicted/resolved status if we're NOT in the planning phase.
+    const isInPlanningPhase = fullUiState.projectedStack !== null
+
+    if (reconciledSession && !isInPlanningPhase) {
       const pendingJobIds = reconciledSession.state.queue.pendingJobIds
 
       if (workingTreeStatus.isRebasing) {
@@ -157,7 +162,7 @@ export class UiStateOperation {
           await SessionService.clearSession(repoPath)
         }
       }
-    } else if (workingTreeStatus.isRebasing) {
+    } else if (!isInPlanningPhase && workingTreeStatus.isRebasing) {
       // Git is rebasing but we have no session - this is an orphaned rebase
       // (e.g., the app was restarted mid-rebase, or rebase started externally)
       // Try to recover the branch name from Git's rebase state

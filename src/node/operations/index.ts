@@ -8,6 +8,15 @@ export { SquashOperation } from './SquashOperation'
 export { UiStateOperation } from './UiStateOperation'
 export { WorkingTreeOperation } from './WorkingTreeOperation'
 export { WorktreeOperation } from './WorktreeOperation'
+export {
+  isWorktreeConflictError,
+  isWorktreeStale,
+  normalizePath,
+  parseWorktreeConflictError,
+  pruneIfStale,
+  pruneStaleWorktrees,
+  retryWithPrune
+} from './WorktreeUtils'
 
 export type { SyncTrunkResult } from './BranchOperation'
 export type { CloneResult } from './CloneOperation'
@@ -15,3 +24,9 @@ export type { ShipItResult } from './PullRequestOperation'
 export type { ExecutorOptions, RebaseExecutionResult } from './RebaseExecutor'
 export type { GetUiStateOptions } from './UiStateOperation'
 export type { WorktreeOperationResult } from './WorktreeOperation'
+export type {
+  IsWorktreeStaleOptions,
+  PruneResult,
+  RetryWithPruneOptions,
+  StaleCheckResult
+} from './WorktreeUtils'

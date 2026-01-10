@@ -147,6 +147,21 @@ export interface GitAdapter {
    */
   listWorktrees(dir: string, options?: { skipDirtyCheck?: boolean }): Promise<WorktreeInfo[]>
 
+  /**
+   * Prune stale worktree references
+   *
+   * Removes worktree administrative files for worktrees that no longer exist
+   * on disk. This is equivalent to `git worktree prune`.
+   *
+   * Use this when:
+   * - A worktree directory was manually deleted
+   * - The app crashed during worktree removal
+   * - Git's worktree list is out of sync with the filesystem
+   *
+   * @param dir - Repository directory path
+   */
+  pruneWorktrees(dir: string): Promise<void>
+
   // ============================================================================
   // Repository Mutation
   // ============================================================================

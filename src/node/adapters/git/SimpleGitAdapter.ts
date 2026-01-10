@@ -467,6 +467,22 @@ export class SimpleGitAdapter implements GitAdapter {
   }
 
   /**
+   * Prune stale worktree references.
+   *
+   * Removes worktree administrative files for worktrees that no longer exist
+   * on disk. This cleans up git's internal worktree registry when worktrees
+   * were deleted externally or by a crashed process.
+   */
+  async pruneWorktrees(dir: string): Promise<void> {
+    try {
+      const git = this.createGit(dir)
+      await git.raw(['worktree', 'prune'])
+    } catch (error) {
+      throw this.createError('pruneWorktrees', error)
+    }
+  }
+
+  /**
    * Check if a worktree has uncommitted changes.
    */
   private async isWorktreeDirty(worktreePath: string): Promise<boolean> {

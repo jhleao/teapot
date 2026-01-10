@@ -38,6 +38,7 @@ import { ExecutionContextService, SessionService } from '../services'
 import type { ExecutionContext } from '../services/ExecutionContextService'
 import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
+import { parseWorktreeConflictError } from './WorktreeUtils'
 import { checkConflictResolution } from '../utils/conflict-markers'
 import { WorktreeOperation } from './WorktreeOperation'
 
@@ -637,17 +638,12 @@ export class RebaseExecutor {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
 
-      // Detect worktree conflict errors from git
-      // Git errors look like: "fatal: 'branch' is already used by worktree at '/path'"
-      // or "fatal: cannot checkout 'branch': checked out in worktree at '/path'"
-      const worktreeMatch = errorMessage.match(
-        /(?:already used by|checked out in) worktree at '([^']+)'/i
-      )
-      if (worktreeMatch) {
-        const worktreePath = worktreeMatch[1]
+      // Detect worktree conflict errors from git using shared utility
+      const worktreeConflict = parseWorktreeConflictError(error)
+      if (worktreeConflict) {
         return {
           status: 'error',
-          message: `Cannot rebase: branch "${job.branch}" is checked out in worktree at ${worktreePath}. Switch to that worktree and checkout a different branch first.`
+          message: `Cannot rebase: branch "${job.branch}" is checked out in worktree at ${worktreeConflict.worktreePath}. Switch to that worktree and checkout a different branch first.`
         }
       }
 

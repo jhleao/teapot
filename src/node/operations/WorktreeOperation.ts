@@ -21,6 +21,7 @@ import { getGitAdapter } from '../adapters/git'
 import { BranchUtils } from '../domain/BranchUtils'
 import { configStore } from '../store'
 import { ExternalApps } from '../utils/ExternalApps'
+import { normalizePath, pruneStaleWorktrees } from './WorktreeUtils'
 
 const execAsync = promisify(exec)
 
@@ -114,6 +115,9 @@ export class WorktreeOperation {
   /**
    * Delete a worktree.
    * Use force=true to delete even if the worktree has uncommitted changes.
+   *
+   * Handles stale worktrees by pruning git's registry when the worktree
+   * directory no longer exists on disk.
    */
   static async remove(
     repoPath: string,
@@ -121,18 +125,31 @@ export class WorktreeOperation {
     force: boolean = false
   ): Promise<WorktreeOperationResult> {
     try {
-      // Resolve symlinks to match git's canonical path (e.g., /var -> /private/var on macOS)
-      let resolvedPath = worktreePath
+      // Normalize the path to handle symlinks (e.g., /var -> /private/var on macOS)
+      // This uses the centralized normalizePath utility which handles non-existent paths
+      // We also check if path exists atomically with normalization to avoid race conditions
+      let resolvedPath: string
+      let pathExists: boolean
+
       try {
+        // If realpath succeeds, path exists and we get the normalized path
         resolvedPath = await fs.promises.realpath(worktreePath)
+        pathExists = true
       } catch {
-        // Path doesn't exist, use original path
+        // Path doesn't exist - use normalizePath to resolve parent symlinks
+        resolvedPath = await normalizePath(worktreePath)
+        pathExists = false
       }
 
       // Cannot remove the main worktree
       const git = getGitAdapter()
       const worktrees = await git.listWorktrees(repoPath)
-      const targetWorktree = worktrees.find((wt) => wt.path === resolvedPath)
+
+      // Try to find the worktree by resolved path first, then by original path
+      let targetWorktree = worktrees.find((wt) => wt.path === resolvedPath)
+      if (!targetWorktree && resolvedPath !== worktreePath) {
+        targetWorktree = worktrees.find((wt) => wt.path === worktreePath)
+      }
 
       if (!targetWorktree) {
         return { success: false, error: 'Worktree not found' }
@@ -140,6 +157,16 @@ export class WorktreeOperation {
 
       if (targetWorktree.isMain) {
         return { success: false, error: 'Cannot remove the main worktree' }
+      }
+
+      // If the worktree directory doesn't exist, it's stale - just prune it
+      // Use pruneStaleWorktrees which handles race conditions gracefully
+      if (!pathExists || targetWorktree.isStale) {
+        log.info(
+          `[WorktreeOperation] Worktree ${worktreePath} is stale (directory doesn't exist), pruning`
+        )
+        await pruneStaleWorktrees(repoPath)
+        return { success: true }
       }
 
       const forceFlag = force ? ' --force' : ''

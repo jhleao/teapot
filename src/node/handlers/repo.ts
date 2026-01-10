@@ -28,8 +28,11 @@ import { configStore } from '../store'
 import {
   BranchOperation,
   CommitOperation,
+  parseWorktreeConflictError,
+  pruneStaleWorktrees,
   PullRequestOperation,
   RebaseOperation,
+  retryWithPrune,
   SquashOperation,
   UiStateOperation,
   WorkingTreeOperation,
@@ -58,6 +61,12 @@ function resolveWorkingPath(repoPath: string): string {
 
 const watchRepo: IpcHandlerOf<'watchRepo'> = (event, { repoPath }) => {
   GitWatcher.getInstance().watch(resolveWorkingPath(repoPath), event.sender)
+
+  // Proactively prune stale worktree references on startup (best-effort, async)
+  // This prevents "already used by worktree" errors from stale references
+  pruneStaleWorktrees(repoPath).catch((error) => {
+    log.warn('[watchRepo] Failed to prune stale worktrees:', error)
+  })
 
   // Clean up orphaned temp worktrees on startup (best-effort, async)
   ExecutionContextService.cleanupOrphans(repoPath).catch((error) => {
@@ -271,16 +280,37 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (
   _event,
   { repoPath, ref }
 ): Promise<CheckoutResponse> => {
-  const result = await BranchOperation.checkout(resolveWorkingPath(repoPath), ref)
-  if (!result.success) {
-    // Parse worktree conflict error for a friendlier message
-    const worktreeMatch = result.error?.match(/already used by worktree at '([^']+)'/)
-    if (worktreeMatch) {
-      const worktreePath = worktreeMatch[1]
-      throw new Error(`Cannot checkout '${ref}' - already checked out in ${worktreePath}`)
+  const workingPath = resolveWorkingPath(repoPath)
+
+  // Use retryWithPrune to automatically recover from stale worktree references
+  // retryWithPrune throws on failure, so if we get past this, checkout succeeded
+  await retryWithPrune(
+    async () => {
+      const checkoutResult = await BranchOperation.checkout(workingPath, ref)
+      if (!checkoutResult.success) {
+        // Throw to trigger retry logic for worktree conflicts
+        throw new Error(checkoutResult.error || 'Checkout failed')
+      }
+      return checkoutResult
+    },
+    {
+      repoPath,
+      maxRetries: 1,
+      onRetry: (_error, attempt) => {
+        log.info(`[checkoutHandler] Retrying checkout (attempt ${attempt}) after pruning stale worktrees`)
+      }
     }
-    throw new Error(result.error || 'Checkout failed')
-  }
+  ).catch((error) => {
+    // Transform worktree conflict errors into user-friendly messages
+    // Preserve the original error as cause for debugging
+    const conflict = parseWorktreeConflictError(error)
+    if (conflict) {
+      throw new Error(`Cannot checkout '${ref}' - already checked out in ${conflict.worktreePath}`, {
+        cause: error
+      })
+    }
+    throw error
+  })
 
   const uiState = await UiStateOperation.getUiState(repoPath)
   return { uiState }

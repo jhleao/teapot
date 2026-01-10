@@ -16,6 +16,7 @@ import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { getEditMessageState } from '../utils/edit-message-state'
+import { getSquashState } from '../utils/squash-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
@@ -315,11 +316,16 @@ export const CommitView = memo(function CommitView({
   // Get the branch that this commit belongs to (for squash)
   const commitBranch = data.branches.find((b) => !b.isRemote)
 
-  // Squash is available if:
-  // - We have a branch on this commit
-  // - We're not on trunk
-  // - The parent commit is not on trunk (checked via preview)
-  const canShowSquash = !stack.isTrunk && commitBranch != null
+  // Determine if parent commit is on trunk (first commit in stack has trunk as parent)
+  const isFirstInStack = stack.commits.length > 0 && stack.commits[0].sha === data.sha
+  const parentIsTrunk = isFirstInStack
+
+  // Compute squash state for menu item
+  const squashState = getSquashState({
+    isTrunk: stack.isTrunk,
+    hasBranch: commitBranch != null,
+    parentIsTrunk
+  })
 
   const handleOpenSquashDialog = useCallback(async () => {
     if (!commitBranch) return
@@ -447,10 +453,11 @@ export const CommitView = memo(function CommitView({
               >
                 Amend message
               </ContextMenuItem>
-              {canShowSquash && (
+              {commitBranch != null && !stack.isTrunk && (
                 <ContextMenuItem
                   onClick={handleOpenSquashDialog}
-                  disabled={isLoadingSquashPreview}
+                  disabled={!squashState.canSquash || isLoadingSquashPreview}
+                  disabledReason={squashState.disabledReason}
                 >
                   {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
                 </ContextMenuItem>

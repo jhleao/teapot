@@ -1,4 +1,4 @@
-import type { SquashPreview, SquashResult } from '@shared/types'
+import type { BranchChoice, SquashPreview, SquashResult } from '@shared/types'
 import { findOpenPr, type GitForgeState } from '@shared/types/git-forge'
 import type { GitAdapter } from '../adapters/git'
 import {
@@ -45,6 +45,13 @@ export class SquashOperation {
     const targetCommit = await git.readCommit(repoPath, targetHeadSha)
     const pr = findOpenPr(branchName, forgeStateResult.state.pullRequests)
 
+    // After squash, both branches will point to the same commit - this is a collision
+    // The child branch (branchName) is being squashed into parent, so user must choose
+    const branchCollision = {
+      existingBranch: parentBranch,
+      childBranch: branchName
+    }
+
     return {
       canSquash: true,
       targetBranch: branchName,
@@ -55,7 +62,8 @@ export class SquashOperation {
       prNumber: pr?.number,
       parentCommitMessage: parentCommit.message,
       commitMessage: targetCommit.message,
-      commitAuthor: targetCommit.author.name
+      commitAuthor: targetCommit.author.name,
+      branchCollision
     }
   }
 
@@ -65,7 +73,7 @@ export class SquashOperation {
   static async execute(
     repoPath: string,
     branchName: string,
-    options: { commitMessage?: string } = {}
+    options: { commitMessage?: string; branchChoice?: BranchChoice } = {}
   ): Promise<SquashResult> {
     const git = getGitAdapter()
 
@@ -120,14 +128,25 @@ export class SquashOperation {
         await git.checkout(repoPath, parentBranch)
       }
 
-      await this.cleanupSquashedBranch(repoPath, branchName, forgeStateResult.state)
+      const branchResult = await this.handleBranchAfterSquash(
+        repoPath,
+        parentBranch,
+        branchName,
+        options.branchChoice,
+        forgeStateResult.state,
+        git
+      )
 
       // If we moved off the branch being deleted, stay on parent; otherwise leave as-is.
-      if (originalBranch && originalBranch !== branchName) {
+      if (originalBranch && originalBranch !== branchName && !branchResult.deletedBranch?.includes(originalBranch)) {
         await git.checkout(repoPath, originalBranch)
       }
 
-      return { success: true, deletedBranch: branchName }
+      return {
+        success: true,
+        deletedBranch: branchResult.deletedBranch,
+        preservedBranch: branchResult.preservedBranch
+      }
     }
 
     try {
@@ -213,13 +232,22 @@ export class SquashOperation {
         return pushResult.result
       }
 
-      await this.cleanupSquashedBranch(repoPath, branchName, forgeStateResult.state)
+      const branchResult = await this.handleBranchAfterSquash(
+        repoPath,
+        parentBranch,
+        branchName,
+        options.branchChoice,
+        forgeStateResult.state,
+        git
+      )
+
       await this.restoreBranch(repoPath, originalBranch, originalHead, parentBranch, git)
 
       return {
         success: true,
         modifiedBranches: pushResult.changedBranches,
-        deletedBranch: branchName
+        deletedBranch: branchResult.deletedBranch,
+        preservedBranch: branchResult.preservedBranch
       }
     } catch (error) {
       await this.rollbackBranches(
@@ -388,6 +416,88 @@ export class SquashOperation {
     }
 
     await BranchOperation.cleanup(repoPath, branch)
+  }
+
+  /**
+   * Handle branch preservation/deletion after squash based on user's choice.
+   *
+   * @param parentBranch - The parent branch (stays on result commit)
+   * @param childBranch - The child branch being squashed
+   * @param branchChoice - User's choice: 'parent' | 'child' | 'both' | custom name
+   *   - 'parent': Keep parent branch, delete child branch (and close its PR)
+   *   - 'child': Keep child branch (move to result), delete parent branch (and close its PR)
+   *   - 'both': Keep both branches pointing to the same commit
+   *   - custom string: Rename child to custom name, delete original child (close its PR)
+   */
+  private static async handleBranchAfterSquash(
+    repoPath: string,
+    parentBranch: string,
+    childBranch: string,
+    branchChoice: BranchChoice | undefined,
+    forgeState: GitForgeState,
+    git: GitAdapter
+  ): Promise<{ deletedBranch?: string; preservedBranch?: string }> {
+    // Default to 'parent' if no choice specified (backwards compatibility)
+    const choice = branchChoice ?? 'parent'
+
+    if (choice === 'parent') {
+      // Keep parent branch, delete child branch and close its PR
+      await this.cleanupSquashedBranch(repoPath, childBranch, forgeState)
+      return { deletedBranch: childBranch, preservedBranch: parentBranch }
+    }
+
+    if (choice === 'child') {
+      // Move child branch to result commit (which is now where parent points)
+      // Delete parent branch and close its PR
+      const resultSha = await git.resolveRef(repoPath, parentBranch)
+
+      // Update child branch to point to the result commit by deleting and recreating
+      await git.deleteBranch(repoPath, childBranch)
+      await git.branch(repoPath, childBranch, { startPoint: resultSha })
+
+      // Close parent's PR if it has one
+      const parentPr = findOpenPr(parentBranch, forgeState.pullRequests)
+      if (parentPr) {
+        await gitForgeService.closePullRequest(repoPath, parentPr.number)
+      }
+
+      // Delete parent branch
+      await BranchOperation.cleanup(repoPath, parentBranch)
+
+      return { deletedBranch: parentBranch, preservedBranch: childBranch }
+    }
+
+    if (choice === 'both') {
+      // Keep both branches pointing to the same commit
+      // Child branch needs to be moved to the result commit
+      const resultSha = await git.resolveRef(repoPath, parentBranch)
+
+      // Update child branch by deleting and recreating at new position
+      await git.deleteBranch(repoPath, childBranch)
+      await git.branch(repoPath, childBranch, { startPoint: resultSha })
+
+      // No branches deleted, no PRs closed
+      return { preservedBranch: parentBranch }
+    }
+
+    // Custom name: create new branch with custom name, delete child branch
+    const customName = choice
+    const resultSha = await git.resolveRef(repoPath, parentBranch)
+
+    // Create new branch with the custom name at the result commit
+    await git.branch(repoPath, customName, { startPoint: resultSha })
+
+    // Push the new branch to remote
+    await git.push(repoPath, {
+      remote: 'origin',
+      ref: customName,
+      setUpstream: true
+    })
+
+    // Delete the original child branch (and close its PR)
+    await this.cleanupSquashedBranch(repoPath, childBranch, forgeState)
+
+    return { deletedBranch: childBranch, preservedBranch: customName }
   }
 
   private static async restoreBranch(

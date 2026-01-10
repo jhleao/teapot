@@ -19,7 +19,7 @@ function createMockBranch(
     isTrunk,
     canRename: !isRemote && !isTrunk,
     canDelete: !isCurrent && !isTrunk,
-    canFold: !isRemote && !isTrunk,
+    canSquash: !isRemote && !isTrunk,
     canCreateWorktree: !isRemote && !isTrunk
   }
 }

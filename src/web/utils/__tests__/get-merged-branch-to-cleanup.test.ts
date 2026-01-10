@@ -16,7 +16,7 @@ const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
     // Compute permissions based on state (same logic as backend)
     canRename: !isRemote && !isTrunk,
     canDelete: !isCurrent && !isTrunk,
-    canFold: !isRemote && !isTrunk,
+    canSquash: !isRemote && !isTrunk,
     canCreateWorktree: !isRemote && !isTrunk,
     ...overrides
   }

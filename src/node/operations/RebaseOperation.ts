@@ -31,9 +31,72 @@ import { RepoModelService, SessionService } from '../services'
 import { gitForgeService } from '../services/ForgeService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
-import { RebaseExecutor } from './RebaseExecutor'
+import { RebaseExecutor, type RebaseErrorCode } from './RebaseExecutor'
 import { UiStateOperation } from './UiStateOperation'
 import { WorktreeOperation } from './WorktreeOperation'
+
+/**
+ * Custom error class for rebase operation failures that preserves error codes
+ * for specific handling in the frontend.
+ *
+ * The error code is encoded in the error name (e.g., 'RebaseOperationError:WORKTREE_CREATION_FAILED')
+ * so it survives IPC serialization. Additionally, toJSON() provides explicit serialization
+ * for better debugging and potential future use.
+ */
+export class RebaseOperationError extends Error {
+  constructor(
+    message: string,
+    public readonly errorCode?: RebaseErrorCode
+  ) {
+    super(message)
+    // Encode error code in name so it survives IPC serialization
+    this.name = errorCode ? `RebaseOperationError:${errorCode}` : 'RebaseOperationError'
+  }
+
+  /**
+   * Custom JSON serialization for better error transmission across IPC.
+   * Ensures all error properties are preserved when the error is serialized.
+   */
+  toJSON(): {
+    name: string
+    message: string
+    errorCode: RebaseErrorCode | undefined
+    stack: string | undefined
+  } {
+    return {
+      name: this.name,
+      message: this.message,
+      errorCode: this.errorCode,
+      stack: this.stack
+    }
+  }
+
+  /**
+   * Extracts error code from an error name string.
+   * Used by frontend to decode error codes that survive IPC serialization.
+   * @param errorName - The error name (e.g., 'RebaseOperationError:WORKTREE_CREATION_FAILED')
+   * @returns The error code or null if not found/invalid
+   */
+  static extractErrorCode(errorName: string): RebaseErrorCode | null {
+    const match = errorName.match(/^RebaseOperationError:([A-Z_]+)$/)
+    if (!match) return null
+
+    const code = match[1]
+    // Validate against known error codes
+    const validCodes: RebaseErrorCode[] = [
+      'WORKTREE_CREATION_FAILED',
+      'REBASE_IN_PROGRESS',
+      'GIT_ADAPTER_UNSUPPORTED',
+      'VALIDATION_FAILED',
+      'SESSION_EXISTS',
+      'BRANCH_NOT_FOUND',
+      'CONTEXT_ACQUISITION_FAILED',
+      'GENERIC'
+    ]
+
+    return validCodes.includes(code as RebaseErrorCode) ? (code as RebaseErrorCode) : null
+  }
+}
 
 export class RebaseOperation {
   /**
@@ -157,7 +220,7 @@ export class RebaseOperation {
 
       if (result.status === 'error') {
         await SessionService.clearSession(repoPath)
-        throw new Error(result.message)
+        throw new RebaseOperationError(result.message, result.errorCode)
       }
 
       return await UiStateOperation.getUiState(repoPath)
@@ -183,7 +246,7 @@ export class RebaseOperation {
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (result.status === 'error') {
-      throw new Error(result.message)
+      throw new RebaseOperationError(result.message, result.errorCode)
     }
 
     if (result.status === 'conflict') {
@@ -215,7 +278,7 @@ export class RebaseOperation {
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (result.status === 'error') {
-      throw new Error(result.message)
+      throw new RebaseOperationError(result.message, result.errorCode)
     }
 
     if (result.status === 'conflict') {

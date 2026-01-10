@@ -299,32 +299,47 @@ export function UiStateProvider({
 
         if (result === null) {
           // Invalid intent (e.g., invalid head/base)
-          skipWatcherUpdatesRef.current = false
-          return
-        }
-
-        if (!result.success && result.error === 'WORKTREE_CONFLICT') {
-          // Worktree conflict - show dialog instead of proceeding
-          skipWatcherUpdatesRef.current = false
-          setWorktreeConflicts({
-            conflicts: result.worktreeConflicts,
-            message: result.message,
-            headSha: params.headSha,
-            baseSha: params.baseSha
+          log.warn('[UiStateContext.submitRebaseIntent] Invalid rebase intent', {
+            headSha: params.headSha.slice(0, 8),
+            baseSha: params.baseSha.slice(0, 8)
+          })
+          toast.error('Cannot rebase', {
+            description: 'Invalid commit reference. The branch may have changed.'
           })
           return
         }
 
-        if (result.success && result.uiState) {
-          setUiState(result.uiState)
+        if (!result.success) {
+          // Handle all failure cases explicitly
+          if (result.error === 'WORKTREE_CONFLICT') {
+            // Worktree conflict - show dialog instead of proceeding
+            setWorktreeConflicts({
+              conflicts: result.worktreeConflicts,
+              message: result.message,
+              headSha: params.headSha,
+              baseSha: params.baseSha
+            })
+            return
+          }
+          // Unknown error type - log and show toast
+          log.error('[UiStateContext.submitRebaseIntent] Unexpected error', { result })
+          toast.error('Rebase failed', {
+            description: 'An unexpected error occurred'
+          })
+          return
         }
+
+        // Success case
+        setUiState(result.uiState)
       } catch (error) {
-        skipWatcherUpdatesRef.current = false
         log.error('Submit rebase intent failed:', error)
         toast.error('Failed to start rebase', {
           description: error instanceof Error ? error.message : String(error)
         })
         throw error
+      } finally {
+        // Always reset the flag - whether success, failure, or error
+        skipWatcherUpdatesRef.current = false
       }
     },
     [repoPath]
@@ -604,23 +619,39 @@ export function UiStateProvider({
         })
 
         if (result === null) {
-          return
-        }
-
-        if (!result.success && result.error === 'WORKTREE_CONFLICT') {
-          setWorktreeConflicts({
-            conflicts: result.worktreeConflicts,
-            message: result.message,
-            headSha: worktreeConflicts.headSha,
-            baseSha: worktreeConflicts.baseSha
+          // Invalid intent after resolution
+          log.warn('[UiStateContext.resolveWorktreeConflicts] Invalid rebase intent after resolution')
+          toast.error('Cannot rebase', {
+            description: 'Invalid commit reference. The branch may have changed.'
           })
+          setWorktreeConflicts(null)
           return
         }
 
-        if (result.success && result.uiState) {
-          setUiState(result.uiState)
+        if (!result.success) {
+          // Handle all failure cases explicitly
+          if (result.error === 'WORKTREE_CONFLICT') {
+            // Still have conflicts - update dialog
+            setWorktreeConflicts({
+              conflicts: result.worktreeConflicts,
+              message: result.message,
+              headSha: worktreeConflicts.headSha,
+              baseSha: worktreeConflicts.baseSha
+            })
+            return
+          }
+          // Unknown error type
+          log.error('[UiStateContext.resolveWorktreeConflicts] Unexpected error', { result })
+          toast.error('Rebase failed', {
+            description: 'An unexpected error occurred'
+          })
           setWorktreeConflicts(null)
+          return
         }
+
+        // Success case
+        setUiState(result.uiState)
+        setWorktreeConflicts(null)
       } catch (error) {
         log.error('Resolve worktree conflicts failed:', error)
         toast.error('Failed to resolve worktree conflicts', {

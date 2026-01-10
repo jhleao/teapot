@@ -5,7 +5,6 @@ import { Loader2Icon } from 'lucide-react'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
-import { canRebase } from '../utils/can-rebase'
 import { cn } from '../utils/cn'
 import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
 import { StatusChecksDisplay } from './StatusChecksDisplay'
@@ -15,10 +14,10 @@ interface GitForgeSectionProps {
   isTrunk: boolean
   /** The SHA of the commit being displayed (used for rebase headSha) */
   commitSha: string
-  /** The SHA of the current trunk head commit */
+  /** The SHA of the current trunk head commit (used for rebase target) */
   trunkHeadSha: string
-  /** The SHA of the trunk commit this spinoff branches off from. Used to determine if rebase is needed. */
-  baseSha: string
+  /** Whether this stack can be rebased to trunk (computed by backend) */
+  canRebaseToTrunk: boolean
 }
 
 /**
@@ -29,7 +28,7 @@ export const GitForgeSection = memo(function GitForgeSection({
   isTrunk,
   commitSha,
   trunkHeadSha,
-  baseSha
+  canRebaseToTrunk
 }: GitForgeSectionProps): React.JSX.Element | null {
   const {
     createPullRequest,
@@ -49,10 +48,8 @@ export const GitForgeSection = memo(function GitForgeSection({
   const branchWithPr = useMemo(() => branches.find((b) => b.pullRequest), [branches])
   const pr = branchWithPr?.pullRequest
   const isMerged = useMemo(() => branches.some((b) => b.isMerged), [branches])
-  const showRebaseButton = useMemo(
-    () => canRebase({ baseSha, trunkHeadSha, isWorkingTreeDirty }),
-    [baseSha, trunkHeadSha, isWorkingTreeDirty]
-  )
+  // Backend computes canRebaseToTrunk, frontend only checks if working tree is dirty
+  const showRebaseButton = canRebaseToTrunk && !isWorkingTreeDirty
 
   /**
    * Determines if this branch is at the bottom of a PR stack.
@@ -90,8 +87,8 @@ export const GitForgeSection = memo(function GitForgeSection({
       setIsLoading(true)
       try {
         await updatePullRequest({ headBranch: branchWithPr.name })
-      } catch (error) {
-        log.error('Failed to update PR:', error)
+      } catch {
+        // Error already handled by context (toast shown)
       } finally {
         setIsLoading(false)
       }
@@ -107,8 +104,8 @@ export const GitForgeSection = memo(function GitForgeSection({
       setIsLoading(true)
       try {
         await submitRebaseIntent({ headSha: commitSha, baseSha: trunkHeadSha })
-      } catch (error) {
-        log.error('Failed to initiate rebase:', error)
+      } catch {
+        // Error already handled by context (toast shown)
       } finally {
         setIsLoading(false)
       }

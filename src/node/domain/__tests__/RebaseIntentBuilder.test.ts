@@ -164,7 +164,10 @@ describe('RebaseIntentBuilder', () => {
   it('handles branch at root commit', () => {
     // A branch at root commit rebased onto another commit
     const commits = [createCommit('root', ''), createCommit('B', 'root')]
-    const branches = [createBranch('main', 'root', { isTrunk: true }), createBranch('feature', 'B')]
+    const branches = [
+      createBranch('main', 'root', { isTrunk: true }),
+      createBranch('feature', 'B')
+    ]
     const repo = createRepo({ commits, branches })
 
     const intent = RebaseIntentBuilder.build(repo, 'B', 'root')

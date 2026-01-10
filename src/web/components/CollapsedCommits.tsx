@@ -25,7 +25,7 @@ export const CollapsedCommits = memo(function CollapsedCommits({
       aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${label}`}
       className={cn(
         'text-muted-foreground hover:text-foreground flex items-center gap-1 py-1 text-xs transition-colors',
-        'focus-visible:ring-ring focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
         className
       )}
     >

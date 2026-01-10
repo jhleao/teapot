@@ -25,6 +25,7 @@ const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
 describe('enrichStackWithForge', () => {
   const createStack = (overrides: Partial<UiStack> = {}): UiStack => ({
     isTrunk: false,
+    canRebaseToTrunk: false,
     commits: [
       {
         sha: 'commit-1',
@@ -162,6 +163,7 @@ describe('enrichStackWithForge', () => {
           spinoffs: [
             {
               isTrunk: false,
+              canRebaseToTrunk: false,
               commits: [
                 {
                   sha: 'child-commit',

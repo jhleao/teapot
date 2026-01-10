@@ -22,8 +22,6 @@ interface StackProps {
   data: UiStack
   className?: string
   workingTree: UiWorkingTreeFile[]
-  /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
-  baseSha?: string
   /** Whether this is the root/topmost stack (shows sync button) */
   isRoot?: boolean
   /** Pre-computed set of commit SHAs that are part of the current drag/rebase operation (passed from parent) */
@@ -34,8 +32,6 @@ interface CommitProps {
   data: UiCommit
   stack: UiStack
   workingTree: UiWorkingTreeFile[]
-  /** The SHA of the trunk commit this stack branches off from. Empty for trunk stack. */
-  baseSha?: string
   /** Pre-computed set of commit SHAs that are part of the current drag/rebase operation */
   draggedCommitSet: Set<string> | null
 }
@@ -44,7 +40,6 @@ export function StackView({
   data,
   className,
   workingTree,
-  baseSha = '',
   parentDraggedCommitSet
 }: StackProps): React.JSX.Element {
   const { draggingCommitSha, pendingRebase } = useDragContext()
@@ -179,7 +174,6 @@ export function StackView({
                 data={commit}
                 stack={data}
                 workingTree={workingTree}
-                baseSha={baseSha}
                 draggedCommitSet={draggedCommitSet}
               />
               {collapsibleInfo && (
@@ -206,7 +200,6 @@ export const CommitView = memo(function CommitView({
   data,
   stack,
   workingTree,
-  baseSha = '',
   draggedCommitSet
 }: CommitProps): React.JSX.Element {
   const isHead = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
@@ -318,7 +311,6 @@ export const CommitView = memo(function CommitView({
                     className="ml-[12px]"
                     data={spinoff}
                     workingTree={workingTree}
-                    baseSha={data.sha}
                     parentDraggedCommitSet={draggedCommitSet}
                   />
                   <SineCurve />
@@ -404,7 +396,7 @@ export const CommitView = memo(function CommitView({
               isTrunk={stack.isTrunk}
               commitSha={data.sha}
               trunkHeadSha={trunkHeadSha}
-              baseSha={baseSha}
+              canRebaseToTrunk={stack.canRebaseToTrunk}
             />
             {!stack.isTrunk && isHead && (
               <button

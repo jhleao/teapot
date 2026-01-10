@@ -107,7 +107,8 @@ function generateMockStackInternal(
   depth: number = 0,
   maxDepth: number = 2,
   spinoffProbability: number = 0.4, // 40% chance = roughly 2 out of 5
-  isTrunk: boolean = true
+  isTrunk: boolean = true,
+  canRebaseToTrunk: boolean = false
 ): UiStack {
   const commits: UiStack['commits'] = []
 
@@ -147,7 +148,8 @@ function generateMockStackInternal(
             depth + 1,
             maxDepth,
             spinoffProbability * 0.7, // Reduce probability for nested spinoffs
-            false
+            false, // isTrunk
+            depth === 0 // canRebaseToTrunk: true only for spinoffs directly off trunk (depth 0)
           )
         )
       }
@@ -196,7 +198,7 @@ function generateMockStackInternal(
     })
   }
 
-  return { commits, isTrunk }
+  return { commits, isTrunk, canRebaseToTrunk }
 }
 
 /**

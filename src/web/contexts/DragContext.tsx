@@ -55,11 +55,6 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   const [isRebaseLoading, setIsRebaseLoading] = useState(false)
   const [pendingRebase, setPendingRebase] = useState<PendingRebase | null>(null)
 
-  // Ref for synchronous check to prevent race conditions from rapid operations.
-  // React state updates are async, so checking isRebaseLoading alone can miss
-  // a second operation triggered before the state update completes.
-  const isRebaseLoadingRef = useRef(false)
-
   const dragState = useRef<DragState>({
     potentialDragSha: null,
     originalParentSha: null,
@@ -80,8 +75,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   const handleCommitDotMouseDown = useCallback(
     (sha: string, e: React.MouseEvent): void => {
       if (e.button !== 0) return // Only left-click initiates drag
-      // Use ref for synchronous check (state may be stale due to async updates)
-      if (isWorkingTreeDirty || isRebaseLoadingRef.current) return
+      if (isWorkingTreeDirty || isRebaseLoading) return
 
       // Don't allow dragging commits without branches
       const stack = uiState?.stack
@@ -91,7 +85,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
       dragState.current.potentialDragSha = sha
     },
-    [isWorkingTreeDirty, uiState?.stack]
+    [isWorkingTreeDirty, isRebaseLoading, uiState?.stack]
   )
 
   // Mouse event handlers for drag operation
@@ -136,12 +130,6 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       branchCount: number,
       cursorPos: { x: number; y: number }
     ): void => {
-      // Synchronous check to prevent concurrent operations
-      if (isRebaseLoadingRef.current) {
-        log.debug('[DragContext.commitDrop] Blocked: rebase already in progress')
-        return
-      }
-
       const targetBranchName = findBranchNameForCommit(baseSha, stack)
       const sourceBranchName = findBranchNameForCommit(headSha, stack)
       const originalParent = dragState.current.originalParentSha
@@ -153,9 +141,6 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
         originalParentSha: originalParent?.slice(0, 8),
         branchCount
       })
-
-      // Set ref immediately (synchronous) to block concurrent operations
-      isRebaseLoadingRef.current = true
       setIsRebaseLoading(true)
       setPendingRebase({
         headSha,
@@ -165,7 +150,6 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
         cursorPosition: cursorPos
       })
       submitRebaseIntent({ headSha, baseSha }).finally(() => {
-        isRebaseLoadingRef.current = false
         setIsRebaseLoading(false)
         setPendingRebase(null)
       })

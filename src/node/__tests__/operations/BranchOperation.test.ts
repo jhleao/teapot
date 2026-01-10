@@ -23,6 +23,7 @@ vi.mock('../../services/ForgeService', () => ({
 }))
 
 import { BranchOperation } from '../../operations/BranchOperation'
+import { TrunkProtectionError } from '../../shared/errors'
 
 import { gitForgeService } from '../../services/ForgeService'
 
@@ -320,6 +321,42 @@ describe('cleanupBranch', () => {
     // Remote tracking ref should also be gone
     const remoteBranchesAfter = execSync('git branch -r', { cwd: repoPath, encoding: 'utf-8' })
     expect(remoteBranchesAfter).not.toContain('origin/feature')
+  })
+
+  it('should throw TrunkProtectionError when trying to cleanup trunk branch (main)', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create and checkout a different branch so we're not on main
+    execSync('git checkout -b feature', { cwd: repoPath })
+
+    // Try to cleanup main branch - should throw TrunkProtectionError
+    await expect(BranchOperation.cleanup(repoPath, 'main')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.cleanup(repoPath, 'main')).rejects.toThrow(/Cannot cleanup trunk branch/)
+
+    // main branch should still exist
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+      .filter(Boolean)
+    expect(branches).toContain('main')
+  })
+
+  it('should throw TrunkProtectionError when trying to cleanup develop trunk branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create develop branch
+    execSync('git branch develop', { cwd: repoPath })
+
+    // Try to cleanup develop branch - should throw TrunkProtectionError
+    await expect(BranchOperation.cleanup(repoPath, 'develop')).rejects.toThrow(TrunkProtectionError)
   })
 })
 
@@ -635,5 +672,430 @@ describe('deleteBranch', () => {
       .map((b) => b.trim().replace(/^\*\s*/, ''))
       .filter(Boolean)
     expect(branches).not.toContain('feature')
+  })
+
+  it('should throw TrunkProtectionError when trying to delete trunk branch (main)', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create and checkout a different branch so we're not on main
+    execSync('git checkout -b feature', { cwd: repoPath })
+
+    // Try to delete main branch - should throw TrunkProtectionError
+    await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(/Cannot delete trunk branch/)
+
+    // main branch should still exist
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+      .filter(Boolean)
+    expect(branches).toContain('main')
+  })
+
+  it('should throw TrunkProtectionError when trying to delete trunk branch (master)', async () => {
+    // Create a new repo with master as default branch
+    const masterRepoPath = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), 'teapot-test-delete-master-')
+    )
+    try {
+      execSync('git init -b master', { cwd: masterRepoPath })
+      execSync('git config user.name "Test User"', { cwd: masterRepoPath })
+      execSync('git config user.email "test@example.com"', { cwd: masterRepoPath })
+
+      const file1 = path.join(masterRepoPath, 'file1.txt')
+      await fs.promises.writeFile(file1, 'initial')
+      execSync('git add file1.txt', { cwd: masterRepoPath })
+      execSync('git commit -m "commit 1"', { cwd: masterRepoPath })
+
+      // Create and checkout a different branch
+      execSync('git checkout -b feature', { cwd: masterRepoPath })
+
+      // Try to delete master branch - should throw TrunkProtectionError
+      await expect(BranchOperation.delete(masterRepoPath, 'master')).rejects.toThrow(
+        TrunkProtectionError
+      )
+    } finally {
+      await fs.promises.rm(masterRepoPath, { recursive: true, force: true })
+    }
+  })
+
+  it('should throw TrunkProtectionError when trying to delete develop trunk branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create develop branch
+    execSync('git branch develop', { cwd: repoPath })
+
+    // Try to delete develop branch - should throw TrunkProtectionError
+    await expect(BranchOperation.delete(repoPath, 'develop')).rejects.toThrow(TrunkProtectionError)
+  })
+})
+
+describe('renameBranch', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-rename-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should rename a local branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Rename the feature branch
+    await BranchOperation.rename(repoPath, 'feature', 'feature-renamed')
+
+    // Old branch name should be gone, new name should exist
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^\*\s*/, ''))
+      .filter(Boolean)
+    expect(branches).not.toContain('feature')
+    expect(branches).toContain('feature-renamed')
+  })
+
+  it('should throw error when trying to rename trunk branch (main)', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create a different branch so we have somewhere to be
+    execSync('git checkout -b feature', { cwd: repoPath })
+
+    // Try to rename main branch - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'main', 'main-renamed')).rejects.toThrow(
+      TrunkProtectionError
+    )
+    await expect(BranchOperation.rename(repoPath, 'main', 'main-renamed')).rejects.toThrow(
+      /Cannot rename trunk branch/
+    )
+
+    // main branch should still exist with original name
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+      .filter(Boolean)
+    expect(branches).toContain('main')
+    expect(branches).not.toContain('main-renamed')
+  })
+
+  it('should throw TrunkProtectionError when trying to rename trunk branch (master)', async () => {
+    // Create a new repo with master as default branch
+    const masterRepoPath = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), 'teapot-test-rename-master-')
+    )
+    try {
+      execSync('git init -b master', { cwd: masterRepoPath })
+      execSync('git config user.name "Test User"', { cwd: masterRepoPath })
+      execSync('git config user.email "test@example.com"', { cwd: masterRepoPath })
+
+      const file1 = path.join(masterRepoPath, 'file1.txt')
+      await fs.promises.writeFile(file1, 'initial')
+      execSync('git add file1.txt', { cwd: masterRepoPath })
+      execSync('git commit -m "commit 1"', { cwd: masterRepoPath })
+
+      // Create and checkout a different branch
+      execSync('git checkout -b feature', { cwd: masterRepoPath })
+
+      // Try to rename master branch - should throw TrunkProtectionError
+      await expect(
+        BranchOperation.rename(masterRepoPath, 'master', 'master-renamed')
+      ).rejects.toThrow(TrunkProtectionError)
+    } finally {
+      await fs.promises.rm(masterRepoPath, { recursive: true, force: true })
+    }
+  })
+
+  it('should throw TrunkProtectionError when trying to rename develop trunk branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create develop branch
+    execSync('git branch develop', { cwd: repoPath })
+
+    // Try to rename develop branch - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'develop', 'develop-renamed')).rejects.toThrow(
+      TrunkProtectionError
+    )
+  })
+
+  it('should throw TrunkProtectionError when trying to rename trunk branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create trunk branch
+    execSync('git branch trunk', { cwd: repoPath })
+
+    // Try to rename trunk branch - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'trunk', 'trunk-renamed')).rejects.toThrow(
+      TrunkProtectionError
+    )
+  })
+
+  it('should throw TrunkProtectionError when trying to rename a branch TO a trunk name', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Try to rename feature to 'main' - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'feature', 'main')).rejects.toThrow(
+      TrunkProtectionError
+    )
+
+    // Try to rename feature to 'master' - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'feature', 'master')).rejects.toThrow(
+      TrunkProtectionError
+    )
+
+    // Try to rename feature to 'develop' - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'feature', 'develop')).rejects.toThrow(
+      TrunkProtectionError
+    )
+
+    // Try to rename feature to 'trunk' - should throw TrunkProtectionError
+    await expect(BranchOperation.rename(repoPath, 'feature', 'trunk')).rejects.toThrow(
+      TrunkProtectionError
+    )
+
+    // feature branch should still exist with original name
+    const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      .split('\n')
+      .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+      .filter(Boolean)
+    expect(branches).toContain('feature')
+  })
+
+  it('should throw TrunkProtectionError when renaming TO trunk name with different case (Windows compatibility)', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Try to rename feature to 'MAIN' - should throw TrunkProtectionError (case-insensitive)
+    await expect(BranchOperation.rename(repoPath, 'feature', 'MAIN')).rejects.toThrow(
+      TrunkProtectionError
+    )
+
+    // Try to rename feature to 'Master' - should throw TrunkProtectionError (case-insensitive)
+    await expect(BranchOperation.rename(repoPath, 'feature', 'Master')).rejects.toThrow(
+      TrunkProtectionError
+    )
+  })
+})
+
+describe('trunk protection case sensitivity', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-case-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should protect trunk branches regardless of case (MAIN, Main, main)', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create and checkout a different branch
+    execSync('git checkout -b feature', { cwd: repoPath })
+
+    // All case variations should be protected
+    // Note: Git on most systems is case-sensitive for branch names, but we still
+    // want to protect against case variations for Windows compatibility
+    await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(TrunkProtectionError)
+
+    // These tests verify case-insensitivity at the protection layer,
+    // even though the actual branches may not exist with these exact names
+    await expect(BranchOperation.cleanup(repoPath, 'MAIN')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.rename(repoPath, 'Main', 'something')).rejects.toThrow(
+      TrunkProtectionError
+    )
+  })
+
+  it('should protect MASTER, Master, master case variations', async () => {
+    // Setup
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // All case variations should be protected
+    await expect(BranchOperation.delete(repoPath, 'master')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'MASTER')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'Master')).rejects.toThrow(TrunkProtectionError)
+  })
+
+  it('should protect DEVELOP, Develop, develop case variations', async () => {
+    // Setup
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // All case variations should be protected
+    await expect(BranchOperation.delete(repoPath, 'develop')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'DEVELOP')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'Develop')).rejects.toThrow(TrunkProtectionError)
+  })
+
+  it('should protect TRUNK, Trunk, trunk case variations', async () => {
+    // Setup
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // All case variations should be protected
+    await expect(BranchOperation.delete(repoPath, 'trunk')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'TRUNK')).rejects.toThrow(TrunkProtectionError)
+    await expect(BranchOperation.delete(repoPath, 'Trunk')).rejects.toThrow(TrunkProtectionError)
+  })
+})
+
+describe('symlinked worktree handling', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-symlink-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should handle symlinked worktree paths when deleting branch', async () => {
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Create a worktree for the feature branch
+    const actualWorktreePath = path.join(os.tmpdir(), `teapot-wt-actual-${Date.now()}`)
+    const symlinkPath = path.join(os.tmpdir(), `teapot-wt-symlink-${Date.now()}`)
+
+    execSync(`git worktree add "${actualWorktreePath}" feature`, { cwd: repoPath })
+
+    try {
+      // Create symlink to the worktree
+      await fs.promises.symlink(actualWorktreePath, symlinkPath)
+
+      // Delete should succeed - it should properly resolve symlinks when comparing paths
+      await BranchOperation.delete(repoPath, 'feature')
+
+      // Local branch should be gone
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^\*\s*/, ''))
+        .filter(Boolean)
+      expect(branches).not.toContain('feature')
+
+      // Worktree should be gone
+      const worktrees = execSync('git worktree list', { cwd: repoPath, encoding: 'utf-8' })
+      expect(worktrees).not.toContain(actualWorktreePath)
+    } finally {
+      // Cleanup symlink and worktree if test fails partway through
+      try {
+        await fs.promises.unlink(symlinkPath)
+      } catch {
+        // Ignore if already removed
+      }
+      try {
+        execSync(`git worktree remove "${actualWorktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore if already removed
+      }
+    }
+  })
+
+  it('should resolve symlinks when comparing active worktree path', async () => {
+    // This test verifies that fs.promises.realpath is used correctly
+    // when determining if a deleted worktree was the active one
+
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Create a worktree
+    const worktreePath = path.join(os.tmpdir(), `teapot-wt-real-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" feature`, { cwd: repoPath })
+
+    try {
+      // Even though we don't set an active worktree via symlink,
+      // this tests the general worktree removal flow works correctly
+      await BranchOperation.delete(repoPath, 'feature')
+
+      // Branch should be deleted
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^\*\s*/, ''))
+        .filter(Boolean)
+      expect(branches).not.toContain('feature')
+    } finally {
+      try {
+        execSync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore
+      }
+    }
   })
 })

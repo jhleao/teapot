@@ -2,14 +2,25 @@ import type { UiBranch } from '@shared/types'
 import { describe, expect, it } from 'vitest'
 import { getMergedBranchToCleanup } from '../get-merged-branch-to-cleanup.js'
 
-const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => ({
-  name: 'feature-branch',
-  isCurrent: false,
-  isRemote: false,
-  isTrunk: false,
-  isMerged: false,
-  ...overrides
-})
+const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
+  const isCurrent = overrides.isCurrent ?? false
+  const isRemote = overrides.isRemote ?? false
+  const isTrunk = overrides.isTrunk ?? false
+
+  return {
+    name: 'feature-branch',
+    isCurrent,
+    isRemote,
+    isTrunk,
+    isMerged: false,
+    // Compute permissions based on state (same logic as backend)
+    canRename: !isRemote && !isTrunk,
+    canDelete: !isCurrent && !isTrunk,
+    canFold: !isRemote && !isTrunk,
+    canCreateWorktree: !isRemote && !isTrunk,
+    ...overrides
+  }
+}
 
 describe('getMergedBranchToCleanup', () => {
   it('returns null when no branches', () => {

@@ -1,7 +1,26 @@
-import type { UiStack } from '@shared/types'
+import type { UiBranch, UiStack } from '@shared/types'
 import type { ForgePullRequest, GitForgeState } from '@shared/types/git-forge'
 import { describe, expect, it } from 'vitest'
 import { enrichStackWithForge } from '../enrich-stack-with-forge'
+
+/** Helper to create a UiBranch with computed permissions */
+const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
+  const isCurrent = overrides.isCurrent ?? false
+  const isRemote = overrides.isRemote ?? false
+  const isTrunk = overrides.isTrunk ?? false
+
+  return {
+    name: 'feature-branch',
+    isCurrent,
+    isRemote,
+    isTrunk,
+    canRename: !isRemote && !isTrunk,
+    canDelete: !isCurrent && !isTrunk,
+    canFold: !isRemote && !isTrunk,
+    canCreateWorktree: !isRemote && !isTrunk,
+    ...overrides
+  }
+}
 
 describe('enrichStackWithForge', () => {
   const createStack = (overrides: Partial<UiStack> = {}): UiStack => ({
@@ -14,14 +33,7 @@ describe('enrichStackWithForge', () => {
         isCurrent: true,
         rebaseStatus: null,
         spinoffs: [],
-        branches: [
-          {
-            name: 'feature-branch',
-            isCurrent: true,
-            isRemote: false,
-            isTrunk: false
-          }
-        ]
+        branches: [createBranch({ isCurrent: true })]
       }
     ],
     ...overrides
@@ -124,14 +136,7 @@ describe('enrichStackWithForge', () => {
           isCurrent: false,
           rebaseStatus: null,
           spinoffs: [],
-          branches: [
-            {
-              name: 'origin/feature-branch',
-              isCurrent: false,
-              isRemote: true,
-              isTrunk: false
-            }
-          ]
+          branches: [createBranch({ name: 'origin/feature-branch', isRemote: true })]
         }
       ]
     })
@@ -165,14 +170,7 @@ describe('enrichStackWithForge', () => {
                   isCurrent: true,
                   rebaseStatus: null,
                   spinoffs: [],
-                  branches: [
-                    {
-                      name: 'child-branch',
-                      isCurrent: true,
-                      isRemote: false,
-                      isTrunk: false
-                    }
-                  ]
+                  branches: [createBranch({ name: 'child-branch', isCurrent: true })]
                 }
               ]
             }
@@ -216,15 +214,7 @@ describe('enrichStackWithForge', () => {
           isCurrent: true,
           rebaseStatus: null,
           spinoffs: [],
-          branches: [
-            {
-              name: 'feature-branch',
-              isCurrent: true,
-              isRemote: false,
-              isTrunk: false,
-              pullRequest: existingPr
-            }
-          ]
+          branches: [createBranch({ isCurrent: true, pullRequest: existingPr })]
         }
       ]
     })

@@ -4,7 +4,13 @@
  */
 
 // Re-export trunk branches from shared types for convenience
-export { TRUNK_BRANCHES, isTrunk, type TrunkBranchName } from '@shared/types/repo'
+export {
+  TRUNK_BRANCHES,
+  extractLocalBranchName,
+  isTrunk,
+  isTrunkRef,
+  type TrunkBranchName
+} from '@shared/types/repo'
 
 /**
  * Common remote names in order of preference.

@@ -636,7 +636,7 @@ export class UiStateBuilder {
       const isCurrent = branch.ref === state.currentBranch
       const canRename = !branch.isRemote && !branch.isTrunk
       const canDelete = !isCurrent && !branch.isTrunk
-      const canFold = !branch.isRemote && !branch.isTrunk
+      const canSquash = !branch.isRemote && !branch.isTrunk
       const canCreateWorktree = !branch.isRemote && !branch.isTrunk
 
       commitNode.branches.push({
@@ -651,7 +651,7 @@ export class UiStateBuilder {
         ownedCommitShas,
         canRename,
         canDelete,
-        canFold,
+        canSquash,
         canCreateWorktree
       })
     })

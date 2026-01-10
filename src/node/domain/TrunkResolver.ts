@@ -1,34 +1,29 @@
 /**
- * TrunkResolver - Pure domain logic for trunk branch detection.
+ * TrunkResolver - Pure domain logic for trunk branch detection and selection.
  *
- * This class consolidates all trunk-related logic into a single source of truth.
- * All functions are pure and synchronous - async operations should use the
- * GitService wrapper instead.
+ * This class provides complex domain operations for trunk branches that go beyond
+ * simple checks. All functions are pure and synchronous.
+ *
+ * For simple trunk checks, use the shared utilities from '@shared/types/repo':
+ * - `isTrunk(name)` - Check if a branch name is a trunk branch
+ * - `isTrunkRef(ref, isRemote)` - Check branch ref with optional remote prefix stripping
+ * - `extractLocalBranchName(ref)` - Extract local name from remote ref
+ *
+ * This class provides:
+ * - `selectTrunk()` - Select best trunk from multiple branches
+ * - `selectTrunkFromNames()` - Select trunk name with priority ordering
+ * - `isCanonicalTrunk()` - Check if Branch object is canonical trunk
+ * - `selectBranchesForStacks()` - Filter branches for stack building
+ * - `selectBestParentBranch()` - Find best parent for branch deletion
+ * - `getTrunkHeadSha()` - Get most recent trunk head SHA
  */
 
 import type { Branch, Commit } from '@shared/types'
-import { TRUNK_BRANCHES, type TrunkBranchName } from '../shared/constants'
+import { TRUNK_BRANCHES, extractLocalBranchName, isTrunk } from '../shared/constants'
 
 export class TrunkResolver {
   // Prevent instantiation - use static methods
   private constructor() {}
-
-  /**
-   * Checks if a branch name is a recognized trunk name.
-   */
-  public static isTrunkName(name: string): name is TrunkBranchName {
-    return TRUNK_BRANCHES.includes(name as TrunkBranchName)
-  }
-
-  /**
-   * Normalizes a branch reference by stripping remote prefix.
-   * e.g., 'origin/main' -> 'main'
-   */
-  public static normalizeBranchRef(ref: string, isRemote: boolean): string {
-    if (!isRemote) return ref
-    const slashIndex = ref.indexOf('/')
-    return slashIndex >= 0 ? ref.slice(slashIndex + 1) : ref
-  }
 
   /**
    * Selects the best trunk branch from a list of branches.
@@ -40,17 +35,17 @@ export class TrunkResolver {
    * 5. First branch in list
    */
   public static selectTrunk(branches: Branch[]): Branch | null {
+    // Helper to check if a branch ref is a trunk name
+    const isTrunkBranch = (b: Branch): boolean => {
+      const localName = b.isRemote ? extractLocalBranchName(b.ref) : b.ref
+      return isTrunk(localName)
+    }
+
     return (
       branches.find((b) => b.isTrunk && !b.isRemote) ??
       branches.find((b) => b.isTrunk) ??
-      branches.find(
-        (b) =>
-          TrunkResolver.isTrunkName(TrunkResolver.normalizeBranchRef(b.ref, b.isRemote)) &&
-          !b.isRemote
-      ) ??
-      branches.find((b) =>
-        TrunkResolver.isTrunkName(TrunkResolver.normalizeBranchRef(b.ref, b.isRemote))
-      ) ??
+      branches.find((b) => isTrunkBranch(b) && !b.isRemote) ??
+      branches.find((b) => isTrunkBranch(b)) ??
       branches[0] ??
       null
     )
@@ -66,10 +61,11 @@ export class TrunkResolver {
 
   /**
    * Checks if a branch is a canonical trunk branch (main, master, develop, trunk).
+   * Handles both local and remote branches by normalizing the ref.
    */
   public static isCanonicalTrunk(branch: Branch): boolean {
-    const normalized = TrunkResolver.normalizeBranchRef(branch.ref, branch.isRemote)
-    return TrunkResolver.isTrunkName(normalized)
+    const localName = branch.isRemote ? extractLocalBranchName(branch.ref) : branch.ref
+    return isTrunk(localName)
   }
 
   /**
@@ -100,7 +96,7 @@ export class TrunkResolver {
    * Prioritizes trunk branches.
    */
   public static selectBestParentBranch(branchesAtParent: string[]): string | undefined {
-    return branchesAtParent.find((b) => TrunkResolver.isTrunkName(b)) ?? branchesAtParent[0]
+    return branchesAtParent.find((b) => isTrunk(b)) ?? branchesAtParent[0]
   }
 
   /**

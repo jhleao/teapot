@@ -70,6 +70,21 @@ export type UiBranch = {
    * Order: head commit first, oldest owned commit last.
    */
   ownedCommitShas?: string[]
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Computed Permissions
+  // These are computed by the backend based on branch state.
+  // The UI should use these directly without additional logic.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /** True if this branch can be renamed. False for remote and trunk branches. */
+  canRename: boolean
+  /** True if this branch can be deleted. False for current and trunk branches. */
+  canDelete: boolean
+  /** True if this branch can be folded into its parent. False for remote and trunk branches. */
+  canFold: boolean
+  /** True if a new worktree can be created for this branch. False for remote and trunk branches. */
+  canCreateWorktree: boolean
 }
 
 /**

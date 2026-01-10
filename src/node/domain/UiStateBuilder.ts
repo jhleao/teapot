@@ -604,16 +604,28 @@ export class UiStateBuilder {
         ownedCommitShas = UiStateBuilder.collectOwnedCommitShas(branch.headSha, branch.ref, state)
       }
 
+      // Compute permissions based on branch state
+      // This keeps all business logic in the backend, making the UI dumb
+      const isCurrent = branch.ref === state.currentBranch
+      const canRename = !branch.isRemote && !branch.isTrunk
+      const canDelete = !isCurrent && !branch.isTrunk
+      const canFold = !branch.isRemote && !branch.isTrunk
+      const canCreateWorktree = !branch.isRemote && !branch.isTrunk
+
       commitNode.branches.push({
         name: branch.ref,
-        isCurrent: branch.ref === state.currentBranch,
+        isCurrent,
         isRemote: branch.isRemote,
         isTrunk: branch.isTrunk,
         pullRequest,
         isMerged,
         hasStaleTarget: hasStaleTarget || undefined,
         worktree,
-        ownedCommitShas
+        ownedCommitShas,
+        canRename,
+        canDelete,
+        canFold,
+        canCreateWorktree
       })
     })
   }

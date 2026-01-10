@@ -98,10 +98,6 @@ export const BranchBadge = memo(function BranchBadge({
       toast.error('Cannot fold while working tree has changes')
       return
     }
-    if (data.isRemote || data.isTrunk) {
-      toast.error('Cannot fold this branch')
-      return
-    }
 
     setIsLoadingFoldPreview(true)
     try {
@@ -119,7 +115,7 @@ export const BranchBadge = memo(function BranchBadge({
     } finally {
       setIsLoadingFoldPreview(false)
     }
-  }, [data.isRemote, data.isTrunk, data.name, getFoldPreview, isWorkingTreeDirty])
+  }, [data.name, getFoldPreview, isWorkingTreeDirty])
 
   const handleConfirmFold = useCallback(
     async (commitMessage: string) => {
@@ -158,18 +154,18 @@ export const BranchBadge = memo(function BranchBadge({
                 <ContextMenuSeparator />
               </>
             )}
-            <ContextMenuItem onClick={handleRename} disabled={data.isRemote}>
-              Rename branch
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleDelete} disabled={data.isCurrent}>
-              Delete branch
-            </ContextMenuItem>
-            {!data.isRemote && !data.isTrunk && (
+            {data.canRename && (
+              <ContextMenuItem onClick={handleRename}>Rename branch</ContextMenuItem>
+            )}
+            {data.canDelete && (
+              <ContextMenuItem onClick={handleDelete}>Delete branch</ContextMenuItem>
+            )}
+            {data.canFold && (
               <ContextMenuItem onClick={handleOpenFoldDialog} disabled={isLoadingFoldPreview}>
                 {isLoadingFoldPreview ? 'Checking...' : 'Fold into parent'}
               </ContextMenuItem>
             )}
-            {!data.isRemote && !data.isTrunk && (
+            {data.canCreateWorktree && (
               <>
                 <ContextMenuSeparator />
                 <ContextMenuItem

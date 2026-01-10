@@ -84,6 +84,7 @@ export type Configuration = {
 /**
  * Common trunk branch names recognized by the application.
  * Ordered by preference - main is preferred over master, etc.
+ * All names are lowercase for case-insensitive comparison.
  */
 export const TRUNK_BRANCHES = ['main', 'master', 'develop', 'trunk'] as const
 
@@ -93,11 +94,48 @@ export const TRUNK_BRANCHES = ['main', 'master', 'develop', 'trunk'] as const
 export type TrunkBranchName = (typeof TRUNK_BRANCHES)[number]
 
 /**
- * Checks if a branch name is a trunk branch (main or master).
+ * Checks if a branch name is a protected trunk branch.
+ *
+ * Protected trunk branches: main, master, develop, trunk
+ *
+ * This function is case-insensitive to handle Windows (case-insensitive filesystem)
+ * and other edge cases where branch names might have unexpected casing.
+ *
  * Note: This checks the local branch name only, not remote refs like origin/main.
+ * For remote refs, use `isTrunkRef()` which handles the remote prefix.
+ *
+ * @param branchName - The branch name to check (e.g., "main", "MAIN", "Main")
+ * @returns True if the branch is a protected trunk branch
  */
 export function isTrunk(branchName: string): branchName is TrunkBranchName {
-  return TRUNK_BRANCHES.includes(branchName as TrunkBranchName)
+  return TRUNK_BRANCHES.includes(branchName.toLowerCase() as TrunkBranchName)
+}
+
+/**
+ * Extracts the local branch name from a remote ref.
+ * e.g., 'origin/main' -> 'main', 'upstream/develop' -> 'develop'
+ *
+ * @param ref - The branch reference (local or remote)
+ * @returns The local branch name portion
+ */
+export function extractLocalBranchName(ref: string): string {
+  const slashIndex = ref.indexOf('/')
+  return slashIndex >= 0 ? ref.slice(slashIndex + 1) : ref
+}
+
+/**
+ * Checks if a branch reference (local or remote) refers to a trunk branch.
+ *
+ * Handles both local refs ("main") and remote refs ("origin/main").
+ * Case-insensitive for Windows compatibility.
+ *
+ * @param ref - The branch reference to check
+ * @param isRemote - Whether this is a remote ref (will strip remote prefix)
+ * @returns True if the ref refers to a protected trunk branch
+ */
+export function isTrunkRef(ref: string, isRemote: boolean = false): boolean {
+  const localName = isRemote ? extractLocalBranchName(ref) : ref
+  return isTrunk(localName)
 }
 
 // ============================================================================

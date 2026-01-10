@@ -1,4 +1,28 @@
-import type { UiCommitRebaseStatus, UiStack, UiWorkingTreeFile } from '@shared/types'
+import type { UiBranch, UiCommitRebaseStatus, UiStack, UiWorkingTreeFile } from '@shared/types'
+
+/**
+ * Creates a UiBranch with computed permissions.
+ * Centralizes the permission logic for mock data generation.
+ */
+function createMockBranch(
+  name: string,
+  options: { isCurrent?: boolean; isRemote?: boolean; isTrunk?: boolean } = {}
+): UiBranch {
+  const isCurrent = options.isCurrent ?? false
+  const isRemote = options.isRemote ?? false
+  const isTrunk = options.isTrunk ?? false
+
+  return {
+    name,
+    isCurrent,
+    isRemote,
+    isTrunk,
+    canRename: !isRemote && !isTrunk,
+    canDelete: !isCurrent && !isTrunk,
+    canFold: !isRemote && !isTrunk,
+    canCreateWorktree: !isRemote && !isTrunk
+  }
+}
 
 const MOCK_BRANCH_NAMES = [
   'feature/auth',
@@ -133,37 +157,27 @@ function generateMockStackInternal(
     const commitName = generateCommitName(i, commitCount, depth, isLastCommit)
 
     // Determine branch info - commits can be tips of multiple branches
-    const branches: Array<{
-      name: string
-      isCurrent: boolean
-      isRemote: boolean
-      isTrunk: boolean
-    }> = []
+    const branches: UiBranch[] = []
 
     if (depth === 0) {
       // Main stack commits are always on main branch
-      branches.push({ name: 'main', isCurrent: false, isRemote: false, isTrunk: true })
+      branches.push(createMockBranch('main', { isTrunk: true }))
 
       // Last commit might also be tip of other branches
       if (isLastCommit) {
         const additionalBranch = getRandomBranchName()
-        branches.push({ name: additionalBranch, isCurrent: false, isRemote: false, isTrunk: false })
+        branches.push(createMockBranch(additionalBranch))
       }
     } else {
       // For spinoff commits, they're tips of their feature branch
       const branchName = getRandomBranchName()
-      branches.push({ name: branchName, isCurrent: false, isRemote: false, isTrunk: false })
+      branches.push(createMockBranch(branchName))
 
       // Sometimes commits can be tips of multiple branches (e.g., merged branches)
       if (isLastCommit && Math.random() < 0.3) {
         const additionalBranch = getRandomBranchName()
         if (additionalBranch !== branchName) {
-          branches.push({
-            name: additionalBranch,
-            isCurrent: false,
-            isRemote: false,
-            isTrunk: false
-          })
+          branches.push(createMockBranch(additionalBranch))
         }
       }
     }

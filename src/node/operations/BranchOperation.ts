@@ -9,7 +9,7 @@
 
 import { log } from '@shared/logger'
 import { findOpenPr } from '@shared/types/git-forge'
-import type { CheckoutResult } from '@shared/types/repo'
+import { isTrunkRef, type CheckoutResult } from '@shared/types/repo'
 import fs from 'fs'
 import {
   branchExists,
@@ -21,8 +21,48 @@ import {
 } from '../adapters/git'
 import { ExecutionContextService } from '../services/ExecutionContextService'
 import { gitForgeService } from '../services/ForgeService'
+import { TrunkProtectionError, type TrunkProtectedOperation } from '../shared/errors'
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
+
+/**
+ * Options for trunk protection validation.
+ */
+type TrunkValidationOptions = {
+  /** The operation being attempted (for error message) */
+  operation: TrunkProtectedOperation
+  /** Whether this is a remote ref (will strip remote prefix). Default: false */
+  isRemote?: boolean
+}
+
+/**
+ * Validates that a branch is not a protected trunk branch.
+ *
+ * This is a fail-fast guard that should be called at the start of any
+ * operation that modifies a branch. It ensures we never proceed with
+ * operations that would corrupt trunk branch state.
+ *
+ * Handles both local and remote refs:
+ * - Local: "main", "MAIN", "Main" (case-insensitive)
+ * - Remote: "origin/main", "upstream/master" (strips prefix, case-insensitive)
+ *
+ * @param branchRef - The branch reference to validate
+ * @param options - Validation options including operation type and isRemote flag
+ * @throws TrunkProtectionError if branchRef refers to a trunk branch
+ *
+ * @example
+ * // Local branch validation (most common)
+ * assertNotTrunk('main', { operation: 'delete' })
+ *
+ * // Remote branch validation
+ * assertNotTrunk('origin/main', { operation: 'cleanup', isRemote: true })
+ */
+function assertNotTrunk(branchRef: string, options: TrunkValidationOptions): void {
+  const { operation, isRemote = false } = options
+  if (isTrunkRef(branchRef, isRemote)) {
+    throw new TrunkProtectionError(branchRef, operation)
+  }
+}
 
 export type SyncTrunkResult = {
   status: 'success' | 'conflict' | 'error'
@@ -51,8 +91,11 @@ export class BranchOperation {
   /**
    * Cleans up a merged branch by deleting it both locally and on the remote.
    * If the branch is checked out in a worktree, the worktree is removed first.
+   * Trunk branches (main, master, develop, trunk) cannot be cleaned up.
    */
   static async cleanup(repoPath: string, branchName: string): Promise<void> {
+    assertNotTrunk(branchName, { operation: 'cleanup' })
+
     const git = getGitAdapter()
 
     await this.removeWorktreeForBranch(repoPath, branchName, 'cleanup')
@@ -97,8 +140,11 @@ export class BranchOperation {
    * Deletes a local branch.
    * If the branch is checked out in a worktree, the worktree is removed first.
    * If the branch has an open PR, the PR is closed first.
+   * Trunk branches (main, master, develop, trunk) cannot be deleted.
    */
   static async delete(repoPath: string, branchName: string): Promise<void> {
+    assertNotTrunk(branchName, { operation: 'delete' })
+
     const git = getGitAdapter()
 
     await this.removeWorktreeForBranch(repoPath, branchName, 'delete')
@@ -111,12 +157,19 @@ export class BranchOperation {
 
   /**
    * Renames a local branch.
+   * Trunk branches (main, master, develop, trunk) cannot be renamed.
+   * Cannot rename a branch TO a trunk name (e.g., renaming "feature" to "main").
    */
   static async rename(
     repoPath: string,
     oldBranchName: string,
     newBranchName: string
   ): Promise<void> {
+    // Protect against renaming FROM a trunk branch
+    assertNotTrunk(oldBranchName, { operation: 'rename' })
+    // Protect against renaming TO a trunk name
+    assertNotTrunk(newBranchName, { operation: 'rename' })
+
     const git = getGitAdapter()
     await git.renameBranch(repoPath, oldBranchName, newBranchName)
   }
@@ -234,12 +287,18 @@ export class BranchOperation {
   /**
    * Removes a worktree if the branch is checked out in one.
    * Returns the worktree path if one was removed, or null if none existed.
+   *
+   * This is a private method called from protected operations (cleanup, delete).
+   * It includes its own trunk protection as defense-in-depth.
    */
   private static async removeWorktreeForBranch(
     repoPath: string,
     branchName: string,
     operation: 'cleanup' | 'delete'
   ): Promise<string | null> {
+    // Defense-in-depth: protect even though callers should already validate
+    assertNotTrunk(branchName, { operation })
+
     const git = getGitAdapter()
 
     const currentBranch = await git.currentBranch(repoPath)

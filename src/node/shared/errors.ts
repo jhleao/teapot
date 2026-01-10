@@ -64,11 +64,50 @@ export class BranchError extends AppError {
   constructor(
     message: string,
     public readonly branchRef: string,
-    public readonly operation: 'checkout' | 'create' | 'delete' | 'rename',
+    public readonly operation: 'checkout' | 'create' | 'delete' | 'rename' | 'cleanup',
     cause?: unknown
   ) {
     super(message, cause)
     this.name = 'BranchError'
+  }
+}
+
+/**
+ * Supported trunk protection operations.
+ */
+export type TrunkProtectedOperation = 'delete' | 'rename' | 'cleanup'
+
+/**
+ * Error thrown when an operation is attempted on a protected trunk branch.
+ *
+ * This error is thrown by `assertNotTrunk()` and `assertNotTrunkName()` guards
+ * in BranchOperation when a user attempts to delete, rename, or cleanup a
+ * protected trunk branch (main, master, develop, trunk).
+ *
+ * The error includes:
+ * - The branch ref that triggered the protection (may include case variations)
+ * - The operation that was attempted
+ * - A user-friendly message explaining why the operation was blocked
+ */
+export class TrunkProtectionError extends BranchError {
+  /**
+   * Creates a new TrunkProtectionError.
+   *
+   * @param branchRef - The branch reference that was protected. This is the
+   *   original ref passed to the operation, which may be a case variant like
+   *   "MAIN" or a remote ref like "origin/main".
+   * @param operation - The operation that was attempted on the trunk branch.
+   */
+  constructor(
+    branchRef: string,
+    readonly protectedOperation: TrunkProtectedOperation
+  ) {
+    super(
+      `Cannot ${protectedOperation} trunk branch '${branchRef}'. Trunk branches (main, master, develop, trunk) are protected.`,
+      branchRef,
+      protectedOperation
+    )
+    this.name = 'TrunkProtectionError'
   }
 }
 

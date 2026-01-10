@@ -17,6 +17,12 @@ export type UiState = {
 export type UiStack = {
   commits: UiCommit[]
   isTrunk: boolean
+  /**
+   * True if this stack can be rebased onto the current trunk head.
+   * Computed by backend: stack is directly off trunk AND base commit is behind trunk head.
+   * Frontend only needs to additionally check if working tree is dirty.
+   */
+  canRebaseToTrunk: boolean
 }
 
 export type UiCommit = {

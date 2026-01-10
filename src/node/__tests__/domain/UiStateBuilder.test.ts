@@ -1047,6 +1047,408 @@ function createGitForgeState(overrides: Partial<GitForgeState> = {}): GitForgeSt
   }
 }
 
+describe('buildUiStack canRebaseToTrunk computation', () => {
+  /**
+   * Tests for the canRebaseToTrunk property on UiStack.
+   *
+   * The logic is:
+   * - canRebaseToTrunk = isDirectlyOffTrunk && baseSha !== trunkHeadSha && trunkHeadSha !== ''
+   *
+   * Where:
+   * - isDirectlyOffTrunk: The stack's base commit is a trunk commit
+   * - baseSha !== trunkHeadSha: The stack is not already at the trunk head (would be a no-op)
+   * - trunkHeadSha !== '': Valid trunk head exists
+   */
+
+  it('sets canRebaseToTrunk=true for stack directly off trunk when base is behind trunk head', () => {
+    // Trunk: root -> trunk-1 -> trunk-head
+    // Feature branches off root (behind trunk head by 2 commits)
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-1', 'feature-tip']
+    })
+    const trunk1 = createCommit({
+      sha: 'trunk-1',
+      message: 'trunk 1',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: ['trunk-head']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 3,
+      parentSha: trunk1.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 4,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunk1, trunkHead, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/topic', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    // Trunk stack itself cannot be rebased
+    expect(stack.canRebaseToTrunk).toBe(false)
+
+    // Feature stack should be rebaseable (directly off trunk, base is behind trunk head)
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const featureStack = rootCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+
+    expect(featureStack.canRebaseToTrunk).toBe(true)
+  })
+
+  it('sets canRebaseToTrunk=false for stack directly off trunk when base equals trunk head', () => {
+    // Feature branches directly off trunk head - already up to date
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-head']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: ['feature-tip']
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 3,
+      parentSha: trunkHead.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkHead, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/topic', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    // Feature branches off trunk head, so canRebaseToTrunk=false (already at trunk head)
+    const trunkHeadCommit = stack.commits.find((c) => c.sha === trunkHead.sha)
+    if (!trunkHeadCommit) throw new Error('expected trunk head commit')
+    const featureStack = trunkHeadCommit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+
+    expect(featureStack.canRebaseToTrunk).toBe(false)
+  })
+
+  it('sets canRebaseToTrunk=false for nested stack (not directly off trunk)', () => {
+    // Trunk: root -> trunk-head
+    // Feature1 branches off root
+    // Feature2 (nested) branches off feature1 - not directly off trunk
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-head', 'feature1-base']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const feature1Base = createCommit({
+      sha: 'feature1-base',
+      message: 'feature 1 base',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: ['feature1-tip', 'feature2-tip']
+    })
+    const feature1Tip = createCommit({
+      sha: 'feature1-tip',
+      message: 'feature 1 tip',
+      timeMs: 4,
+      parentSha: feature1Base.sha,
+      childrenSha: []
+    })
+    const feature2Tip = createCommit({
+      sha: 'feature2-tip',
+      message: 'feature 2 tip (nested)',
+      timeMs: 5,
+      parentSha: feature1Base.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkHead, feature1Base, feature1Tip, feature2Tip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/one', isTrunk: false, headSha: feature1Tip.sha }),
+        createBranch({ ref: 'feature/two', isTrunk: false, headSha: feature2Tip.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    // Feature1 is directly off trunk (root), which is behind trunk-head
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const feature1Stack = rootCommit.spinoffs[0]
+    if (!feature1Stack) throw new Error('expected feature1 stack')
+
+    expect(feature1Stack.canRebaseToTrunk).toBe(true)
+
+    // Feature2 is nested (branches off feature1-base, not trunk)
+    const feature1BaseCommit = feature1Stack.commits[0]
+    if (!feature1BaseCommit) throw new Error('expected feature1 base commit')
+    const feature2Stack = feature1BaseCommit.spinoffs[0]
+    if (!feature2Stack) throw new Error('expected feature2 stack')
+
+    expect(feature2Stack.canRebaseToTrunk).toBe(false)
+  })
+
+  it('sets canRebaseToTrunk=false for deeply nested stacks', () => {
+    // Trunk: root -> trunk-head
+    // Feature1 off root, Feature2 off Feature1, Feature3 off Feature2
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-head', 'f1']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const f1 = createCommit({
+      sha: 'f1',
+      message: 'feature 1',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: ['f1-tip', 'f2']
+    })
+    const f1Tip = createCommit({
+      sha: 'f1-tip',
+      message: 'feature 1 tip',
+      timeMs: 4,
+      parentSha: f1.sha,
+      childrenSha: []
+    })
+    const f2 = createCommit({
+      sha: 'f2',
+      message: 'feature 2',
+      timeMs: 5,
+      parentSha: f1.sha,
+      childrenSha: ['f2-tip', 'f3']
+    })
+    const f2Tip = createCommit({
+      sha: 'f2-tip',
+      message: 'feature 2 tip',
+      timeMs: 6,
+      parentSha: f2.sha,
+      childrenSha: []
+    })
+    const f3 = createCommit({
+      sha: 'f3',
+      message: 'feature 3',
+      timeMs: 7,
+      parentSha: f2.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkHead, f1, f1Tip, f2, f2Tip, f3],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/one', isTrunk: false, headSha: f1Tip.sha }),
+        createBranch({ ref: 'feature/two', isTrunk: false, headSha: f2Tip.sha }),
+        createBranch({ ref: 'feature/three', isTrunk: false, headSha: f3.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    // Feature1 is directly off trunk
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    const f1Stack = rootCommit.spinoffs[0]
+    if (!f1Stack) throw new Error('expected f1 stack')
+    expect(f1Stack.canRebaseToTrunk).toBe(true)
+
+    // Feature2 is nested off Feature1
+    const f1BaseCommit = f1Stack.commits[0]
+    if (!f1BaseCommit) throw new Error('expected f1 base commit')
+    const f2Stack = f1BaseCommit.spinoffs[0]
+    if (!f2Stack) throw new Error('expected f2 stack')
+    expect(f2Stack.canRebaseToTrunk).toBe(false)
+
+    // Feature3 is doubly nested (off Feature2)
+    const f2BaseCommit = f2Stack.commits[0]
+    if (!f2BaseCommit) throw new Error('expected f2 base commit')
+    const f3Stack = f2BaseCommit.spinoffs[0]
+    if (!f3Stack) throw new Error('expected f3 stack')
+    expect(f3Stack.canRebaseToTrunk).toBe(false)
+  })
+
+  it('sets canRebaseToTrunk=false for trunk stack itself', () => {
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-head']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkHead],
+      branches: [createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha })]
+    })
+
+    const stack = expectTrunkStack(repo)
+    expect(stack.isTrunk).toBe(true)
+    expect(stack.canRebaseToTrunk).toBe(false)
+  })
+
+  it('sets canRebaseToTrunk=true for multiple sibling stacks off same trunk commit', () => {
+    // Two feature branches both off the same old trunk commit
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-head', 'feature-a', 'feature-b']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureA = createCommit({
+      sha: 'feature-a',
+      message: 'feature A',
+      timeMs: 3,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+    const featureB = createCommit({
+      sha: 'feature-b',
+      message: 'feature B',
+      timeMs: 4,
+      parentSha: root.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunkHead, featureA, featureB],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/a', isTrunk: false, headSha: featureA.sha }),
+        createBranch({ ref: 'feature/b', isTrunk: false, headSha: featureB.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    const rootCommit = stack.commits[0]
+    if (!rootCommit) throw new Error('expected root commit')
+    expect(rootCommit.spinoffs).toHaveLength(2)
+
+    // Both sibling stacks should be rebaseable
+    for (const spinoff of rootCommit.spinoffs) {
+      expect(spinoff.canRebaseToTrunk).toBe(true)
+    }
+  })
+
+  it('handles stack branching off middle of trunk lineage', () => {
+    // Trunk: root -> trunk-1 -> trunk-2 -> trunk-head
+    // Feature branches off trunk-1 (middle of trunk)
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk-1']
+    })
+    const trunk1 = createCommit({
+      sha: 'trunk-1',
+      message: 'trunk 1',
+      timeMs: 2,
+      parentSha: root.sha,
+      childrenSha: ['trunk-2', 'feature-tip']
+    })
+    const trunk2 = createCommit({
+      sha: 'trunk-2',
+      message: 'trunk 2',
+      timeMs: 3,
+      parentSha: trunk1.sha,
+      childrenSha: ['trunk-head']
+    })
+    const trunkHead = createCommit({
+      sha: 'trunk-head',
+      message: 'trunk head',
+      timeMs: 4,
+      parentSha: trunk2.sha,
+      childrenSha: []
+    })
+    const featureTip = createCommit({
+      sha: 'feature-tip',
+      message: 'feature tip',
+      timeMs: 5,
+      parentSha: trunk1.sha,
+      childrenSha: []
+    })
+
+    const repo = createRepo({
+      commits: [root, trunk1, trunk2, trunkHead, featureTip],
+      branches: [
+        createBranch({ ref: 'main', isTrunk: true, headSha: trunkHead.sha }),
+        createBranch({ ref: 'feature/topic', isTrunk: false, headSha: featureTip.sha })
+      ]
+    })
+
+    const stack = expectTrunkStack(repo)
+
+    // Feature branches off trunk-1, which is a trunk commit but not the head
+    const trunk1Commit = stack.commits.find((c) => c.sha === trunk1.sha)
+    if (!trunk1Commit) throw new Error('expected trunk-1 commit')
+    const featureStack = trunk1Commit.spinoffs[0]
+    if (!featureStack) throw new Error('expected feature stack')
+
+    expect(featureStack.canRebaseToTrunk).toBe(true)
+  })
+})
+
 describe('buildUiStack with merged branch detection', () => {
   it('sets isMerged=true when PR state is merged', () => {
     const root = createCommit({

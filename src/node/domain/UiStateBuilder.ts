@@ -41,6 +41,8 @@ type BuildState = {
   currentWorktreePath: string
   /** Map from commit SHA to branch names at that SHA (for determining commit ownership boundaries) */
   branchHeadIndex: Map<string, string[]>
+  /** The SHA of the current trunk head commit (used for computing canRebaseToTrunk) */
+  trunkHeadSha: string
 }
 
 type TrunkBuildResult = {
@@ -118,6 +120,10 @@ export class UiStateBuilder {
       branchHeadIndex.set(branch.headSha, existing)
     }
 
+    if (!trunk) {
+      return null
+    }
+
     const state: BuildState = {
       commitMap,
       commitNodes: new Map(),
@@ -127,11 +133,8 @@ export class UiStateBuilder {
       UiStackMembership: new Map(),
       worktreeByBranch,
       currentWorktreePath,
-      branchHeadIndex
-    }
-
-    if (!trunk) {
-      return null
+      branchHeadIndex,
+      trunkHeadSha: trunk.headSha ?? ''
     }
 
     // Find remote trunk to extend lineage if it's ahead
@@ -377,7 +380,8 @@ export class UiStateBuilder {
       return null
     }
 
-    const stack: UiStack = { commits, isTrunk: true }
+    // Trunk stack itself cannot be rebased to trunk
+    const stack: UiStack = { commits, isTrunk: true, canRebaseToTrunk: false }
     return { UiStack: stack, trunkSet: new Set(lineage) }
   }
 
@@ -411,20 +415,41 @@ export class UiStateBuilder {
     if (!domainCommit) {
       return
     }
+    // These spinoffs are directly off trunk (called from trunk commit iteration)
+    // parentCommit.sha is the trunk commit SHA that these spinoffs branch from
     const childShas = UiStateBuilder.getOrderedChildren(domainCommit, state, { excludeTrunk: true })
     childShas.forEach((childSha) => {
       if (state.UiStackMembership.has(childSha)) {
         return
       }
-      const UiStack = UiStateBuilder.buildNonTrunkUiStack(childSha, state)
-      if (UiStack) {
-        parentCommit.spinoffs.push(UiStack)
+      // Pass the parent (trunk) commit SHA as baseSha for canRebaseToTrunk computation
+      const stack = UiStateBuilder.buildNonTrunkUiStack(childSha, state, parentCommit.sha)
+      if (stack) {
+        parentCommit.spinoffs.push(stack)
       }
     })
   }
 
-  private static buildNonTrunkUiStack(startSha: string, state: BuildState): UiStack | null {
-    const UiStack: UiStack = { commits: [], isTrunk: false }
+  /**
+   * Builds a non-trunk UiStack starting from the given commit SHA.
+   * @param startSha - The SHA of the first commit in this stack
+   * @param state - Build state containing commit map and other context
+   * @param baseSha - The SHA of the commit this stack branches from (used for canRebaseToTrunk).
+   *                  For stacks directly off trunk, this is a trunk commit SHA.
+   *                  For nested stacks, this is a non-trunk commit SHA (so canRebaseToTrunk will be false).
+   */
+  private static buildNonTrunkUiStack(
+    startSha: string,
+    state: BuildState,
+    baseSha: string
+  ): UiStack | null {
+    // Compute canRebaseToTrunk: true only if directly off trunk AND base is behind trunk head
+    // If baseSha is a trunk commit and it's not the current trunk head, we can rebase
+    const isDirectlyOffTrunk = state.trunkShas.has(baseSha)
+    const canRebaseToTrunk =
+      isDirectlyOffTrunk && baseSha !== state.trunkHeadSha && state.trunkHeadSha !== ''
+
+    const stack: UiStack = { commits: [], isTrunk: false, canRebaseToTrunk }
     let currentSha: string | null = startSha
     const visited = new Set<string>()
 
@@ -437,8 +462,8 @@ export class UiStateBuilder {
       if (!commitNode) {
         break
       }
-      UiStack.commits.push(commitNode)
-      state.UiStackMembership.set(currentSha, UiStack)
+      stack.commits.push(commitNode)
+      state.UiStackMembership.set(currentSha, stack)
 
       const domainCommit = state.commitMap.get(currentSha)
       if (!domainCommit) {
@@ -462,11 +487,13 @@ export class UiStateBuilder {
       if (!continuationSha) {
         break
       }
+      // Nested spinoffs branch from this non-trunk commit, so pass currentSha as their baseSha
+      // This ensures canRebaseToTrunk will be false for nested spinoffs
       spinoffShas.forEach((childSha) => {
         if (state.UiStackMembership.has(childSha)) {
           return
         }
-        const spinoffUiStack = UiStateBuilder.buildNonTrunkUiStack(childSha, state)
+        const spinoffUiStack = UiStateBuilder.buildNonTrunkUiStack(childSha, state, currentSha!)
         if (spinoffUiStack) {
           commitNode.spinoffs.push(spinoffUiStack)
         }
@@ -474,7 +501,7 @@ export class UiStateBuilder {
       currentSha = continuationSha
     }
 
-    return UiStack.commits.length > 0 ? UiStack : null
+    return stack.commits.length > 0 ? stack : null
   }
 
   private static getOrderedChildren(

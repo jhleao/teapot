@@ -10,7 +10,6 @@
 import { log } from '@shared/logger'
 import { findOpenPr } from '@shared/types/git-forge'
 import { isTrunkRef, type CheckoutResult } from '@shared/types/repo'
-import fs from 'fs'
 import {
   branchExists,
   canFastForward,
@@ -24,6 +23,7 @@ import { gitForgeService } from '../services/ForgeService'
 import { TrunkProtectionError, type TrunkProtectedOperation } from '../shared/errors'
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
+import { normalizePath, pruneIfStale } from './WorktreeUtils'
 
 /**
  * Options for trunk protection validation.
@@ -290,6 +290,9 @@ export class BranchOperation {
    *
    * This is a private method called from protected operations (cleanup, delete).
    * It includes its own trunk protection as defense-in-depth.
+   *
+   * Handles stale worktrees by pruning git's worktree registry when the
+   * worktree directory no longer exists on disk.
    */
   private static async removeWorktreeForBranch(
     repoPath: string,
@@ -313,6 +316,15 @@ export class BranchOperation {
       return null
     }
 
+    // Check if worktree is stale and prune if needed (handles race conditions gracefully)
+    const staleResult = await pruneIfStale(repoPath, worktreeUsingBranch.path)
+    if (staleResult.wasStale) {
+      log.info(
+        `[BranchOperation.${operation}] Worktree ${worktreeUsingBranch.path} was stale (${staleResult.reason}), pruned`
+      )
+      return worktreeUsingBranch.path
+    }
+
     if (worktreeUsingBranch.isDirty) {
       throw new Error(
         `Cannot ${operation} branch: worktree at ${worktreeUsingBranch.path} has uncommitted changes`
@@ -330,16 +342,13 @@ export class BranchOperation {
     // If the removed worktree was the active one, fall back to main worktree
     const activeWorktree = configStore.getActiveWorktree(repoPath)
     if (activeWorktree) {
-      try {
-        const [removedReal, activeReal] = await Promise.all([
-          fs.promises.realpath(worktreeUsingBranch.path).catch(() => worktreeUsingBranch.path),
-          fs.promises.realpath(activeWorktree).catch(() => activeWorktree)
-        ])
-        if (removedReal === activeReal) {
-          configStore.setActiveWorktree(repoPath, null)
-        }
-      } catch {
-        // Best-effort realpath check; ignore resolution errors
+      // Use normalizePath for consistent symlink handling (e.g., /var -> /private/var on macOS)
+      const [removedReal, activeReal] = await Promise.all([
+        normalizePath(worktreeUsingBranch.path),
+        normalizePath(activeWorktree)
+      ])
+      if (removedReal === activeReal) {
+        configStore.setActiveWorktree(repoPath, null)
       }
     }
 

@@ -597,6 +597,9 @@ export class ExecutionContextService {
    * Queue-based mutex: Each repo has a promise chain. New callers add their
    * operation to the chain and wait for all previous operations to complete.
    * This eliminates the race condition in the previous check-then-set approach.
+   *
+   * CRITICAL: If any step fails, we must resolve operationComplete to prevent
+   * subsequent operations from hanging forever waiting on a broken chain.
    */
   private static async acquireLock(repoPath: string): Promise<() => Promise<void>> {
     // Create the release mechanism for this operation
@@ -606,25 +609,34 @@ export class ExecutionContextService {
     })
 
     // Chain this operation after any existing operations
+    // Use .catch to prevent unhandled rejection if previous chain failed
     const previousChain = lockQueues.get(repoPath) ?? Promise.resolve()
-    const newChain = previousChain.then(() => operationComplete)
+    const newChain = previousChain.catch(() => {}).then(() => operationComplete)
     lockQueues.set(repoPath, newChain)
 
-    // Wait for all previous operations in the queue
-    await previousChain
+    try {
+      // Wait for all previous operations in the queue
+      // If previous operation failed, we still proceed (the .catch above handles it)
+      await previousChain.catch(() => {})
 
-    // Now acquire file-based lock for multi-process safety
-    await this.acquireFileLock(repoPath)
+      // Now acquire file-based lock for multi-process safety
+      await this.acquireFileLock(repoPath)
 
-    return async () => {
-      await this.releaseFileLock(repoPath)
-      releaseFn!()
+      return async () => {
+        await this.releaseFileLock(repoPath)
+        releaseFn!()
 
-      // Clean up the queue entry if this was the last operation
-      // (the chain we set is the current chain, meaning no one else queued after us)
-      if (lockQueues.get(repoPath) === newChain) {
-        lockQueues.delete(repoPath)
+        // Clean up the queue entry if this was the last operation
+        // (the chain we set is the current chain, meaning no one else queued after us)
+        if (lockQueues.get(repoPath) === newChain) {
+          lockQueues.delete(repoPath)
+        }
       }
+    } catch (error) {
+      // If we fail to acquire the lock, we must still resolve operationComplete
+      // to prevent subsequent operations from hanging forever
+      releaseFn!()
+      throw error
     }
   }
 

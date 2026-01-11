@@ -34,8 +34,8 @@ import {
 } from '../adapters/git'
 import { RebaseStateMachine, RebaseValidator, StackAnalyzer } from '../domain'
 import type { ValidationResult } from '../domain/RebaseValidator'
-import { ExecutionContextService, SessionService } from '../services'
-import type { ExecutionContext } from '../services/ExecutionContextService'
+import { ExecutionContextService, SessionService, withContext } from '../services'
+import type { ContextScope } from '../services/ContextScope'
 import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { parseWorktreeConflictError } from './WorktreeUtils'
@@ -73,51 +73,30 @@ export class RebaseExecutor {
     const existingSession = await SessionService.getSession(repoPath)
 
     if (existingSession) {
-      // Acquire execution context - will reuse stored context if there's a conflict in progress
-      let context: ExecutionContext
-      try {
-        context = await ExecutionContextService.acquire(repoPath, 'rebase')
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return { status: 'error', message: `Failed to acquire execution context: ${message}` }
-      }
-
-      try {
-        const rebaseCheck = await this.validateNoRebaseInProgress(context.executionPath, git)
+      return this.executeWithContext(repoPath, git, options, async (scope) => {
+        const rebaseCheck = await this.validateNoRebaseInProgress(scope.executionPath, git)
         if (!rebaseCheck.valid) {
-          await ExecutionContextService.release(context)
           return { status: 'error', message: rebaseCheck.message }
         }
 
         if (!supportsRebase(git)) {
-          await ExecutionContextService.release(context)
           return { status: 'error', message: 'Git adapter does not support rebase operations' }
         }
 
         const result = await this.executeJobs(
           repoPath,
-          context.executionPath,
+          scope.executionPath,
           git,
           existingSession.intent,
           options
         )
 
-        // Handle context based on result
         if (result.status === 'conflict') {
-          // Store context for later continue/abort - don't release
-          await ExecutionContextService.storeContext(repoPath, context)
-        } else {
-          // Completed or error - clear any stored context and release
-          await ExecutionContextService.clearStoredContext(repoPath)
-          await ExecutionContextService.release(context)
+          scope.markForStorage()
         }
 
         return result
-      } catch (error) {
-        // On error, release context
-        await ExecutionContextService.release(context)
-        throw error
-      }
+      })
     }
 
     const validation = await this.validateForExecution(repoPath, plan.intent, git)
@@ -139,39 +118,45 @@ export class RebaseExecutor {
       return { status: 'error', message: 'A rebase session already exists for this repository' }
     }
 
-    // Acquire execution context for new session
-    let context: ExecutionContext
-    try {
-      context = await ExecutionContextService.acquire(repoPath, 'rebase')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      await SessionService.clearSession(repoPath)
-      return { status: 'error', message: `Failed to acquire execution context: ${message}` }
-    }
-
-    try {
+    return this.executeWithContext(repoPath, git, options, async (scope) => {
       const result = await this.executeJobs(
         repoPath,
-        context.executionPath,
+        scope.executionPath,
         git,
         plan.intent,
         options
       )
 
-      // Handle context based on result
       if (result.status === 'conflict') {
-        // Store context for later continue/abort - don't release
-        await ExecutionContextService.storeContext(repoPath, context)
-      } else {
-        // Completed or error - clear any stored context and release
-        await ExecutionContextService.clearStoredContext(repoPath)
-        await ExecutionContextService.release(context)
+        scope.markForStorage()
       }
 
       return result
+    }).catch(async (error) => {
+      // If context acquisition or execution fails, clean up the session
+      await SessionService.clearSession(repoPath)
+      throw error
+    })
+  }
+
+  /**
+   * Helper to execute an operation with automatic context management.
+   * Handles context acquisition, storage for conflicts, and cleanup on error.
+   */
+  private static async executeWithContext(
+    repoPath: string,
+    _git: GitAdapter,
+    _options: ExecutorOptions,
+    fn: (scope: ContextScope) => Promise<RebaseExecutionResult>
+  ): Promise<RebaseExecutionResult> {
+    try {
+      return await withContext(repoPath, 'rebase', fn)
     } catch (error) {
-      // On error, release context
-      await ExecutionContextService.release(context)
+      const message = error instanceof Error ? error.message : String(error)
+      // Check if this is a context acquisition error
+      if (message.includes('acquire') || message.includes('context')) {
+        return { status: 'error', message: `Failed to acquire execution context: ${message}` }
+      }
       throw error
     }
   }
@@ -183,134 +168,115 @@ export class RebaseExecutor {
     const git = getGitAdapter()
     const session = await SessionService.getSession(repoPath)
 
-    // Acquire execution context - will reuse stored context from conflict
-    let context: ExecutionContext
     try {
-      context = await ExecutionContextService.acquire(repoPath, 'rebase')
+      return await withContext(repoPath, 'rebase', async (scope) => {
+        // Auto-stage resolved files before continuing
+        // Files are "resolved" when conflict markers have been removed from the file
+        const workingTreeStatus = await git.getWorkingTreeStatus(scope.executionPath)
+        if (workingTreeStatus.conflicted.length > 0) {
+          const resolutionStatus = await checkConflictResolution(
+            scope.executionPath,
+            workingTreeStatus.conflicted
+          )
+          const resolvedFiles = workingTreeStatus.conflicted.filter(
+            (filePath) => resolutionStatus.get(filePath) === true
+          )
+
+          if (resolvedFiles.length > 0) {
+            await git.add(scope.executionPath, resolvedFiles)
+          }
+        }
+
+        const validation = await this.validateCanContinue(scope.executionPath, git)
+        if (!validation.valid) {
+          return { status: 'error' as const, message: validation.message }
+        }
+
+        if (!supportsRebaseContinue(git)) {
+          return { status: 'error' as const, message: 'Git adapter does not support rebase continue' }
+        }
+
+        if (!session) {
+          const result = await git.rebaseContinue(scope.executionPath)
+          if (result.error) {
+            return { status: 'error' as const, message: result.error }
+          }
+          if (result.success) {
+            return { status: 'completed' as const, finalState: this.createMinimalState() }
+          }
+          if (result.conflicts.length > 0) {
+            scope.markForStorage()
+            return {
+              status: 'conflict' as const,
+              job: this.createRecoveryJob(),
+              conflicts: result.conflicts,
+              state: this.createMinimalState()
+            }
+          }
+          return { status: 'error' as const, message: 'Continue failed and no session found' }
+        }
+
+        const result = await git.rebaseContinue(scope.executionPath)
+
+        if (result.error) {
+          return { status: 'error' as const, message: result.error, state: session.state }
+        }
+
+        if (!result.success && result.conflicts.length > 0) {
+          const activeJobId = session.state.queue.activeJobId
+          const activeJob = activeJobId ? session.state.jobsById[activeJobId] : null
+
+          if (activeJob) {
+            const updatedJob = RebaseStateMachine.recordConflict({
+              job: activeJob,
+              workingTree: await git.getWorkingTreeStatus(scope.executionPath),
+              timestampMs: Date.now()
+            })
+
+            const newState = {
+              ...session.state,
+              jobsById: { ...session.state.jobsById, [updatedJob.id]: updatedJob }
+            }
+
+            SessionService.updateState(repoPath, newState)
+            scope.markForStorage()
+            return { status: 'conflict' as const, job: updatedJob, conflicts: result.conflicts, state: newState }
+          }
+
+          scope.markForStorage()
+          return {
+            status: 'conflict' as const,
+            job: this.createRecoveryJob(),
+            conflicts: result.conflicts,
+            state: session.state
+          }
+        }
+
+        if (result.success) {
+          const newHeadSha =
+            result.currentCommit ?? (await git.resolveRef(scope.executionPath, 'HEAD'))
+          await this.completeCurrentJob(repoPath, session, newHeadSha)
+          const jobsResult = await this.executeJobs(
+            repoPath,
+            scope.executionPath,
+            git,
+            session.intent,
+            {}
+          )
+
+          if (jobsResult.status === 'conflict') {
+            scope.markForStorage()
+          }
+
+          return jobsResult
+        }
+
+        return { status: 'error' as const, message: 'Continue failed unexpectedly' }
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return { status: 'error', message: `Failed to acquire execution context: ${message}` }
+      return { status: 'error' as const, message: `Failed to continue rebase: ${message}` }
     }
-
-    // Helper to release context and return an error result
-    const releaseAndReturnError = async (message: string, state?: RebaseState): Promise<RebaseExecutionResult> => {
-      await ExecutionContextService.release(context)
-      return state ? { status: 'error', message, state } : { status: 'error', message }
-    }
-
-    // Auto-stage resolved files before continuing
-    // Files are "resolved" when conflict markers have been removed from the file
-    const workingTreeStatus = await git.getWorkingTreeStatus(context.executionPath)
-    if (workingTreeStatus.conflicted.length > 0) {
-      const resolutionStatus = await checkConflictResolution(
-        context.executionPath,
-        workingTreeStatus.conflicted
-      )
-      const resolvedFiles = workingTreeStatus.conflicted.filter(
-        (filePath) => resolutionStatus.get(filePath) === true
-      )
-
-      if (resolvedFiles.length > 0) {
-        await git.add(context.executionPath, resolvedFiles)
-      }
-    }
-
-    const validation = await this.validateCanContinue(context.executionPath, git)
-    if (!validation.valid) {
-      return releaseAndReturnError(validation.message)
-    }
-
-    if (!supportsRebaseContinue(git)) {
-      return releaseAndReturnError('Git adapter does not support rebase continue')
-    }
-
-    if (!session) {
-      const result = await git.rebaseContinue(context.executionPath)
-      if (result.error) {
-        return releaseAndReturnError(result.error)
-      }
-      if (result.success) {
-        await ExecutionContextService.clearStoredContext(repoPath)
-        await ExecutionContextService.release(context)
-        return { status: 'completed', finalState: this.createMinimalState() }
-      }
-      if (result.conflicts.length > 0) {
-        // Keep context stored for next continue attempt
-        await ExecutionContextService.storeContext(repoPath, context)
-        return {
-          status: 'conflict',
-          job: this.createRecoveryJob(),
-          conflicts: result.conflicts,
-          state: this.createMinimalState()
-        }
-      }
-      return releaseAndReturnError('Continue failed and no session found')
-    }
-
-    const result = await git.rebaseContinue(context.executionPath)
-
-    if (result.error) {
-      return releaseAndReturnError(result.error, session.state)
-    }
-
-    if (!result.success && result.conflicts.length > 0) {
-      const activeJobId = session.state.queue.activeJobId
-      const activeJob = activeJobId ? session.state.jobsById[activeJobId] : null
-
-      if (activeJob) {
-        const updatedJob = RebaseStateMachine.recordConflict({
-          job: activeJob,
-          workingTree: await git.getWorkingTreeStatus(context.executionPath),
-          timestampMs: Date.now()
-        })
-
-        const newState = {
-          ...session.state,
-          jobsById: { ...session.state.jobsById, [updatedJob.id]: updatedJob }
-        }
-
-        SessionService.updateState(repoPath, newState)
-        // Keep context stored for next continue attempt
-        await ExecutionContextService.storeContext(repoPath, context)
-        return { status: 'conflict', job: updatedJob, conflicts: result.conflicts, state: newState }
-      }
-
-      // Keep context stored for next continue attempt
-      await ExecutionContextService.storeContext(repoPath, context)
-      return {
-        status: 'conflict',
-        job: this.createRecoveryJob(),
-        conflicts: result.conflicts,
-        state: session.state
-      }
-    }
-
-    if (result.success) {
-      const newHeadSha =
-        result.currentCommit ?? (await git.resolveRef(context.executionPath, 'HEAD'))
-      await this.completeCurrentJob(repoPath, session, newHeadSha)
-      const jobsResult = await this.executeJobs(
-        repoPath,
-        context.executionPath,
-        git,
-        session.intent,
-        {}
-      )
-
-      // Handle context based on result
-      if (jobsResult.status === 'conflict') {
-        // Keep context for next continue
-        await ExecutionContextService.storeContext(repoPath, context)
-      } else {
-        // Completed or error - clear stored context
-        await ExecutionContextService.clearStoredContext(repoPath)
-        await ExecutionContextService.release(context)
-      }
-
-      return jobsResult
-    }
-
-    return releaseAndReturnError('Continue failed unexpectedly')
   }
 
   /**
@@ -358,57 +324,47 @@ export class RebaseExecutor {
       return { status: 'error', message: 'Git adapter does not support rebase skip' }
     }
 
-    // Acquire execution context - will reuse stored context from conflict
-    let context: ExecutionContext
+    const session = await SessionService.getSession(repoPath)
+
     try {
-      context = await ExecutionContextService.acquire(repoPath, 'rebase')
+      return await withContext(repoPath, 'rebase', async (scope) => {
+        const result = await git.rebaseSkip(scope.executionPath)
+
+        if (!result.success && result.conflicts.length > 0) {
+          scope.markForStorage()
+          return {
+            status: 'conflict' as const,
+            job: session?.state.queue.activeJobId
+              ? (session.state.jobsById[session.state.queue.activeJobId] ?? this.createRecoveryJob())
+              : this.createRecoveryJob(),
+            conflicts: result.conflicts,
+            state: session?.state ?? this.createMinimalState()
+          }
+        }
+
+        if (result.success && session) {
+          const jobsResult = await this.executeJobs(
+            repoPath,
+            scope.executionPath,
+            git,
+            session.intent,
+            {}
+          )
+
+          if (jobsResult.status === 'conflict') {
+            scope.markForStorage()
+          }
+
+          return jobsResult
+        }
+
+        // Completed without session
+        return { status: 'completed' as const, finalState: session?.state ?? this.createMinimalState() }
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      return { status: 'error', message: `Failed to acquire execution context: ${message}` }
+      return { status: 'error' as const, message: `Failed to skip commit: ${message}` }
     }
-
-    const session = await SessionService.getSession(repoPath)
-    const result = await git.rebaseSkip(context.executionPath)
-
-    if (!result.success && result.conflicts.length > 0) {
-      // Keep context stored for next skip/continue attempt
-      await ExecutionContextService.storeContext(repoPath, context)
-      return {
-        status: 'conflict',
-        job: session?.state.queue.activeJobId
-          ? (session.state.jobsById[session.state.queue.activeJobId] ?? this.createRecoveryJob())
-          : this.createRecoveryJob(),
-        conflicts: result.conflicts,
-        state: session?.state ?? this.createMinimalState()
-      }
-    }
-
-    if (result.success && session) {
-      const jobsResult = await this.executeJobs(
-        repoPath,
-        context.executionPath,
-        git,
-        session.intent,
-        {}
-      )
-
-      // Handle context based on result
-      if (jobsResult.status === 'conflict') {
-        // Keep context for next continue
-        await ExecutionContextService.storeContext(repoPath, context)
-      } else {
-        // Completed or error - clear stored context
-        await ExecutionContextService.clearStoredContext(repoPath)
-        await ExecutionContextService.release(context)
-      }
-
-      return jobsResult
-    }
-
-    // Completed without session
-    await ExecutionContextService.clearStoredContext(repoPath)
-    await ExecutionContextService.release(context)
-    return { status: 'completed', finalState: session?.state ?? this.createMinimalState() }
   }
 
   /**

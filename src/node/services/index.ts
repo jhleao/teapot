@@ -1,4 +1,5 @@
 export * as CacheService from './CacheService'
+export { ContextScope, withContext } from './ContextScope'
 export { ExecutionContextService } from './ExecutionContextService'
 export { GitForgeService, gitForgeService } from './ForgeService'
 export { GitWatcher } from './GitWatcherService'

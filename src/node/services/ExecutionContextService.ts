@@ -23,6 +23,8 @@ import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
 
+import { Mutex } from 'async-mutex'
+
 import { log } from '@shared/logger'
 
 import { getGitAdapter } from '../adapters/git'
@@ -136,10 +138,22 @@ const MAX_WORKTREE_RETRIES = 3
 const WORKTREE_RETRY_DELAY = 500
 
 /**
- * Queue-based mutex for in-memory async locking.
- * Each repo gets its own promise chain ensuring serialized access.
+ * Per-repository mutexes for in-memory async locking.
+ * Using async-mutex library for robust, battle-tested locking.
  */
-const lockQueues: Map<string, Promise<void>> = new Map()
+const repoMutexes: Map<string, Mutex> = new Map()
+
+/**
+ * Get or create a mutex for a repository path.
+ */
+function getRepoMutex(repoPath: string): Mutex {
+  let mutex = repoMutexes.get(repoPath)
+  if (!mutex) {
+    mutex = new Mutex()
+    repoMutexes.set(repoPath, mutex)
+  }
+  return mutex
+}
 
 /**
  * Track active temp worktrees for emergency cleanup on process exit.
@@ -594,48 +608,26 @@ export class ExecutionContextService {
    * Acquire both in-memory and file-based locks.
    * Returns a release function that must be called when done.
    *
-   * Queue-based mutex: Each repo has a promise chain. New callers add their
-   * operation to the chain and wait for all previous operations to complete.
-   * This eliminates the race condition in the previous check-then-set approach.
-   *
-   * CRITICAL: If any step fails, we must resolve operationComplete to prevent
-   * subsequent operations from hanging forever waiting on a broken chain.
+   * Uses async-mutex for robust in-memory locking, plus file-based
+   * locking for multi-process safety.
    */
   private static async acquireLock(repoPath: string): Promise<() => Promise<void>> {
-    // Create the release mechanism for this operation
-    let releaseFn: () => void
-    const operationComplete = new Promise<void>((resolve) => {
-      releaseFn = resolve
-    })
+    const mutex = getRepoMutex(repoPath)
 
-    // Chain this operation after any existing operations
-    // Use .catch to prevent unhandled rejection if previous chain failed
-    const previousChain = lockQueues.get(repoPath) ?? Promise.resolve()
-    const newChain = previousChain.catch(() => {}).then(() => operationComplete)
-    lockQueues.set(repoPath, newChain)
+    // Acquire in-memory mutex
+    const releaseMutex = await mutex.acquire()
 
     try {
-      // Wait for all previous operations in the queue
-      // If previous operation failed, we still proceed (the .catch above handles it)
-      await previousChain.catch(() => {})
-
-      // Now acquire file-based lock for multi-process safety
+      // Acquire file-based lock for multi-process safety
       await this.acquireFileLock(repoPath)
 
       return async () => {
         await this.releaseFileLock(repoPath)
-        releaseFn!()
-
-        // Clean up the queue entry if this was the last operation
-        // (the chain we set is the current chain, meaning no one else queued after us)
-        if (lockQueues.get(repoPath) === newChain) {
-          lockQueues.delete(repoPath)
-        }
+        releaseMutex()
       }
     } catch (error) {
-      // If we fail to acquire the lock, we must still resolve operationComplete
-      // to prevent subsequent operations from hanging forever
-      releaseFn!()
+      // If file lock acquisition fails, release the mutex
+      releaseMutex()
       throw error
     }
   }

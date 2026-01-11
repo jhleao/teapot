@@ -614,6 +614,47 @@ describe('ExecutionContextService', () => {
     })
   })
 
+  describe('rebase in progress handling', () => {
+    it('uses active worktree when rebase is in progress (conflict state)', async () => {
+      // Create a branch for the rebase
+      execSync('git checkout -b feature', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'feature.txt'), 'feature content')
+      execSync('git add feature.txt', { cwd: repoPath })
+      execSync('git commit -m "feature commit"', { cwd: repoPath })
+      execSync('git checkout main', { cwd: repoPath })
+
+      // Create a conflicting change on main
+      await fs.promises.writeFile(path.join(repoPath, 'feature.txt'), 'main content')
+      execSync('git add feature.txt', { cwd: repoPath })
+      execSync('git commit -m "main commit"', { cwd: repoPath })
+
+      // Start a rebase that will conflict
+      execSync('git checkout feature', { cwd: repoPath })
+      try {
+        execSync('git rebase main', { cwd: repoPath, stdio: 'pipe' })
+      } catch {
+        // Expected - rebase will fail due to conflict
+      }
+
+      // Verify rebase is in progress (the worktree is "dirty" but in rebase state)
+      // This simulates the scenario where:
+      // 1. User started rebase with clean worktree
+      // 2. Rebase hit a conflict
+      // 3. User resolved the conflict (worktree now has staged changes)
+      // 4. User clicks "Continue" button
+
+      // Acquire should return the active worktree (not create a temp worktree)
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      expect(context.executionPath).toBe(repoPath)
+      expect(context.isTemporary).toBe(false)
+      expect(context.requiresCleanup).toBe(false)
+
+      // Abort the rebase for cleanup
+      execSync('git rebase --abort', { cwd: repoPath })
+    })
+  })
+
   describe('validation', () => {
     it('throws for empty repoPath', async () => {
       await expect(ExecutionContextService.acquire('')).rejects.toThrow('repoPath is required')

@@ -311,7 +311,28 @@ export class ExecutionContextService {
         return context
       }
 
-      // Active worktree is dirty - create a temporary worktree for full isolation
+      // If a rebase is in progress in the active worktree, use it directly.
+      // This handles the case where a rebase was started with a clean worktree,
+      // hit a conflict, and now the user is continuing. The worktree appears "dirty"
+      // because of the conflict resolution files, but we should use it, not create
+      // a new temp worktree.
+      if (activeStatus.isRebasing) {
+        log.debug(
+          '[ExecutionContextService] Rebase in progress in active worktree, using it for continue/abort'
+        )
+        const context: ExecutionContext = {
+          executionPath: activeWorktreePath,
+          isTemporary: false,
+          requiresCleanup: false,
+          createdAt: Date.now(),
+          operation,
+          repoPath
+        }
+        contextEvents.emit('acquired', context, repoPath)
+        return context
+      }
+
+      // Active worktree is dirty (but not rebasing) - create a temporary worktree for full isolation
       log.info(
         `[ExecutionContextService] Active worktree is dirty, creating temporary worktree for ${operation}...`
       )

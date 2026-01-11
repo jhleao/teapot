@@ -163,6 +163,25 @@ export class BranchOperation {
 
     await this.closePullRequestForBranch(repoPath, branchName)
 
+    // Delete remote branch if it exists
+    try {
+      await gitForgeService.deleteRemoteBranch(repoPath, branchName)
+      log.info(`[BranchOperation.delete] Deleted remote branch: ${branchName}`)
+    } catch (error) {
+      log.warn(
+        `[BranchOperation.delete] Failed to delete remote branch (continuing with local): ${branchName}`,
+        error
+      )
+    }
+
+    // Delete remote-tracking reference
+    try {
+      await git.deleteRemoteTrackingBranch(repoPath, 'origin', branchName)
+      log.info(`[BranchOperation.delete] Deleted remote-tracking ref: origin/${branchName}`)
+    } catch {
+      // Ignore - the remote-tracking ref may not exist
+    }
+
     await git.deleteBranch(repoPath, branchName)
     log.info(`[BranchOperation.delete] Deleted local branch: ${branchName}`)
   }

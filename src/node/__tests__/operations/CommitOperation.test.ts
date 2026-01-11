@@ -26,6 +26,77 @@ vi.mock('../../services/ForgeService', () => ({
 import { CommitOperation } from '../../operations/CommitOperation'
 import { gitForgeService } from '../../services/ForgeService'
 
+describe('amend', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-amend-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should amend commit message while staying on branch', async () => {
+    // Create a commit
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial content')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "original message"', { cwd: repoPath })
+
+    // Amend the commit message
+    await CommitOperation.amend(repoPath, 'amended message')
+
+    // Verify we're still on the branch
+    const currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(currentBranch).toBe('main')
+
+    // Verify the message was amended
+    const commitMessage = execSync('git log -1 --format=%s', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(commitMessage).toBe('amended message')
+  })
+
+  it('should amend with staged changes', async () => {
+    // Create initial commit
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial content')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "original message"', { cwd: repoPath })
+
+    // Stage additional changes
+    await fs.promises.writeFile(file1, 'modified content')
+    execSync('git add file1.txt', { cwd: repoPath })
+
+    // Amend (will include staged changes)
+    await CommitOperation.amend(repoPath)
+
+    // Verify we're still on the branch
+    const currentBranch = execSync('git branch --show-current', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(currentBranch).toBe('main')
+
+    // Verify the working tree is clean (staged changes were committed)
+    const status = execSync('git status --porcelain', { cwd: repoPath, encoding: 'utf-8' })
+    expect(status).toBe('')
+
+    // Verify the file content is the modified version
+    const content = await fs.promises.readFile(file1, 'utf-8')
+    expect(content).toBe('modified content')
+  })
+})
+
 describe('uncommit', () => {
   let repoPath: string
 

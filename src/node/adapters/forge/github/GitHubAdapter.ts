@@ -454,6 +454,36 @@ export class GitHubAdapter implements GitForgeAdapter {
   }
 
   /**
+   * Updates a pull request's base branch.
+   * Used when a branch has been rebased onto a different base.
+   *
+   * Docs: https://docs.github.com/en/rest/pulls/pulls#update-a-pull-request
+   */
+  async updatePullRequestBase(number: number, baseBranch: string): Promise<void> {
+    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls/${number}`
+
+    const { body, statusCode } = await request(url, {
+      method: 'PATCH',
+      dispatcher: githubAgent,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: {
+        Authorization: `Bearer ${this.pat}`,
+        'User-Agent': 'Teapot-Git-Client',
+        Accept: 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        base: baseBranch
+      })
+    })
+
+    if (statusCode !== 200) {
+      const text = await body.text()
+      throw new Error(`GitHub API failed with status ${statusCode}: ${text}`)
+    }
+  }
+
+  /**
    * Fetches detailed information about a specific pull request.
    * Used to get mergeable state which is not included in the list endpoint.
    *

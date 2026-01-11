@@ -1,5 +1,6 @@
+import { getDeleteBranchPermission } from '@shared/permissions'
 import type { SquashPreview, UiBranch } from '@shared/types'
-import React, { memo, useCallback, useState } from 'react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
@@ -139,6 +140,11 @@ export const BranchBadge = memo(function BranchBadge({
   // Show "Open in..." options if we have an openable path
   const canOpen = openablePath != null
 
+  const deletePermission = useMemo(
+    () => getDeleteBranchPermission({ isTrunk: data.isTrunk, isCurrent: data.isCurrent }),
+    [data.isTrunk, data.isCurrent]
+  )
+
   return (
     <>
       <ContextMenu
@@ -157,8 +163,14 @@ export const BranchBadge = memo(function BranchBadge({
             {data.canRename && (
               <ContextMenuItem onClick={handleRename}>Rename branch</ContextMenuItem>
             )}
-            {data.canDelete && (
-              <ContextMenuItem onClick={handleDelete}>Delete branch</ContextMenuItem>
+            {!data.isRemote && (
+              <ContextMenuItem
+                onClick={handleDelete}
+                disabled={!deletePermission.allowed}
+                disabledReason={deletePermission.deniedReason}
+              >
+                Delete branch
+              </ContextMenuItem>
             )}
             {data.canFold && (
               <ContextMenuItem onClick={handleOpenFoldDialog} disabled={isLoadingFoldPreview}>

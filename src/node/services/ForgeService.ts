@@ -144,6 +144,20 @@ export class GitForgeService {
     }
   }
 
+  /**
+   * Updates a pull request's base branch.
+   * Used when a branch has been rebased onto a different base.
+   *
+   * @throws Error if no PAT configured
+   */
+  async updatePullRequestBase(repoPath: string, number: number, baseBranch: string): Promise<void> {
+    const client = await this.getClient(repoPath)
+    if (!client) {
+      throw new Error('No GitHub client available. Please configure your GitHub PAT in settings.')
+    }
+    await client.updatePullRequestBase(number, baseBranch)
+  }
+
   async refreshWithStatus(repoPath: string): Promise<ForgeStateResult> {
     const client = await this.getClient(repoPath)
     if (!client) {

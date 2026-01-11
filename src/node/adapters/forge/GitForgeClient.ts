@@ -271,6 +271,15 @@ export class GitForgeClient {
     return this.refreshWithStatus()
   }
 
+  /**
+   * Updates a pull request's base branch.
+   * Used when a branch has been rebased onto a different base.
+   */
+  async updatePullRequestBase(number: number, baseBranch: string): Promise<ForgeStateResult> {
+    await this.adapter.updatePullRequestBase(number, baseBranch)
+    return this.refreshWithStatus()
+  }
+
   async deleteRemoteBranch(branchName: string): Promise<void> {
     await this.adapter.deleteRemoteBranch(branchName)
   }

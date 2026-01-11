@@ -66,15 +66,46 @@ export class PullRequestOperation {
 
   /**
    * Updates an existing pull request by force pushing the branch.
+   * Also updates the PR's base branch if it has changed (e.g., after a rebase).
    */
   static async update(repoPath: string, headBranch: string): Promise<void> {
     log.debug(`[PullRequestOperation.update] Updating PR for branch: ${headBranch}`)
 
     const git = getGitAdapter()
+
+    // Force push the branch first
     await this.forcePushBranch(repoPath, headBranch, git)
 
-    const expectedSha = await git.resolveRef(repoPath, headBranch)
+    // Check if PR base needs updating
+    const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
+    const pr = findOpenPr(headBranch, forgeState.pullRequests)
 
+    if (pr) {
+      // Determine what the base should be based on current local state
+      const repo = await this.loadRepoWithRemotes(repoPath)
+      const headBranchObj = this.findBranch(repo, headBranch)
+
+      if (headBranchObj?.headSha) {
+        const newBase = await this.findBaseBranch(
+          repoPath,
+          repo,
+          headBranch,
+          headBranchObj.headSha,
+          git
+        )
+
+        // Update PR base if it has changed
+        if (newBase !== pr.baseRefName) {
+          log.debug(
+            `[PullRequestOperation.update] PR base changed: ${pr.baseRefName} -> ${newBase}`
+          )
+          await gitForgeService.updatePullRequestBase(repoPath, pr.number, newBase)
+        }
+      }
+    }
+
+    // Wait for GitHub to sync the head SHA
+    const expectedSha = await git.resolveRef(repoPath, headBranch)
     await this.waitForPrSync(repoPath, headBranch, expectedSha)
 
     log.debug(`[PullRequestOperation.update] Successfully updated PR for branch ${headBranch}`)

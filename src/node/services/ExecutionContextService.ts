@@ -684,7 +684,10 @@ export class ExecutionContextService {
    *
    * Queue-based mutex: Each repo has a promise chain. New callers add their
    * operation to the chain and wait for all previous operations to complete.
-   * This eliminates the race condition in the previous check-then-set approach.
+   *
+   * The .catch(() => {}) calls prevent chain breakage if a previous operation
+   * throws - without this, a rejection would propagate and hang all subsequent
+   * operations waiting on the chain.
    */
   private static async acquireLock(repoPath: string): Promise<() => Promise<void>> {
     // Create the release mechanism for this operation
@@ -694,22 +697,28 @@ export class ExecutionContextService {
     })
 
     // Chain this operation after any existing operations
+    // The .catch() prevents a rejected promise from breaking the chain
     const previousChain = lockQueues.get(repoPath) ?? Promise.resolve()
-    const newChain = previousChain.then(() => operationComplete)
+    const newChain = previousChain.catch(() => {}).then(() => operationComplete)
     lockQueues.set(repoPath, newChain)
 
-    // Wait for all previous operations in the queue
-    await previousChain
+    // Wait for all previous operations in the queue (ignore their errors)
+    await previousChain.catch(() => {})
 
     // Now acquire file-based lock for multi-process safety
-    await this.acquireFileLock(repoPath)
+    try {
+      await this.acquireFileLock(repoPath)
+    } catch (error) {
+      // Release our spot in the queue before throwing
+      releaseFn!()
+      throw error
+    }
 
     return async () => {
       await this.releaseFileLock(repoPath)
       releaseFn!()
 
       // Clean up the queue entry if this was the last operation
-      // (the chain we set is the current chain, meaning no one else queued after us)
       if (lockQueues.get(repoPath) === newChain) {
         lockQueues.delete(repoPath)
       }

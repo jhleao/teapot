@@ -28,7 +28,9 @@ export function TooltipContainerProvider({
   container: HTMLElement | null
 }) {
   return (
-    <TooltipContainerContext.Provider value={container}>{children}</TooltipContainerContext.Provider>
+    <TooltipContainerContext.Provider value={container}>
+      {children}
+    </TooltipContainerContext.Provider>
   )
 }
 
@@ -36,7 +38,13 @@ export function TooltipProvider({ children }: { children: React.ReactNode }) {
   return <TooltipPrimitive.Provider delayDuration={0}>{children}</TooltipPrimitive.Provider>
 }
 
-export function Tooltip({ children, content, delayDuration = 0, side = 'top', disabled }: TooltipProps) {
+export function Tooltip({
+  children,
+  content,
+  delayDuration = 0,
+  side = 'top',
+  disabled
+}: TooltipProps) {
   const container = useContext(TooltipContainerContext)
 
   if (disabled || !content) {

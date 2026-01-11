@@ -1,3 +1,4 @@
+import { log } from '@shared/logger'
 import type { DetachedWorktree, RebasePlan, RebaseState } from '@shared/types'
 import { configStore, type ConfigStore, type StoredRebaseSession } from '../store'
 
@@ -83,7 +84,10 @@ export function createSession(
 }
 
 export function clearSession(repoPath: string): void {
-  sessionStore.delete(normalizePath(repoPath))
+  const key = normalizePath(repoPath)
+  const hadSession = sessionStore.has(key)
+  sessionStore.delete(key)
+  log.info('[SessionService] clearSession called', { repoPath, key, hadSession })
 }
 
 export function clearAutoDetachedWorktrees(repoPath: string): void {

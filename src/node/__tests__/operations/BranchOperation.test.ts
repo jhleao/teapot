@@ -335,7 +335,9 @@ describe('cleanupBranch', () => {
 
     // Try to cleanup main branch - should throw TrunkProtectionError
     await expect(BranchOperation.cleanup(repoPath, 'main')).rejects.toThrow(TrunkProtectionError)
-    await expect(BranchOperation.cleanup(repoPath, 'main')).rejects.toThrow(/Cannot cleanup trunk branch/)
+    await expect(BranchOperation.cleanup(repoPath, 'main')).rejects.toThrow(
+      /Cannot cleanup trunk branch/
+    )
 
     // main branch should still exist
     const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
@@ -686,7 +688,9 @@ describe('deleteBranch', () => {
 
     // Try to delete main branch - should throw TrunkProtectionError
     await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(TrunkProtectionError)
-    await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(/Cannot delete trunk branch/)
+    await expect(BranchOperation.delete(repoPath, 'main')).rejects.toThrow(
+      /Cannot delete trunk branch/
+    )
 
     // main branch should still exist
     const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })

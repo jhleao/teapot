@@ -8,6 +8,7 @@
  */
 
 import { log } from '@shared/logger'
+import { getDeleteBranchPermission } from '@shared/permissions'
 import { findOpenPr } from '@shared/types/git-forge'
 import { isTrunkRef, type CheckoutResult } from '@shared/types/repo'
 import {
@@ -20,7 +21,7 @@ import {
 } from '../adapters/git'
 import { ExecutionContextService } from '../services/ExecutionContextService'
 import { gitForgeService } from '../services/ForgeService'
-import { TrunkProtectionError, type TrunkProtectedOperation } from '../shared/errors'
+import { BranchError, TrunkProtectionError, type TrunkProtectedOperation } from '../shared/errors'
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
 import { normalizePath, pruneIfStale } from './WorktreeUtils'
@@ -143,9 +144,20 @@ export class BranchOperation {
    * Trunk branches (main, master, develop, trunk) cannot be deleted.
    */
   static async delete(repoPath: string, branchName: string): Promise<void> {
-    assertNotTrunk(branchName, { operation: 'delete' })
-
     const git = getGitAdapter()
+
+    // Check permission using shared permission logic
+    const isTrunk = isTrunkRef(branchName, false)
+    const currentBranch = await git.currentBranch(repoPath)
+    const isCurrent = currentBranch === branchName
+
+    const permission = getDeleteBranchPermission({ isTrunk, isCurrent })
+    if (!permission.allowed) {
+      if (permission.reason === 'is-trunk') {
+        throw new TrunkProtectionError(branchName, 'delete')
+      }
+      throw new BranchError(permission.deniedReason, branchName, 'delete')
+    }
 
     await this.removeWorktreeForBranch(repoPath, branchName, 'delete')
 

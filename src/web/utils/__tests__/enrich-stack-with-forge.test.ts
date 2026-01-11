@@ -15,7 +15,6 @@ const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
     isRemote,
     isTrunk,
     canRename: !isRemote && !isTrunk,
-    canDelete: !isCurrent && !isTrunk,
     canFold: !isRemote && !isTrunk,
     canCreateWorktree: !isRemote && !isTrunk,
     ...overrides

@@ -15,7 +15,6 @@ const createBranch = (overrides: Partial<UiBranch> = {}): UiBranch => {
     isMerged: false,
     // Compute permissions based on state (same logic as backend)
     canRename: !isRemote && !isTrunk,
-    canDelete: !isCurrent && !isTrunk,
     canFold: !isRemote && !isTrunk,
     canCreateWorktree: !isRemote && !isTrunk,
     ...overrides

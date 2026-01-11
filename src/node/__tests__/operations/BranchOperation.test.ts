@@ -408,7 +408,7 @@ describe('deleteBranch', () => {
 
     // Try to delete current branch - should throw
     await expect(BranchOperation.delete(repoPath, 'feature')).rejects.toThrow(
-      'Cannot delete the currently checked out branch'
+      'Cannot delete the checked out branch'
     )
 
     // Branch should still exist

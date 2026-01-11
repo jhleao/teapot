@@ -635,7 +635,6 @@ export class UiStateBuilder {
       // This keeps all business logic in the backend, making the UI dumb
       const isCurrent = branch.ref === state.currentBranch
       const canRename = !branch.isRemote && !branch.isTrunk
-      const canDelete = !isCurrent && !branch.isTrunk
       const canFold = !branch.isRemote && !branch.isTrunk
       const canCreateWorktree = !branch.isRemote && !branch.isTrunk
 
@@ -650,7 +649,6 @@ export class UiStateBuilder {
         worktree,
         ownedCommitShas,
         canRename,
-        canDelete,
         canFold,
         canCreateWorktree
       })

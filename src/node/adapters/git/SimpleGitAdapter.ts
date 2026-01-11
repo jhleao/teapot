@@ -200,6 +200,11 @@ export class SimpleGitAdapter implements GitAdapter {
     try {
       const git = this.createGit(dir)
       const status = await git.status()
+      // simple-git returns "HEAD" as current when detached, so we need to check
+      // the detached flag to return null for detached HEAD state
+      if (status.detached) {
+        return null
+      }
       return status.current ?? null
     } catch {
       return null

@@ -38,6 +38,7 @@ describe('GitForgeClient', () => {
       fetchState: vi.fn().mockResolvedValue(mockState),
       createPullRequest: vi.fn(),
       closePullRequest: vi.fn(),
+      updatePullRequestBase: vi.fn(),
       deleteRemoteBranch: vi.fn(),
       mergePullRequest: vi.fn(),
       fetchPrDetails: vi.fn()

@@ -220,6 +220,12 @@ export interface GitForgeAdapter {
   closePullRequest(number: number): Promise<void>
 
   /**
+   * Updates a pull request's base branch.
+   * Used when a branch has been rebased onto a different base.
+   */
+  updatePullRequestBase(number: number, baseBranch: string): Promise<void>
+
+  /**
    * Deletes a branch from the remote repository.
    * Should treat "branch doesn't exist" as success (idempotent).
    */

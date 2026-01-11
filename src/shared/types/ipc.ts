@@ -175,7 +175,7 @@ export interface IpcContract {
   }
   [IPC_CHANNELS.confirmRebaseIntent]: {
     request: { repoPath: string }
-    response: RebaseOperationResponse
+    response: UiState | null
   }
   [IPC_CHANNELS.cancelRebaseIntent]: {
     request: { repoPath: string }

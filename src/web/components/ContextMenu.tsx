@@ -50,7 +50,9 @@ export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
               close()
             }}
           >
-            <TooltipContainerProvider container={menuElement}>{content}</TooltipContainerProvider>
+            <TooltipContainerProvider container={menuElement}>
+              {content}
+            </TooltipContainerProvider>
           </div>
         </ContextMenuPortal>
       )}

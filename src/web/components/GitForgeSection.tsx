@@ -48,8 +48,8 @@ export const GitForgeSection = memo(function GitForgeSection({
   const branchWithPr = useMemo(() => branches.find((b) => b.pullRequest), [branches])
   const pr = branchWithPr?.pullRequest
   const isMerged = useMemo(() => branches.some((b) => b.isMerged), [branches])
-  // Backend computes canRebaseToTrunk - parallel mode allows rebasing with dirty worktree
-  const showRebaseButton = canRebaseToTrunk
+  // Backend computes canRebaseToTrunk, frontend only checks if working tree is dirty
+  const showRebaseButton = canRebaseToTrunk && !isWorkingTreeDirty
 
   /**
    * Determines if this branch is at the bottom of a PR stack.
@@ -99,7 +99,7 @@ export const GitForgeSection = memo(function GitForgeSection({
   const handleRebase = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
       e.stopPropagation()
-      if (isLoading) return
+      if (isLoading || isWorkingTreeDirty) return
 
       setIsLoading(true)
       try {
@@ -110,7 +110,7 @@ export const GitForgeSection = memo(function GitForgeSection({
         setIsLoading(false)
       }
     },
-    [isLoading, submitRebaseIntent, commitSha, trunkHeadSha]
+    [isLoading, isWorkingTreeDirty, submitRebaseIntent, commitSha, trunkHeadSha]
   )
 
   const handleShipIt = useCallback(

@@ -167,7 +167,9 @@ describe('WorktreeUtils', () => {
 
   describe('parseWorktreeConflictError', () => {
     it('should parse "already used by worktree" error', () => {
-      const error = new Error("fatal: 'feature' is already used by worktree at '/path/to/worktree'")
+      const error = new Error(
+        "fatal: 'feature' is already used by worktree at '/path/to/worktree'"
+      )
       const result = parseWorktreeConflictError(error)
       expect(result).toEqual({ worktreePath: '/path/to/worktree' })
     })

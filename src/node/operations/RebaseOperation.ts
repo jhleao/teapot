@@ -27,76 +27,13 @@ import {
   TrunkResolver,
   UiStateBuilder
 } from '../domain'
-import { ExecutionContextService, RepoModelService, SessionService } from '../services'
+import { RepoModelService, SessionService } from '../services'
 import { gitForgeService } from '../services/ForgeService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
-import { RebaseExecutor, type RebaseErrorCode } from './RebaseExecutor'
+import { RebaseExecutor } from './RebaseExecutor'
 import { UiStateOperation } from './UiStateOperation'
 import { WorktreeOperation } from './WorktreeOperation'
-
-/**
- * Custom error class for rebase operation failures that preserves error codes
- * for specific handling in the frontend.
- *
- * The error code is encoded in the error name (e.g., 'RebaseOperationError:WORKTREE_CREATION_FAILED')
- * so it survives IPC serialization. Additionally, toJSON() provides explicit serialization
- * for better debugging and potential future use.
- */
-export class RebaseOperationError extends Error {
-  constructor(
-    message: string,
-    public readonly errorCode?: RebaseErrorCode
-  ) {
-    super(message)
-    // Encode error code in name so it survives IPC serialization
-    this.name = errorCode ? `RebaseOperationError:${errorCode}` : 'RebaseOperationError'
-  }
-
-  /**
-   * Custom JSON serialization for better error transmission across IPC.
-   * Ensures all error properties are preserved when the error is serialized.
-   */
-  toJSON(): {
-    name: string
-    message: string
-    errorCode: RebaseErrorCode | undefined
-    stack: string | undefined
-  } {
-    return {
-      name: this.name,
-      message: this.message,
-      errorCode: this.errorCode,
-      stack: this.stack
-    }
-  }
-
-  /**
-   * Extracts error code from an error name string.
-   * Used by frontend to decode error codes that survive IPC serialization.
-   * @param errorName - The error name (e.g., 'RebaseOperationError:WORKTREE_CREATION_FAILED')
-   * @returns The error code or null if not found/invalid
-   */
-  static extractErrorCode(errorName: string): RebaseErrorCode | null {
-    const match = errorName.match(/^RebaseOperationError:([A-Z_]+)$/)
-    if (!match) return null
-
-    const code = match[1]
-    // Validate against known error codes
-    const validCodes: RebaseErrorCode[] = [
-      'WORKTREE_CREATION_FAILED',
-      'REBASE_IN_PROGRESS',
-      'GIT_ADAPTER_UNSUPPORTED',
-      'VALIDATION_FAILED',
-      'SESSION_EXISTS',
-      'BRANCH_NOT_FOUND',
-      'CONTEXT_ACQUISITION_FAILED',
-      'GENERIC'
-    ]
-
-    return validCodes.includes(code as RebaseErrorCode) ? (code as RebaseErrorCode) : null
-  }
-}
 
 export class RebaseOperation {
   /**
@@ -203,13 +140,12 @@ export class RebaseOperation {
    * Confirm the current rebase intent and execute it.
    * Returns updated UI state; throws on fatal errors.
    */
-  static async confirmRebaseIntent(repoPath: string): Promise<RebaseOperationResponse> {
+  static async confirmRebaseIntent(repoPath: string) {
     const session = await SessionService.getSession(repoPath)
 
     if (!session) {
       // No session is a benign scenario (e.g., user retried); return current UI state.
-      const uiState = await UiStateOperation.getUiState(repoPath)
-      return { success: true, uiState }
+      return UiStateOperation.getUiState(repoPath)
     }
 
     try {
@@ -221,16 +157,10 @@ export class RebaseOperation {
 
       if (result.status === 'error') {
         await SessionService.clearSession(repoPath)
-        throw new RebaseOperationError(result.message, result.errorCode)
+        throw new Error(result.message)
       }
 
-      const uiState = await UiStateOperation.getUiState(repoPath)
-
-      if (result.status === 'conflict') {
-        return { success: false, uiState, conflicts: result.conflicts }
-      }
-
-      return { success: true, uiState }
+      return await UiStateOperation.getUiState(repoPath)
     } catch (error) {
       await SessionService.clearSession(repoPath)
       throw error
@@ -239,63 +169,9 @@ export class RebaseOperation {
 
   /**
    * Cancel the current rebase intent/session and return fresh UI state.
-   * Also cleans up any stored execution context and temp worktree from parallel mode.
    */
   static async cancelRebaseIntent(repoPath: string) {
-    // Get session info BEFORE clearing - we need originalBranch to restore active worktree
-    const session = await SessionService.getSession(repoPath)
-
-    // Check for stored execution context (temp worktree)
-    const storedContext = await ExecutionContextService.getStoredContext(repoPath)
-
-    // Clear the session first
     await SessionService.clearSession(repoPath)
-
-    // If there was a stored context (temp worktree), clean it up
-    if (storedContext) {
-      const git = getGitAdapter()
-      const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
-
-      // If there's a rebase in progress in the temp worktree, abort it first
-      try {
-        const tempStatus = await git.getWorkingTreeStatus(storedContext.executionPath)
-        if (tempStatus.isRebasing && 'rebaseAbort' in git && git.rebaseAbort) {
-          await git.rebaseAbort(storedContext.executionPath)
-        }
-      } catch {
-        // Temp worktree might not exist anymore, ignore
-      }
-
-      // Release the temp worktree
-      try {
-        await ExecutionContextService.release({
-          executionPath: storedContext.executionPath,
-          isTemporary: storedContext.isTemporary,
-          requiresCleanup: storedContext.isTemporary,
-          createdAt: storedContext.createdAt,
-          operation: storedContext.operation,
-          repoPath: storedContext.repoPath
-        })
-      } catch {
-        // Best effort cleanup
-      }
-
-      // Clear the stored context
-      await ExecutionContextService.clearStoredContext(repoPath)
-
-      // Restore original branch in active worktree if it was detached for parallel mode
-      if (storedContext.isTemporary && session?.originalBranch) {
-        try {
-          const status = await git.getWorkingTreeStatus(activeWorktreePath)
-          if (status.detached) {
-            await git.checkout(activeWorktreePath, session.originalBranch)
-          }
-        } catch {
-          // Best effort - user can manually checkout
-        }
-      }
-    }
-
     return UiStateOperation.getUiState(repoPath)
   }
 
@@ -307,7 +183,7 @@ export class RebaseOperation {
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (result.status === 'error') {
-      throw new RebaseOperationError(result.message, result.errorCode)
+      throw new Error(result.message)
     }
 
     if (result.status === 'conflict') {
@@ -339,7 +215,7 @@ export class RebaseOperation {
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (result.status === 'error') {
-      throw new RebaseOperationError(result.message, result.errorCode)
+      throw new Error(result.message)
     }
 
     if (result.status === 'conflict') {
@@ -352,26 +228,19 @@ export class RebaseOperation {
   /**
    * Get current rebase status snapshot.
    * Does not throw; falls back to a safe default if status cannot be read.
-   *
-   * When a rebase is running in a temp worktree (parallel mode), this checks
-   * the execution context path for rebase state, not the main repo path.
    */
   static async getRebaseStatus(repoPath: string): Promise<RebaseStatusResponse> {
     try {
       const adapter = getGitAdapter()
-      const session = await SessionService.getSession(repoPath)
-
-      // Check if there's a stored execution context (temp worktree with conflict)
-      // If so, we need to check that path for rebase state, not the main repo
-      const storedContext = await ExecutionContextService.getStoredContext(repoPath)
-      const executionPath = storedContext?.executionPath ?? repoPath
-
-      const workingTreeStatus = await adapter.getWorkingTreeStatus(executionPath)
+      const [session, workingTreeStatus] = await Promise.all([
+        SessionService.getSession(repoPath),
+        adapter.getWorkingTreeStatus(repoPath)
+      ])
 
       let progress: RebaseStatusResponse['progress'] = undefined
 
       if (supportsGetRebaseState(adapter) && workingTreeStatus.isRebasing) {
-        const gitRebaseState = await adapter.getRebaseState(executionPath)
+        const gitRebaseState = await adapter.getRebaseState(repoPath)
         if (gitRebaseState) {
           progress = {
             currentStep: gitRebaseState.currentStep,

@@ -19,10 +19,11 @@
  *    - Cleaned up after operation completes
  */
 
-import * as crypto from 'crypto'
 import { EventEmitter } from 'events'
 import * as fs from 'fs'
 import * as path from 'path'
+
+import { Mutex } from 'async-mutex'
 
 import { log } from '@shared/logger'
 
@@ -137,10 +138,22 @@ const MAX_WORKTREE_RETRIES = 3
 const WORKTREE_RETRY_DELAY = 500
 
 /**
- * Queue-based mutex for in-memory async locking.
- * Each repo gets its own promise chain ensuring serialized access.
+ * Per-repository mutexes for in-memory async locking.
+ * Using async-mutex library for robust, battle-tested locking.
  */
-const lockQueues: Map<string, Promise<void>> = new Map()
+const repoMutexes: Map<string, Mutex> = new Map()
+
+/**
+ * Get or create a mutex for a repository path.
+ */
+function getRepoMutex(repoPath: string): Mutex {
+  let mutex = repoMutexes.get(repoPath)
+  if (!mutex) {
+    mutex = new Mutex()
+    repoMutexes.set(repoPath, mutex)
+  }
+  return mutex
+}
 
 /**
  * Track active temp worktrees for emergency cleanup on process exit.
@@ -154,9 +167,6 @@ let exitHandlerRegistered = false
 /**
  * Perform synchronous cleanup of file locks before process exits.
  * Worktrees are left for orphan cleanup on next startup since git operations are async.
- *
- * Note: We cannot do async cleanup in exit handlers. The worktrees will be cleaned up
- * by cleanupOrphans() on next startup when the app initializes.
  */
 function cleanupOnExit(): void {
   for (const [repoPath, tempPath] of activeContexts) {
@@ -166,16 +176,7 @@ function cleanupOnExit(): void {
     } catch {
       // Ignore - best effort
     }
-    // Log so the next startup knows to clean up this orphan
-    log.warn(
-      `[ExecutionContextService] Process exiting with orphaned temp worktree (will be cleaned on next startup): ${tempPath}`,
-      { repoPath, tempPath }
-    )
-  }
-  if (activeContexts.size > 0) {
-    log.info(
-      `[ExecutionContextService] ${activeContexts.size} orphaned worktree(s) will be cleaned up on next app startup via cleanupOrphans()`
-    )
+    log.info(`[ExecutionContextService] Process exiting with active temp worktree: ${tempPath}`)
   }
 }
 
@@ -315,59 +316,7 @@ export class ExecutionContextService {
       log.info(
         `[ExecutionContextService] Active worktree is dirty, creating temporary worktree for ${operation}...`
       )
-
-      // Get current branch BEFORE detaching so we can rollback on failure
-      const originalBranch = await git.currentBranch(activeWorktreePath)
-
-      // Detach HEAD in active worktree before creating temp worktree.
-      // This releases the branch ref so it can be checked out in the temp worktree.
-      // The uncommitted changes are preserved since git checkout --detach keeps them.
-      const detachResult = await WorktreeOperation.detachHead(activeWorktreePath)
-      if (!detachResult.success) {
-        throw new WorktreeCreationError(
-          `Failed to detach HEAD in active worktree: ${detachResult.error}`,
-          repoPath,
-          0
-        )
-      }
-
-      // Try to create temp worktree - if this fails, we need to rollback the HEAD detach
-      let tempWorktree: string
-      try {
-        tempWorktree = await this.createTemporaryWorktree(repoPath)
-      } catch (error) {
-        // Rollback: restore original branch in active worktree
-        // This is critical - without rollback, the user's worktree is left in a broken state
-        if (originalBranch) {
-          log.warn(
-            `[ExecutionContextService] Temp worktree creation failed, rolling back HEAD detach`,
-            { repoPath, originalBranch, error }
-          )
-          const rollbackResult = await WorktreeOperation.checkoutBranchInWorktree(
-            activeWorktreePath,
-            originalBranch
-          )
-          if (!rollbackResult.success) {
-            // Rollback failed - log error but still throw original error
-            // User will need to manually checkout their branch
-            log.error(
-              `[ExecutionContextService] CRITICAL: Failed to rollback HEAD detach after temp worktree creation failure`,
-              {
-                repoPath,
-                activeWorktreePath,
-                originalBranch,
-                rollbackError: rollbackResult.error,
-                originalError: error instanceof Error ? error.message : String(error)
-              }
-            )
-          } else {
-            log.info(
-              `[ExecutionContextService] Successfully rolled back to branch: ${originalBranch}`
-            )
-          }
-        }
-        throw error
-      }
+      const tempWorktree = await this.createTemporaryWorktree(repoPath)
 
       // Track for emergency cleanup and register exit handler
       activeContexts.set(repoPath, tempWorktree)
@@ -487,28 +436,10 @@ export class ExecutionContextService {
       return
     }
 
-    // Validate path is within the teapot-worktrees directory (safety check)
-    // This prevents accidentally deleting arbitrary directories
-    const expectedWorktreeDir = this.getWorktreeDir(context.repoPath)
-    const worktreeName = path.basename(context.executionPath)
-    const parentDir = path.dirname(context.executionPath)
-
-    // Resolve symlinks for comparison (e.g., /var -> /private/var on macOS)
-    let resolvedParentDir: string
-    let resolvedExpectedDir: string
-    try {
-      resolvedParentDir = fs.realpathSync(parentDir)
-      resolvedExpectedDir = fs.realpathSync(expectedWorktreeDir)
-    } catch {
-      // If we can't resolve paths, use normalized paths as fallback
-      resolvedParentDir = path.normalize(parentDir)
-      resolvedExpectedDir = path.normalize(expectedWorktreeDir)
-    }
-
-    if (resolvedParentDir !== resolvedExpectedDir || !worktreeName.startsWith('teapot-exec-')) {
+    // Validate path looks like a temp worktree (safety check)
+    if (!context.executionPath.includes('teapot-exec-')) {
       log.warn(
-        `[ExecutionContextService] Refusing to release path outside temp worktree directory: ${context.executionPath}`,
-        { expectedWorktreeDir, resolvedParentDir, resolvedExpectedDir, worktreeName }
+        `[ExecutionContextService] Refusing to release non-temp path: ${context.executionPath}`
       )
       return
     }
@@ -636,13 +567,8 @@ export class ExecutionContextService {
     try {
       const content = await fs.promises.readFile(lockPath, 'utf-8')
       lockFileExists = true
-      try {
-        const lockInfo = JSON.parse(content)
-        lockFileAge = Date.now() - lockInfo.timestamp
-      } catch {
-        // Corrupted lock file - age unknown
-        lockFileAge = null
-      }
+      const lockInfo = JSON.parse(content)
+      lockFileAge = Date.now() - lockInfo.timestamp
     } catch {
       // Lock file doesn't exist
     }
@@ -682,107 +608,71 @@ export class ExecutionContextService {
    * Acquire both in-memory and file-based locks.
    * Returns a release function that must be called when done.
    *
-   * Queue-based mutex: Each repo has a promise chain. New callers add their
-   * operation to the chain and wait for all previous operations to complete.
-   * This eliminates the race condition in the previous check-then-set approach.
+   * Uses async-mutex for robust in-memory locking, plus file-based
+   * locking for multi-process safety.
    */
   private static async acquireLock(repoPath: string): Promise<() => Promise<void>> {
-    // Create the release mechanism for this operation
-    let releaseFn: () => void
-    const operationComplete = new Promise<void>((resolve) => {
-      releaseFn = resolve
-    })
+    const mutex = getRepoMutex(repoPath)
 
-    // Chain this operation after any existing operations
-    const previousChain = lockQueues.get(repoPath) ?? Promise.resolve()
-    const newChain = previousChain.then(() => operationComplete)
-    lockQueues.set(repoPath, newChain)
+    // Acquire in-memory mutex
+    const releaseMutex = await mutex.acquire()
 
-    // Wait for all previous operations in the queue
-    await previousChain
+    try {
+      // Acquire file-based lock for multi-process safety
+      await this.acquireFileLock(repoPath)
 
-    // Now acquire file-based lock for multi-process safety
-    await this.acquireFileLock(repoPath)
-
-    return async () => {
-      await this.releaseFileLock(repoPath)
-      releaseFn!()
-
-      // Clean up the queue entry if this was the last operation
-      // (the chain we set is the current chain, meaning no one else queued after us)
-      if (lockQueues.get(repoPath) === newChain) {
-        lockQueues.delete(repoPath)
+      return async () => {
+        await this.releaseFileLock(repoPath)
+        releaseMutex()
       }
+    } catch (error) {
+      // If file lock acquisition fails, release the mutex
+      releaseMutex()
+      throw error
     }
   }
 
   /**
    * Acquire a file-based lock for multi-process safety.
-   *
-   * Uses atomic file creation with a unique lock ID to prevent TOCTOU race conditions:
-   * 1. Generate a unique lock ID before attempting acquisition
-   * 2. Try to create lock file atomically with O_EXCL flag
-   * 3. If successful, verify we actually own the lock by reading it back
-   * 4. If verification fails (another process won the race), retry
-   *
-   * This approach eliminates the race condition where two processes could both
-   * delete a stale lock and then both succeed in creating a new one.
+   * Uses exclusive file creation with PID tracking.
    */
   private static async acquireFileLock(repoPath: string): Promise<void> {
     const lockPath = this.getLockFilePath(repoPath)
-    const lockId = crypto.randomUUID()
-    const maxAttempts = 10
-    const baseRetryDelayMs = 100
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Try to acquire lock
+    for (let attempt = 0; attempt < 10; attempt++) {
       try {
-        // Try to create lock file atomically with exclusive flag
+        // Try to create lock file exclusively
         const lockContent = JSON.stringify({
           pid: process.pid,
-          lockId,
           timestamp: Date.now()
         })
         await fs.promises.writeFile(lockPath, lockContent, { flag: 'wx' })
-
-        // Verify we actually own the lock (double-check pattern)
-        // This catches the race where another process deleted a stale lock
-        // and created their own between our unlink and writeFile
-        try {
-          const verification = await fs.promises.readFile(lockPath, 'utf-8')
-          const verifyInfo = JSON.parse(verification)
-          if (verifyInfo.lockId !== lockId) {
-            // Another process won the race - their lock is now active
-            log.debug('[ExecutionContextService] Lost lock race, retrying', {
-              repoPath,
-              attempt,
-              ourLockId: lockId.slice(0, 8),
-              theirLockId: verifyInfo.lockId?.slice(0, 8)
-            })
-            // Add jitter to prevent thundering herd
-            const jitter = Math.random() * baseRetryDelayMs
-            await new Promise((r) => setTimeout(r, baseRetryDelayMs + jitter))
-            continue
-          }
-        } catch {
-          // Lock file disappeared during verification - retry
-          continue
-        }
-
-        return // Successfully acquired and verified lock
+        return // Success
       } catch (err) {
-        const errCode = (err as NodeJS.ErrnoException).code
+        if ((err as NodeJS.ErrnoException).code === 'EEXIST') {
+          // Lock file exists, check if it's stale
+          try {
+            const content = await fs.promises.readFile(lockPath, 'utf-8')
+            const lockInfo = JSON.parse(content)
+            const age = Date.now() - lockInfo.timestamp
 
-        if (errCode === 'EEXIST') {
-          // Lock file exists - check if we should break it
-          const shouldBreak = await this.checkAndBreakStaleLock(lockPath, repoPath)
-          if (shouldBreak) {
-            // Stale lock was broken, retry immediately
+            // Check if the lock is stale (process died or took too long)
+            if (age > LOCK_STALE_MS) {
+              log.warn(
+                `[ExecutionContextService] Breaking stale lock (${Math.round(age / 1000)}s old)`
+              )
+              await fs.promises.unlink(lockPath)
+              continue // Retry acquisition
+            }
+
+            // Lock is held by another process, wait and retry
+            await new Promise((r) => setTimeout(r, 100))
+          } catch {
+            // Lock file disappeared, retry
             continue
           }
-          // Lock is held by active process - wait with jitter and retry
-          const jitter = Math.random() * baseRetryDelayMs
-          await new Promise((r) => setTimeout(r, baseRetryDelayMs * (attempt + 1) + jitter))
-        } else if (errCode === 'ENOENT') {
+        } else if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
           // .git directory doesn't exist, skip file locking
           return
         } else {
@@ -792,95 +682,10 @@ export class ExecutionContextService {
     }
 
     throw new LockAcquisitionError(
-      `Failed to acquire execution context lock after ${maxAttempts} attempts`,
+      'Failed to acquire execution context lock after 10 attempts',
       repoPath,
-      maxAttempts
+      10
     )
-  }
-
-  /**
-   * Check if an existing lock is stale and break it if so.
-   * Returns true if the lock was broken (caller should retry acquisition).
-   * Returns false if the lock is held by an active process.
-   *
-   * A lock is considered stale if:
-   * - The lock file is corrupted (cannot be parsed)
-   * - The lock is older than LOCK_STALE_MS
-   * - The process that created the lock no longer exists (PID check)
-   */
-  private static async checkAndBreakStaleLock(
-    lockPath: string,
-    repoPath: string
-  ): Promise<boolean> {
-    try {
-      const content = await fs.promises.readFile(lockPath, 'utf-8')
-      let lockInfo: { pid: number; lockId?: string; timestamp: number }
-
-      try {
-        lockInfo = JSON.parse(content)
-      } catch {
-        // Corrupted lock file - break it
-        log.warn('[ExecutionContextService] Breaking corrupted lock file', {
-          repoPath,
-          content: content.slice(0, 100)
-        })
-        await this.safeUnlink(lockPath)
-        return true
-      }
-
-      const age = Date.now() - lockInfo.timestamp
-
-      // Check if lock is stale by age
-      if (age > LOCK_STALE_MS) {
-        log.warn(`[ExecutionContextService] Breaking stale lock (${Math.round(age / 1000)}s old)`, {
-          repoPath,
-          pid: lockInfo.pid,
-          lockId: lockInfo.lockId?.slice(0, 8)
-        })
-        await this.safeUnlink(lockPath)
-        return true
-      }
-
-      // Check if holding process is still alive (skip if same PID - that's us)
-      if (lockInfo.pid !== process.pid) {
-        try {
-          // Signal 0 checks if process exists without killing it
-          process.kill(lockInfo.pid, 0)
-        } catch {
-          // Process doesn't exist - break the orphan lock
-          log.warn(
-            `[ExecutionContextService] Breaking orphan lock (PID ${lockInfo.pid} no longer exists)`,
-            { repoPath, lockId: lockInfo.lockId?.slice(0, 8) }
-          )
-          await this.safeUnlink(lockPath)
-          return true
-        }
-      }
-
-      // Lock is held by an active process
-      return false
-    } catch (err) {
-      // Lock file disappeared while checking - treat as broken
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        return true
-      }
-      throw err
-    }
-  }
-
-  /**
-   * Safely unlink a file, ignoring ENOENT errors.
-   * Used for lock cleanup where the file may have been deleted by another process.
-   */
-  private static async safeUnlink(filePath: string): Promise<void> {
-    try {
-      await fs.promises.unlink(filePath)
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw err
-      }
-      // File already deleted - that's fine
-    }
   }
 
   private static async releaseFileLock(repoPath: string): Promise<void> {
@@ -908,88 +713,11 @@ export class ExecutionContextService {
     return path.join(repoPath, '.git', WORKTREE_DIR)
   }
 
-  /**
-   * Validates that a parsed object has the required PersistedContext shape.
-   * Returns null if validation fails, with structured logging for debugging.
-   */
-  private static validatePersistedContext(
-    parsed: unknown,
-    repoPath: string
-  ): PersistedContext | null {
-    if (!parsed || typeof parsed !== 'object') {
-      log.warn('[ExecutionContextService] Invalid context: not an object', { repoPath })
-      return null
-    }
-
-    const obj = parsed as Record<string, unknown>
-
-    // Validate required string fields
-    if (typeof obj.executionPath !== 'string' || !obj.executionPath) {
-      log.warn('[ExecutionContextService] Invalid context: missing or invalid executionPath', {
-        repoPath,
-        executionPath: obj.executionPath
-      })
-      return null
-    }
-
-    if (typeof obj.repoPath !== 'string' || !obj.repoPath) {
-      log.warn('[ExecutionContextService] Invalid context: missing or invalid repoPath', {
-        repoPath,
-        contextRepoPath: obj.repoPath
-      })
-      return null
-    }
-
-    // Validate required boolean field
-    if (typeof obj.isTemporary !== 'boolean') {
-      log.warn('[ExecutionContextService] Invalid context: missing or invalid isTemporary', {
-        repoPath,
-        isTemporary: obj.isTemporary
-      })
-      return null
-    }
-
-    // Validate required number field
-    if (typeof obj.createdAt !== 'number' || !Number.isFinite(obj.createdAt)) {
-      log.warn('[ExecutionContextService] Invalid context: missing or invalid createdAt', {
-        repoPath,
-        createdAt: obj.createdAt
-      })
-      return null
-    }
-
-    // Validate operation field (optional but should be valid type if present)
-    const validOperations = ['rebase', 'sync-trunk', 'ship-it', 'unknown']
-    if (obj.operation !== undefined && !validOperations.includes(obj.operation as string)) {
-      log.warn('[ExecutionContextService] Invalid context: invalid operation', {
-        repoPath,
-        operation: obj.operation
-      })
-      return null
-    }
-
-    return {
-      executionPath: obj.executionPath,
-      repoPath: obj.repoPath,
-      isTemporary: obj.isTemporary,
-      createdAt: obj.createdAt,
-      operation: (obj.operation as PersistedContext['operation']) ?? 'unknown'
-    }
-  }
-
   private static async loadPersistedContext(repoPath: string): Promise<PersistedContext | null> {
     try {
       const filePath = this.getContextFilePath(repoPath)
       const content = await fs.promises.readFile(filePath, 'utf-8')
-      const parsed: unknown = JSON.parse(content)
-
-      // Validate schema before using
-      const context = this.validatePersistedContext(parsed, repoPath)
-      if (!context) {
-        log.warn('[ExecutionContextService] Clearing invalid context file', { repoPath })
-        await this.clearPersistedContext(repoPath)
-        return null
-      }
+      const context = JSON.parse(content) as PersistedContext
 
       // Validate the temp worktree still exists
       if (context.isTemporary && !fs.existsSync(context.executionPath)) {

@@ -282,9 +282,20 @@ export function UiStateProvider({
     async (params: { headSha: string; baseSha: string }) => {
       if (!repoPath) return
       skipWatcherUpdatesRef.current = true
+      log.debug('[UiStateContext.submitRebaseIntent] Starting', {
+        repoPath,
+        headSha: params.headSha.slice(0, 8),
+        baseSha: params.baseSha.slice(0, 8)
+      })
 
       try {
         const result = await window.api.submitRebaseIntent({ repoPath, ...params })
+        log.debug('[UiStateContext.submitRebaseIntent] Result received', {
+          repoPath,
+          resultIsNull: result === null,
+          success: result?.success,
+          hasUiState: result?.success && !!result.uiState
+        })
 
         if (result === null) {
           // Invalid intent (e.g., invalid head/base)
@@ -341,16 +352,15 @@ export function UiStateProvider({
       const result = await window.api.confirmRebaseIntent({ repoPath })
       log.debug('[UiStateContext.confirmRebaseIntent] Result received', {
         repoPath,
-        success: result.success,
-        hasConflicts: !!(result.conflicts && result.conflicts.length > 0),
-        hasStack: !!result.uiState?.stack
+        resultIsNull: result === null,
+        hasStack: !!result?.stack
       })
-      if (result.uiState) setUiState(result.uiState)
-      // Note: conflicts are handled by the UI via uiState updates (rebase status polling)
-      // The success: false with conflicts indicates the rebase is paused waiting for resolution
+      if (result) setUiState(result)
     } catch (error) {
       log.error('[UiStateContext.confirmRebaseIntent] Failed:', error)
-      handleRebaseError(error, 'Rebase')
+      toast.error('Operation failed', {
+        description: error instanceof Error ? error.message : String(error)
+      })
       throw error
     } finally {
       skipWatcherUpdatesRef.current = false
@@ -368,46 +378,28 @@ export function UiStateProvider({
 
   const continueRebase = useCallback(async () => {
     if (!repoPath) return
-    try {
-      const result = await window.api.continueRebase({ repoPath })
-      if (result.uiState) setUiState(result.uiState)
-      if (!result.success && result.error) {
-        log.error('Continue rebase failed:', result.error)
-        toast.error('Continue rebase failed', { description: result.error })
-      }
-    } catch (error) {
-      log.error('[UiStateContext.continueRebase] Failed:', error)
-      handleRebaseError(error, 'Continue rebase')
+    const result = await window.api.continueRebase({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Continue rebase failed:', result.error)
     }
   }, [repoPath])
 
   const abortRebase = useCallback(async () => {
     if (!repoPath) return
-    try {
-      const result = await window.api.abortRebase({ repoPath })
-      if (result.uiState) setUiState(result.uiState)
-      if (!result.success && result.error) {
-        log.error('Abort rebase failed:', result.error)
-        toast.error('Abort rebase failed', { description: result.error })
-      }
-    } catch (error) {
-      log.error('[UiStateContext.abortRebase] Failed:', error)
-      handleRebaseError(error, 'Abort rebase')
+    const result = await window.api.abortRebase({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Abort rebase failed:', result.error)
     }
   }, [repoPath])
 
   const skipRebaseCommit = useCallback(async () => {
     if (!repoPath) return
-    try {
-      const result = await window.api.skipRebaseCommit({ repoPath })
-      if (result.uiState) setUiState(result.uiState)
-      if (!result.success && result.error) {
-        log.error('Skip rebase commit failed:', result.error)
-        toast.error('Skip commit failed', { description: result.error })
-      }
-    } catch (error) {
-      log.error('[UiStateContext.skipRebaseCommit] Failed:', error)
-      handleRebaseError(error, 'Skip commit')
+    const result = await window.api.skipRebaseCommit({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (!result.success && result.error) {
+      log.error('Skip rebase commit failed:', result.error)
     }
   }, [repoPath])
 
@@ -415,31 +407,21 @@ export function UiStateProvider({
     if (!repoPath) return
     // Capture queued branches before the operation (they'll be pushed)
     const branchesToPush = uiState?.stack ? findQueuedBranches(uiState.stack) : []
-    try {
-      const result = await window.api.resumeRebaseQueue({ repoPath })
-      if (result.uiState) setUiState(result.uiState)
-      if (result.success) {
-        // Optimistically mark checks as pending for all pushed branches
-        branchesToPush.forEach((branch) => markPrChecksPending(branch))
-      }
-      if (!result.success && result.error) {
-        log.error('Resume rebase queue failed:', result.error)
-      }
-    } catch (error) {
-      log.error('[UiStateContext.resumeRebaseQueue] Failed:', error)
-      handleRebaseError(error, 'Resume rebase queue')
+    const result = await window.api.resumeRebaseQueue({ repoPath })
+    if (result.uiState) setUiState(result.uiState)
+    if (result.success) {
+      // Optimistically mark checks as pending for all pushed branches
+      branchesToPush.forEach((branch) => markPrChecksPending(branch))
+    }
+    if (!result.success && result.error) {
+      log.error('Resume rebase queue failed:', result.error)
     }
   }, [repoPath, uiState?.stack, markPrChecksPending])
 
   const dismissRebaseQueue = useCallback(async () => {
     if (!repoPath) return
-    try {
-      const result = await window.api.dismissRebaseQueue({ repoPath })
-      if (result) setUiState(result)
-    } catch (error) {
-      log.error('[UiStateContext.dismissRebaseQueue] Failed:', error)
-      handleRebaseError(error, 'Dismiss rebase queue')
-    }
+    const result = await window.api.dismissRebaseQueue({ repoPath })
+    if (result) setUiState(result)
   }, [repoPath])
 
   const checkout = useCallback(
@@ -638,9 +620,7 @@ export function UiStateProvider({
 
         if (result === null) {
           // Invalid intent after resolution
-          log.warn(
-            '[UiStateContext.resolveWorktreeConflicts] Invalid rebase intent after resolution'
-          )
+          log.warn('[UiStateContext.resolveWorktreeConflicts] Invalid rebase intent after resolution')
           toast.error('Cannot rebase', {
             description: 'Invalid commit reference. The branch may have changed.'
           })
@@ -930,83 +910,6 @@ function findQueuedBranches(stack: UiStack): string[] {
   }
   traverse(stack)
   return branches
-}
-
-/** Valid rebase error codes (must match backend RebaseErrorCode type) */
-type RebaseErrorCode =
-  | 'WORKTREE_CREATION_FAILED'
-  | 'REBASE_IN_PROGRESS'
-  | 'GIT_ADAPTER_UNSUPPORTED'
-  | 'VALIDATION_FAILED'
-  | 'SESSION_EXISTS'
-  | 'BRANCH_NOT_FOUND'
-  | 'CONTEXT_ACQUISITION_FAILED'
-  | 'GENERIC'
-
-const VALID_ERROR_CODES: readonly RebaseErrorCode[] = [
-  'WORKTREE_CREATION_FAILED',
-  'REBASE_IN_PROGRESS',
-  'GIT_ADAPTER_UNSUPPORTED',
-  'VALIDATION_FAILED',
-  'SESSION_EXISTS',
-  'BRANCH_NOT_FOUND',
-  'CONTEXT_ACQUISITION_FAILED',
-  'GENERIC'
-] as const
-
-/**
- * Extracts error code from IPC-serialized error name.
- * Error names are encoded as "RebaseOperationError:ERROR_CODE".
- * Returns null if no valid error code is found.
- */
-function extractRebaseErrorCode(error: unknown): RebaseErrorCode | null {
-  if (!(error instanceof Error)) return null
-
-  // Match pattern: RebaseOperationError:CODE (e.g., "RebaseOperationError:WORKTREE_CREATION_FAILED")
-  const match = error.name.match(/^RebaseOperationError:([A-Z_]+)$/)
-  if (!match) return null
-
-  const code = match[1]
-  return VALID_ERROR_CODES.includes(code as RebaseErrorCode) ? (code as RebaseErrorCode) : null
-}
-
-/**
- * Handles rebase operation errors with appropriate toast messages.
- * Extracts error codes from error name (encoded for IPC serialization) and shows user-friendly toasts.
- */
-function handleRebaseError(error: unknown, operationName: string): void {
-  const errorCode = extractRebaseErrorCode(error)
-
-  switch (errorCode) {
-    case 'WORKTREE_CREATION_FAILED':
-      toast.error('Could not create temporary worktree', {
-        description: 'Please commit or stash your changes and try again.'
-      })
-      break
-    case 'CONTEXT_ACQUISITION_FAILED':
-      toast.error('Could not prepare execution environment', {
-        description: 'Please try again or restart the application.'
-      })
-      break
-    case 'SESSION_EXISTS':
-      toast.error('A rebase is already in progress', {
-        description: 'Please complete or cancel the current rebase first.'
-      })
-      break
-    case 'REBASE_IN_PROGRESS':
-      toast.error('Git rebase already in progress', {
-        description: 'Please resolve the current rebase before starting a new one.'
-      })
-      break
-    case 'VALIDATION_FAILED':
-    case 'BRANCH_NOT_FOUND':
-    case 'GIT_ADAPTER_UNSUPPORTED':
-    case 'GENERIC':
-    default:
-      toast.error(`${operationName} failed`, {
-        description: error instanceof Error ? error.message : String(error)
-      })
-  }
 }
 
 function getSquashErrorMessage(error?: SquashBlocker, detail?: string): string {

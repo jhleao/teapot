@@ -8,7 +8,7 @@
 import type { Configuration, UiState } from '@shared/types'
 import { getGitAdapter, supportsGetRebaseState } from '../adapters/git'
 import { RebaseStateMachine, StackAnalyzer, TrunkResolver, UiStateBuilder } from '../domain'
-import { ExecutionContextService, RepoModelService, SessionService } from '../services'
+import { RepoModelService, SessionService } from '../services'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
@@ -35,35 +35,13 @@ export class UiStateOperation {
     // Get the active worktree for this repo (null = main worktree)
     const activeWorktreePath = configStore.getActiveWorktree(repoPath)
 
-    // Check if there's a stored execution context (temp worktree with conflict in progress)
-    // If so, we need to get the rebase/conflict status from that path
-    const storedContext = await ExecutionContextService.getStoredContext(repoPath)
-
     // Only fetch local git data - no network calls here
     const [repo, session] = await Promise.all([
       RepoModelService.buildRepoModel(config, { activeWorktreePath }),
       SessionService.getSession(repoPath)
     ])
 
-    // If there's a stored context (temp worktree), get its working tree status for rebase state
-    // This is needed because conflicts happen in the temp worktree, not the active worktree
-    let workingTreeStatus = repo.workingTreeStatus
-    if (storedContext?.isTemporary) {
-      try {
-        const tempWorktreeStatus = await gitAdapter.getWorkingTreeStatus(
-          storedContext.executionPath
-        )
-        // Merge the rebase/conflict state from temp worktree into the working tree status
-        // Keep the active worktree's modified/staged files but use temp worktree's rebase state
-        workingTreeStatus = {
-          ...workingTreeStatus,
-          isRebasing: tempWorktreeStatus.isRebasing,
-          conflicted: tempWorktreeStatus.conflicted
-        }
-      } catch {
-        // Temp worktree might not exist anymore, use active worktree status
-      }
-    }
+    const workingTreeStatus = repo.workingTreeStatus
 
     // Reconcile session state with Git reality BEFORE building UI
     // This ensures the stack is built with accurate session state
@@ -121,37 +99,11 @@ export class UiStateOperation {
     const stack = fullUiState.projectedStack ?? fullUiState.stack
     const workingTree = UiStateBuilder.buildUiWorkingTree(repo)
 
-    // If there's a temp worktree with conflicts, we need to show those conflicted files
-    // in the working tree list (they won't show from the active worktree)
-    if (storedContext?.isTemporary && workingTreeStatus.conflicted.length > 0) {
-      // Add conflicted files from temp worktree to the working tree list
-      const existingPaths = new Set(workingTree.map((f) => f.path))
-      for (const conflictPath of workingTreeStatus.conflicted) {
-        if (!existingPaths.has(conflictPath)) {
-          workingTree.push({
-            path: conflictPath,
-            stageStatus: 'unstaged',
-            status: 'conflicted',
-            resolved: false
-          })
-        } else {
-          // Update existing file to show as conflicted
-          const file = workingTree.find((f) => f.path === conflictPath)
-          if (file) {
-            file.status = 'conflicted'
-            file.resolved = false
-          }
-        }
-      }
-    }
-
     // Check conflicted files for marker resolution (markers removed = resolved)
-    // Use the execution path (temp worktree if parallel mode) for conflict resolution check
-    const conflictCheckPath = storedContext?.executionPath ?? repoPath
     const conflictedFiles = workingTree.filter((f) => f.status === 'conflicted')
     if (conflictedFiles.length > 0) {
       const resolutionStatus = await checkConflictResolution(
-        conflictCheckPath,
+        repoPath,
         conflictedFiles.map((f) => f.path)
       )
       for (const file of workingTree) {
@@ -166,12 +118,7 @@ export class UiStateOperation {
     }
 
     // Handle rebase state - apply status markers to commits
-    // If projectedStack exists, the status markers (prompting/idle) were already
-    // applied by buildFullUiState - we're in the planning phase showing a preview.
-    // Only apply queued/conflicted/resolved status if we're NOT in the planning phase.
-    const isInPlanningPhase = fullUiState.projectedStack !== null
-
-    if (reconciledSession && !isInPlanningPhase) {
+    if (reconciledSession) {
       const pendingJobIds = reconciledSession.state.queue.pendingJobIds
 
       if (workingTreeStatus.isRebasing) {
@@ -210,7 +157,7 @@ export class UiStateOperation {
           await SessionService.clearSession(repoPath)
         }
       }
-    } else if (!isInPlanningPhase && workingTreeStatus.isRebasing) {
+    } else if (workingTreeStatus.isRebasing) {
       // Git is rebasing but we have no session - this is an orphaned rebase
       // (e.g., the app was restarted mid-rebase, or rebase started externally)
       // Try to recover the branch name from Git's rebase state

@@ -98,21 +98,11 @@ const submitRebaseIntent: IpcHandlerOf<'submitRebaseIntent'> = async (
   { repoPath, headSha, baseSha }
 ) => {
   const workingPath = resolveWorkingPath(repoPath)
-  log.debug('[handler.submitRebaseIntent] Path resolution', {
-    originalRepoPath: repoPath,
-    resolvedWorkingPath: workingPath,
-    arePathsSame: repoPath === workingPath
-  })
   return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha)
 }
 
 const confirmRebaseIntent: IpcHandlerOf<'confirmRebaseIntent'> = async (_event, { repoPath }) => {
   const workingPath = resolveWorkingPath(repoPath)
-  log.debug('[handler.confirmRebaseIntent] Path resolution', {
-    originalRepoPath: repoPath,
-    resolvedWorkingPath: workingPath,
-    arePathsSame: repoPath === workingPath
-  })
   return RebaseOperation.confirmRebaseIntent(workingPath)
 }
 
@@ -297,7 +287,9 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (
       repoPath,
       maxRetries: 1,
       onRetry: (_error, attempt) => {
-        log.info(`[checkoutHandler] Retrying checkout (attempt ${attempt}) after pruning stale worktrees`)
+        log.info(
+          `[checkoutHandler] Retrying checkout (attempt ${attempt}) after pruning stale worktrees`
+        )
       }
     }
   ).catch((error) => {
@@ -305,9 +297,12 @@ const checkoutHandler: IpcHandlerOf<'checkout'> = async (
     // Preserve the original error as cause for debugging
     const conflict = parseWorktreeConflictError(error)
     if (conflict) {
-      throw new Error(`Cannot checkout '${ref}' - already checked out in ${conflict.worktreePath}`, {
-        cause: error
-      })
+      throw new Error(
+        `Cannot checkout '${ref}' - already checked out in ${conflict.worktreePath}`,
+        {
+          cause: error
+        }
+      )
     }
     throw error
   })

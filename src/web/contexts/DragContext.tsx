@@ -48,7 +48,7 @@ interface DragContextValue {
 const DragContext = createContext<DragContextValue | undefined>(undefined)
 
 export function DragProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const { uiState, submitRebaseIntent, isWorkingTreeDirty } = useUiStateContext()
+  const { uiState, submitRebaseIntent } = useUiStateContext()
 
   const [draggingCommitSha, setDraggingCommitSha] = useState<string | null>(null)
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
@@ -75,7 +75,8 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
   const handleCommitDotMouseDown = useCallback(
     (sha: string, e: React.MouseEvent): void => {
       if (e.button !== 0) return // Only left-click initiates drag
-      if (isWorkingTreeDirty || isRebaseLoading) return
+      // Parallel mode allows rebasing with dirty worktree, only check loading state
+      if (isRebaseLoading) return
 
       // Don't allow dragging commits without branches
       const stack = uiState?.stack
@@ -85,7 +86,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 
       dragState.current.potentialDragSha = sha
     },
-    [isWorkingTreeDirty, isRebaseLoading, uiState?.stack]
+    [isRebaseLoading, uiState?.stack]
   )
 
   // Mouse event handlers for drag operation

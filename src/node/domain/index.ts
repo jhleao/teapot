@@ -10,6 +10,25 @@ export { BranchUtils } from './BranchUtils'
 export { extractRepoName, isValidGitUrl, parseGitCloneError } from './GitUrlParser'
 export { PrTargetResolver } from './PrTargetResolver'
 export { RebaseIntentBuilder } from './RebaseIntentBuilder'
+export {
+  InvalidTransitionError,
+  canTransition,
+  createIdlePhase,
+  getPhaseDescription,
+  transition
+} from './RebasePhase'
+export type {
+  CompletedPhase,
+  ConflictedPhase,
+  ErrorPhase,
+  ExecutingPhase,
+  FinalizingPhase,
+  IdlePhase,
+  PlanningPhase,
+  QueuedPhase,
+  RebaseEvent,
+  RebasePhase
+} from './RebasePhase'
 export { RebaseStateMachine } from './RebaseStateMachine'
 export { RebaseValidator } from './RebaseValidator'
 export { ShipItNavigator } from './ShipItNavigator'

@@ -725,6 +725,29 @@ export class UiStateBuilder {
 
   private static deriveRebaseProjection(repo: Repo, options: FullUiStateOptions): RebaseProjection {
     if (options.rebaseSession) {
+      // Check if we're still in the planning phase:
+      // - No active job (nothing has started executing yet)
+      // - Git is not currently rebasing
+      // In this case, we should show the planning/prompting UI, not the rebasing UI.
+      const session = options.rebaseSession
+      const isStillPlanning =
+        !session.queue.activeJobId && !repo.workingTreeStatus.isRebasing && options.rebaseIntent
+
+      if (isStillPlanning && options.rebaseIntent) {
+        // Treat as planning phase - show prompting UI
+        const generateJobId =
+          options.generateJobId ?? UiStateBuilder.createDefaultPreviewJobIdGenerator()
+        const plan = RebaseStateMachine.createRebasePlan({
+          repo,
+          intent: options.rebaseIntent,
+          generateJobId
+        })
+        return {
+          kind: 'planning',
+          plan
+        }
+      }
+
       return {
         kind: 'rebasing',
         session: options.rebaseSession

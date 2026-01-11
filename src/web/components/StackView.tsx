@@ -1,7 +1,16 @@
 import { log } from '@shared/logger'
-import type { UiBranch, UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
+import type {
+  BranchCollisionResolution,
+  SquashPreview,
+  UiBranch,
+  UiCommit,
+  UiStack,
+  UiWorkingTreeFile,
+  UiWorktreeBadge
+} from '@shared/types'
 import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useDragContext } from '../contexts/DragContext'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -14,6 +23,7 @@ import { CreateBranchButton } from './CreateBranchButton'
 import { EditCommitMessageDialog } from './EditCommitMessageDialog'
 import { GitForgeSection } from './GitForgeSection'
 import { MultiBranchBadge } from './MultiBranchBadge'
+import { SquashConfirmDialog } from './SquashConfirmDialog'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
 import { WorktreeBadge } from './WorktreeBadge'
@@ -211,7 +221,9 @@ export const CommitView = memo(function CommitView({
     uncommit,
     uiState,
     isRebasingWithConflicts,
-    switchWorktree
+    switchWorktree,
+    getSquashPreview,
+    squashIntoParent
   } = useUiStateContext()
   const { refreshRepos } = useLocalStateContext()
 
@@ -243,6 +255,10 @@ export const CommitView = memo(function CommitView({
   const [isConfirming, setIsConfirming] = useState(false)
   const [isUncommitting, setIsUncommitting] = useState(false)
   const [isEditMessageDialogOpen, setIsEditMessageDialogOpen] = useState(false)
+  const [isSquashDialogOpen, setIsSquashDialogOpen] = useState(false)
+  const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
+  const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
+  const [isSquashing, setIsSquashing] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
     setIsConfirming(true)
@@ -294,6 +310,50 @@ export const CommitView = memo(function CommitView({
   const handleCopyCommitSha = useCallback(() => {
     navigator.clipboard.writeText(data.sha)
   }, [data.sha])
+
+  // Squash handlers
+  const handleOpenSquashDialog = useCallback(async () => {
+    setIsLoadingSquashPreview(true)
+    try {
+      const preview = await getSquashPreview({ commitSha: data.sha })
+      if (!preview.canSquash) {
+        toast.error(preview.errorDetail || 'Cannot squash into trunk')
+        return
+      }
+      setSquashPreviewData(preview)
+      setIsSquashDialogOpen(true)
+    } catch (error) {
+      toast.error('Failed to load squash preview', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setIsLoadingSquashPreview(false)
+    }
+  }, [data.sha, getSquashPreview])
+
+  const handleConfirmSquash = useCallback(
+    async (commitMessage: string, branchResolution?: BranchCollisionResolution) => {
+      if (!squashPreviewData) return
+      setIsSquashing(true)
+      try {
+        const result = await squashIntoParent({
+          commitSha: data.sha,
+          commitMessage,
+          branchResolution
+        })
+        if (result?.success || result?.localSuccess) {
+          setIsSquashDialogOpen(false)
+          setSquashPreviewData(null)
+        }
+      } finally {
+        setIsSquashing(false)
+      }
+    },
+    [data.sha, squashIntoParent, squashPreviewData]
+  )
+
+  // Determine if squash should be enabled (not on trunk, not parent on trunk)
+  const canSquash = !stack.isTrunk
 
   return (
     <div className={cn('w-full pl-2 whitespace-nowrap')}>
@@ -358,7 +418,9 @@ export const CommitView = memo(function CommitView({
             variant={isHead ? 'current' : 'default'}
             accentLines={showWorkingTree ? 'top' : 'none'}
           />
-          {data.branches.length > 0 && <MultiBranchBadge branches={data.branches} />}
+          {data.branches.length > 0 && (
+            <MultiBranchBadge branches={data.branches} commitSha={data.sha} />
+          )}
           {data.branches.length === 0 && !stack.isTrunk && (
             <CreateBranchButton commitSha={data.sha} />
           )}
@@ -372,6 +434,13 @@ export const CommitView = memo(function CommitView({
                 disabledReason={editMessageState.disabledReason}
               >
                 Amend message
+              </ContextMenuItem>
+              <ContextMenuItem
+                onClick={handleOpenSquashDialog}
+                disabled={isLoadingSquashPreview || !canSquash}
+                disabledReason={!canSquash ? 'Cannot squash into trunk' : undefined}
+              >
+                {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
@@ -445,6 +514,18 @@ export const CommitView = memo(function CommitView({
         onOpenChange={setIsEditMessageDialogOpen}
         commitSha={data.sha}
       />
+      {squashPreviewData && (
+        <SquashConfirmDialog
+          open={isSquashDialogOpen}
+          onOpenChange={(open) => {
+            setIsSquashDialogOpen(open)
+            if (!open) setSquashPreviewData(null)
+          }}
+          preview={squashPreviewData}
+          onConfirm={handleConfirmSquash}
+          isSubmitting={isSquashing}
+        />
+      )}
     </div>
   )
 })

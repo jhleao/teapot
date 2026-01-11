@@ -85,8 +85,10 @@ export type UiBranch = {
 
   /** True if this branch can be renamed. False for remote and trunk branches. */
   canRename: boolean
-  /** True if this branch can be folded into its parent. False for remote and trunk branches. */
-  canFold: boolean
+  /** True if this branch can be deleted. False for current and trunk branches. */
+  canDelete: boolean
+  /** True if this branch can be squashed into its parent. False for remote and trunk branches. */
+  canSquash: boolean
   /** True if a new worktree can be created for this branch. False for remote and trunk branches. */
   canCreateWorktree: boolean
 }

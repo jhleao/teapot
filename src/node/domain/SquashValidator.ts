@@ -1,197 +1,212 @@
-import type { Commit, Repo } from '@shared/types'
-import { findOpenPr, type GitForgeState } from '@shared/types/git-forge'
+import type { Branch, Commit, Repo } from '@shared/types'
+import type { GitForgeState } from '@shared/types/git-forge'
 import type { SquashBlocker } from '@shared/types/squash'
-import { StackAnalyzer } from './StackAnalyzer'
 
 export type SquashValidationResult = {
   canSquash: boolean
-  parentBranch?: string
+  /** The commit SHA being squashed */
+  targetCommitSha?: string
+  /** The parent commit SHA */
+  parentCommitSha?: string
+  /** Branch at the target commit, if any */
+  targetBranch?: string | null
+  /** Branch at the parent commit, if any */
+  parentBranch?: string | null
+  /** Branches that will need to be rebased (children of target commit) */
   descendantBranches: string[]
-  parentHeadSha?: string
-  targetHeadSha?: string
-  commitDistance?: number
   error?: SquashBlocker
   errorDetail?: string
 }
 
 export class SquashValidator {
+  /**
+   * Validates whether a commit can be squashed into its parent.
+   * Works at the commit level, not the branch level.
+   */
   static validate(
     repo: Repo,
-    branchToFold: string,
-    forgeState: GitForgeState
+    targetCommitSha: string,
+    _forgeState: GitForgeState,
+    options: { isCurrentBranch: boolean } = { isCurrentBranch: false }
   ): SquashValidationResult {
-    const branchMap = new Map(repo.branches.map((branch) => [branch.ref, branch]))
-    const targetBranch = branchMap.get(branchToFold)
-    const forgePullRequests = forgeState.pullRequests ?? []
+    const commitMap = new Map(repo.commits.map((commit) => [commit.sha, commit]))
+    const targetCommit = commitMap.get(targetCommitSha)
 
-    if (!targetBranch || targetBranch.isRemote) {
+    if (!targetCommit) {
       return {
         canSquash: false,
         descendantBranches: [],
         error: 'no_parent',
-        errorDetail: 'Branch does not exist or is remote'
+        errorDetail: 'Commit not found'
       }
     }
 
-    if (targetBranch.isTrunk) {
+    const parentCommitSha = targetCommit.parentSha
+    if (!parentCommitSha) {
       return {
         canSquash: false,
+        targetCommitSha,
+        descendantBranches: [],
+        error: 'no_parent',
+        errorDetail: 'Commit has no parent'
+      }
+    }
+
+    const parentCommit = commitMap.get(parentCommitSha)
+    if (!parentCommit) {
+      return {
+        canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        descendantBranches: [],
+        error: 'no_parent',
+        errorDetail: 'Parent commit not found'
+      }
+    }
+
+    // Check if target commit is on trunk
+    const targetBranch = SquashValidator.findBranchAtCommit(repo.branches, targetCommitSha)
+    const parentBranch = SquashValidator.findBranchAtCommit(repo.branches, parentCommitSha)
+
+    // Check if target is trunk
+    if (targetBranch?.isTrunk) {
+      return {
+        canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        targetBranch: targetBranch?.ref ?? null,
+        parentBranch: parentBranch?.ref ?? null,
         descendantBranches: [],
         error: 'is_trunk'
       }
     }
 
+    // Check if parent is trunk (cannot squash into trunk)
+    if (parentBranch?.isTrunk) {
+      return {
+        canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        targetBranch: targetBranch?.ref ?? null,
+        parentBranch: parentBranch?.ref ?? null,
+        descendantBranches: [],
+        error: 'parent_is_trunk'
+      }
+    }
+
+    // Check for rebase in progress (always blocks)
     if (repo.workingTreeStatus.isRebasing) {
       return {
         canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        targetBranch: targetBranch?.ref ?? null,
+        parentBranch: parentBranch?.ref ?? null,
+        descendantBranches: [],
+        error: 'rebase_in_progress',
+        errorDetail: 'Cannot squash: a rebase is already in progress.'
+      }
+    }
+
+    // Check for dirty working tree (only blocks if operating on current branch)
+    if (options.isCurrentBranch && repo.workingTreeStatus.allChangedFiles.length > 0) {
+      return {
+        canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        targetBranch: targetBranch?.ref ?? null,
+        parentBranch: parentBranch?.ref ?? null,
         descendantBranches: [],
         error: 'dirty_tree',
-        errorDetail: 'Rebase in progress'
+        errorDetail:
+          'Cannot squash: you have uncommitted changes on this branch. Commit or stash your changes first.'
       }
     }
 
-    if (repo.workingTreeStatus.allChangedFiles.length > 0) {
+    // Check for non-linear descendants (multiple children from target commit)
+    const childCommits = targetCommit.childrenSha
+    if (childCommits.length > 1) {
       return {
         canSquash: false,
+        targetCommitSha,
+        parentCommitSha,
+        targetBranch: targetBranch?.ref ?? null,
+        parentBranch: parentBranch?.ref ?? null,
         descendantBranches: [],
-        error: 'dirty_tree'
-      }
-    }
-
-    const commitMap = new Map(repo.commits.map((commit) => [commit.sha, commit]))
-    const targetHeadSha = targetBranch.headSha
-    if (!targetHeadSha || !commitMap.has(targetHeadSha)) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        error: 'ancestry_mismatch',
-        errorDetail: 'Missing head commit for branch'
-      }
-    }
-
-    const parentIndex = StackAnalyzer.buildParentIndex(
-      repo.branches.filter((branch) => !branch.isRemote),
-      commitMap
-    )
-    const parentInfo = parentIndex.get(branchToFold)
-    if (!parentInfo) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        error: 'no_parent'
-      }
-    }
-
-    const parentBranch = branchMap.get(parentInfo.parent)
-    const parentHeadSha = parentBranch?.headSha
-    if (!parentBranch || !parentHeadSha || !commitMap.has(parentHeadSha)) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        error: 'ancestry_mismatch',
-        errorDetail: 'Parent branch is missing or invalid'
-      }
-    }
-
-    if (!SquashValidator.isAncestor(commitMap, targetHeadSha, parentHeadSha)) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        parentBranch: parentBranch.ref,
-        error: 'ancestry_mismatch'
-      }
-    }
-
-    if (parentInfo.distance > 1) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        parentBranch: parentBranch.ref,
-        parentHeadSha,
-        targetHeadSha,
-        error: 'multi_commit'
-      }
-    }
-
-    const childrenIndex = StackAnalyzer.buildChildrenIndex(parentIndex)
-    const siblings =
-      childrenIndex.get(parentBranch.ref)?.filter((child) => child !== branchToFold) ?? []
-    if (siblings.length > 0) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        parentBranch: parentBranch.ref,
-        parentHeadSha,
-        targetHeadSha,
         error: 'not_linear',
-        errorDetail: 'Branch has siblings in the stack'
+        errorDetail:
+          'Cannot squash: this commit has multiple child branches. Rebase or delete sibling branches first.'
       }
     }
 
-    const descendants = StackAnalyzer.collectLinearDescendants(branchToFold, childrenIndex)
-    if (!descendants) {
-      return {
-        canSquash: false,
-        descendantBranches: [],
-        parentBranch: parentBranch.ref,
-        parentHeadSha,
-        targetHeadSha,
-        error: 'not_linear'
-      }
-    }
-
-    const blockingPr = SquashValidator.findDescendantWithOpenPr(descendants, forgePullRequests)
-    if (blockingPr) {
-      return {
-        canSquash: false,
-        descendantBranches: descendants,
-        parentBranch: parentBranch.ref,
-        parentHeadSha,
-        targetHeadSha,
-        error: 'descendant_has_pr',
-        errorDetail: blockingPr
-      }
-    }
+    // Collect descendant branches that will need to be rebased
+    const descendantBranches = SquashValidator.collectDescendantBranches(
+      targetCommitSha,
+      commitMap,
+      repo.branches
+    )
 
     return {
       canSquash: true,
-      descendantBranches: descendants,
-      parentBranch: parentBranch.ref,
-      parentHeadSha,
-      targetHeadSha,
-      commitDistance: parentInfo.distance
+      targetCommitSha,
+      parentCommitSha,
+      targetBranch: targetBranch?.ref ?? null,
+      parentBranch: parentBranch?.ref ?? null,
+      descendantBranches
     }
   }
 
-  private static isAncestor(
+  /**
+   * Finds a local (non-remote) branch at the given commit SHA.
+   * Returns the first local branch found, or null if none.
+   */
+  private static findBranchAtCommit(branches: Branch[], commitSha: string): Branch | null {
+    // Prefer local branches over remote ones
+    const localBranch = branches.find((b) => b.headSha === commitSha && !b.isRemote)
+    if (localBranch) return localBranch
+
+    // Fall back to remote branch for trunk detection
+    return branches.find((b) => b.headSha === commitSha && b.isTrunk) ?? null
+  }
+
+  /**
+   * Collects all branches that are descendants of the given commit.
+   * These branches will need to be rebased after the squash.
+   */
+  private static collectDescendantBranches(
+    commitSha: string,
     commitMap: Map<string, Commit>,
-    childSha: string,
-    ancestorSha: string,
-    maxDepth: number = 2000
-  ): boolean {
-    let depth = 0
-    let current: string | undefined = childSha
+    branches: Branch[]
+  ): string[] {
+    const descendantShas = new Set<string>()
+    const queue = [commitSha]
+    const visited = new Set<string>()
 
-    while (current && depth <= maxDepth) {
-      if (current === ancestorSha) return true
-      const commit = commitMap.get(current)
-      if (!commit?.parentSha) break
-      current = commit.parentSha
-      depth++
-    }
+    while (queue.length > 0) {
+      const currentSha = queue.shift()!
+      if (visited.has(currentSha)) continue
+      visited.add(currentSha)
 
-    return false
-  }
+      const commit = commitMap.get(currentSha)
+      if (!commit) continue
 
-  private static findDescendantWithOpenPr(
-    descendants: string[],
-    pullRequests: GitForgeState['pullRequests']
-  ): string | null {
-    for (const branch of descendants) {
-      if (findOpenPr(branch, pullRequests)) {
-        return branch
+      // Add all children to the queue
+      for (const childSha of commit.childrenSha) {
+        if (!visited.has(childSha)) {
+          descendantShas.add(childSha)
+          queue.push(childSha)
+        }
       }
     }
-    return null
+
+    // Find branches at descendant commits (excluding the target commit itself)
+    const result: string[] = []
+    for (const branch of branches) {
+      if (!branch.isRemote && branch.headSha && descendantShas.has(branch.headSha)) {
+        result.push(branch.ref)
+      }
+    }
+
+    return result
   }
 }

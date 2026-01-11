@@ -1,32 +1,37 @@
 import { getDeleteBranchPermission } from '@shared/permissions'
-import type { SquashPreview, UiBranch } from '@shared/types'
+import type { BranchCollisionResolution, SquashPreview, UiBranch } from '@shared/types'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
-import { FoldConfirmDialog } from './FoldConfirmDialog'
 import { RenameBranchDialog } from './RenameBranchDialog'
+import { SquashConfirmDialog } from './SquashConfirmDialog'
+
+type BranchBadgeProps = {
+  data: UiBranch
+  /** The commit SHA this branch points to (needed for squash operation) */
+  commitSha: string
+}
 
 export const BranchBadge = memo(function BranchBadge({
-  data
-}: {
-  data: UiBranch
-}): React.JSX.Element {
+  data,
+  commitSha
+}: BranchBadgeProps): React.JSX.Element {
   const {
     checkout,
     deleteBranch,
     isWorkingTreeDirty,
     createWorktree,
-    getFoldPreview,
-    foldIntoParent,
+    getSquashPreview,
+    squashIntoParent,
     repoPath
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
-  const [isFoldDialogOpen, setIsFoldDialogOpen] = useState(false)
-  const [foldPreviewData, setFoldPreviewData] = useState<SquashPreview | null>(null)
-  const [isLoadingFoldPreview, setIsLoadingFoldPreview] = useState(false)
-  const [isFolding, setIsFolding] = useState(false)
+  const [isSquashDialogOpen, setIsSquashDialogOpen] = useState(false)
+  const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
+  const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
+  const [isSquashing, setIsSquashing] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -94,46 +99,44 @@ export const BranchBadge = memo(function BranchBadge({
     }
   }, [openablePath])
 
-  const handleOpenFoldDialog = useCallback(async () => {
-    if (isWorkingTreeDirty) {
-      toast.error('Cannot fold while working tree has changes')
-      return
-    }
-
-    setIsLoadingFoldPreview(true)
+  const handleOpenSquashDialog = useCallback(async () => {
+    setIsLoadingSquashPreview(true)
     try {
-      const preview = await getFoldPreview({ branchName: data.name })
+      const preview = await getSquashPreview({ commitSha })
       if (!preview.canSquash) {
-        toast.error(preview.errorDetail || 'Cannot fold this branch')
+        toast.error(preview.errorDetail || 'Cannot squash into trunk')
         return
       }
-      setFoldPreviewData(preview)
-      setIsFoldDialogOpen(true)
+      setSquashPreviewData(preview)
+      setIsSquashDialogOpen(true)
     } catch (error) {
-      toast.error('Failed to load fold preview', {
+      toast.error('Failed to load squash preview', {
         description: error instanceof Error ? error.message : String(error)
       })
     } finally {
-      setIsLoadingFoldPreview(false)
+      setIsLoadingSquashPreview(false)
     }
-  }, [data.name, getFoldPreview, isWorkingTreeDirty])
+  }, [commitSha, getSquashPreview])
 
-  const handleConfirmFold = useCallback(
-    async (commitMessage: string) => {
-      if (!foldPreviewData) return
-      setIsFolding(true)
+  const handleConfirmSquash = useCallback(
+    async (commitMessage: string, branchResolution?: BranchCollisionResolution) => {
+      if (!squashPreviewData) return
+      setIsSquashing(true)
       try {
-        const result = await foldIntoParent({ branchName: data.name, commitMessage })
+        const result = await squashIntoParent({ commitSha, commitMessage, branchResolution })
         if (result?.success || result?.localSuccess) {
-          setIsFoldDialogOpen(false)
-          setFoldPreviewData(null)
+          setIsSquashDialogOpen(false)
+          setSquashPreviewData(null)
         }
       } finally {
-        setIsFolding(false)
+        setIsSquashing(false)
       }
     },
-    [data.name, foldIntoParent, foldPreviewData]
+    [commitSha, squashIntoParent, squashPreviewData]
   )
+
+  // Determine if squash should be disabled (parent is trunk)
+  const canSquash = data.canSquash
 
   // Can't create worktree for branch that already has one
   const hasWorktree = data.worktree != null
@@ -172,11 +175,13 @@ export const BranchBadge = memo(function BranchBadge({
                 Delete branch
               </ContextMenuItem>
             )}
-            {data.canFold && (
-              <ContextMenuItem onClick={handleOpenFoldDialog} disabled={isLoadingFoldPreview}>
-                {isLoadingFoldPreview ? 'Checking...' : 'Fold into parent'}
-              </ContextMenuItem>
-            )}
+            <ContextMenuItem
+              onClick={handleOpenSquashDialog}
+              disabled={isLoadingSquashPreview || !canSquash}
+              disabledReason={!canSquash ? 'Cannot squash into trunk' : undefined}
+            >
+              {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
+            </ContextMenuItem>
             {data.canCreateWorktree && (
               <>
                 <ContextMenuSeparator />
@@ -218,16 +223,16 @@ export const BranchBadge = memo(function BranchBadge({
         onOpenChange={setIsRenameDialogOpen}
         branchName={data.name}
       />
-      {foldPreviewData && (
-        <FoldConfirmDialog
-          open={isFoldDialogOpen}
+      {squashPreviewData && (
+        <SquashConfirmDialog
+          open={isSquashDialogOpen}
           onOpenChange={(open) => {
-            setIsFoldDialogOpen(open)
-            if (!open) setFoldPreviewData(null)
+            setIsSquashDialogOpen(open)
+            if (!open) setSquashPreviewData(null)
           }}
-          preview={foldPreviewData}
-          onConfirm={handleConfirmFold}
-          isSubmitting={isFolding}
+          preview={squashPreviewData}
+          onConfirm={handleConfirmSquash}
+          isSubmitting={isSquashing}
         />
       )}
     </>

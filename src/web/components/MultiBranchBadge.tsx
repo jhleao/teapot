@@ -14,6 +14,8 @@ import { BranchBadge } from './BranchBadge'
 
 interface MultiBranchBadgeProps {
   branches: UiBranch[]
+  /** The commit SHA these branches point to (needed for squash operation) */
+  commitSha: string
 }
 
 interface ProcessedBranches {
@@ -63,7 +65,8 @@ function processBranches(branches: UiBranch[]): ProcessedBranches {
  * that expands to show all branches on click.
  */
 export const MultiBranchBadge = memo(function MultiBranchBadge({
-  branches
+  branches,
+  commitSha
 }: MultiBranchBadgeProps): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<{ x: number; y: number } | null>(null)
@@ -134,12 +137,12 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
 
   // If only one branch, just render the regular BranchBadge
   if (branches.length === 1) {
-    return <BranchBadge data={branches[0]} />
+    return <BranchBadge data={branches[0]} commitSha={commitSha} />
   }
 
   return (
     <div className="flex items-center gap-1">
-      <BranchBadge data={primary} />
+      <BranchBadge data={primary} commitSha={commitSha} />
       {additionalCount > 0 && (
         <>
           <button
@@ -165,6 +168,7 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
               remoteBranches={additionalRemote}
               position={popoverPosition}
               triggerRef={triggerRef}
+              commitSha={commitSha}
             />
           )}
         </>
@@ -178,10 +182,11 @@ interface BranchPopoverProps {
   remoteBranches: UiBranch[]
   position: { x: number; y: number }
   triggerRef: React.RefObject<HTMLButtonElement | null>
+  commitSha: string
 }
 
 const BranchPopover = React.forwardRef<HTMLDivElement, BranchPopoverProps>(function BranchPopover(
-  { localBranches, remoteBranches, position, triggerRef },
+  { localBranches, remoteBranches, position, triggerRef, commitSha },
   forwardedRef
 ) {
   const innerRef = useRef<HTMLDivElement>(null)
@@ -251,9 +256,13 @@ const BranchPopover = React.forwardRef<HTMLDivElement, BranchPopoverProps>(funct
       style={{ top: finalPosition.y, left: finalPosition.x }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      {hasLocalBranches && <BranchSection title="Local branches" branches={localBranches} />}
+      {hasLocalBranches && (
+        <BranchSection title="Local branches" branches={localBranches} commitSha={commitSha} />
+      )}
       {hasLocalBranches && hasRemoteBranches && <div className="bg-border my-2 h-px" />}
-      {hasRemoteBranches && <BranchSection title="Remote branches" branches={remoteBranches} />}
+      {hasRemoteBranches && (
+        <BranchSection title="Remote branches" branches={remoteBranches} commitSha={commitSha} />
+      )}
     </div>,
     document.body
   )
@@ -262,16 +271,17 @@ const BranchPopover = React.forwardRef<HTMLDivElement, BranchPopoverProps>(funct
 interface BranchSectionProps {
   title: string
   branches: UiBranch[]
+  commitSha: string
 }
 
-function BranchSection({ title, branches }: BranchSectionProps): React.JSX.Element {
+function BranchSection({ title, branches, commitSha }: BranchSectionProps): React.JSX.Element {
   return (
     <div>
       <div className="text-muted-foreground mb-1.5 px-1 text-xs font-medium">{title}</div>
       <div className="flex flex-col gap-1">
         {branches.map((branch) => (
           <div key={branch.name} className="flex">
-            <BranchBadge data={branch} />
+            <BranchBadge data={branch} commitSha={commitSha} />
           </div>
         ))}
       </div>

@@ -126,12 +126,32 @@ type ContextAcquisitionResult =
   | { success: false; error: RebaseExecutionResult }
 
 /**
+ * Gets the first pending job's branch from a rebase state.
+ * Used to optimize worktree creation by creating it at the target branch directly.
+ */
+function getFirstPendingBranch(state: RebaseState): string | undefined {
+  const firstPendingId = state.queue.pendingJobIds[0]
+  if (!firstPendingId) return undefined
+  const job = state.jobsById[firstPendingId]
+  return job?.branch
+}
+
+/**
  * Acquires an execution context with proper error handling.
  * Returns either a context or an error result that can be returned directly.
+ *
+ * @param repoPath - Path to the git repository
+ * @param targetBranch - Optional branch that will be operated on (helps optimize worktree creation)
  */
-async function acquireContext(repoPath: string): Promise<ContextAcquisitionResult> {
+async function acquireContext(
+  repoPath: string,
+  targetBranch?: string
+): Promise<ContextAcquisitionResult> {
   try {
-    const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+    const context = await ExecutionContextService.acquire(repoPath, {
+      operation: 'rebase',
+      targetBranch
+    })
     return { success: true, context }
   } catch (error) {
     if (error instanceof WorktreeCreationError) {
@@ -220,7 +240,8 @@ export class RebaseExecutor {
         jobCount: Object.keys(existingSession.state.jobsById).length
       })
       // Acquire execution context - will reuse stored context if there's a conflict in progress
-      const acquisition = await acquireContext(repoPath)
+      const targetBranch = getFirstPendingBranch(existingSession.state)
+      const acquisition = await acquireContext(repoPath, targetBranch)
       if (!acquisition.success) {
         return acquisition.error
       }
@@ -285,8 +306,9 @@ export class RebaseExecutor {
       }
     }
 
-    // Acquire execution context for new session
-    const acquisition = await acquireContext(repoPath)
+    // Acquire execution context for new session - pass first branch to optimize worktree creation
+    const targetBranch = getFirstPendingBranch(plan.state)
+    const acquisition = await acquireContext(repoPath, targetBranch)
     if (!acquisition.success) {
       await SessionService.clearSession(repoPath)
       return acquisition.error
@@ -306,7 +328,9 @@ export class RebaseExecutor {
     const session = await SessionService.getSession(repoPath)
 
     // Acquire execution context - will reuse stored context from conflict
-    const acquisition = await acquireContext(repoPath)
+    // Pass target branch in case we need to create a new context (e.g., stored context was cleared)
+    const targetBranch = session ? getFirstPendingBranch(session.state) : undefined
+    const acquisition = await acquireContext(repoPath, targetBranch)
     if (!acquisition.success) {
       return acquisition.error
     }
@@ -577,13 +601,14 @@ export class RebaseExecutor {
     }
 
     // Acquire execution context - will reuse stored context from conflict
-    const acquisition = await acquireContext(repoPath)
+    const session = await SessionService.getSession(repoPath)
+    const targetBranch = session ? getFirstPendingBranch(session.state) : undefined
+    const acquisition = await acquireContext(repoPath, targetBranch)
     if (!acquisition.success) {
       return acquisition.error
     }
     const context = acquisition.context
 
-    const session = await SessionService.getSession(repoPath)
     const result = await git.rebaseSkip(context.executionPath)
 
     if (!result.success && result.conflicts.length > 0) {

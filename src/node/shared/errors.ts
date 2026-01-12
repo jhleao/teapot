@@ -73,6 +73,46 @@ export class BranchError extends AppError {
 }
 
 /**
+ * Error thrown when a branch deletion fails because the branch is checked out in a worktree.
+ *
+ * This structured error is thrown by the git adapter when it parses git's error message
+ * indicating a worktree conflict. It provides typed access to the conflicting worktree path,
+ * enabling callers to handle the conflict appropriately (e.g., remove the worktree and retry).
+ *
+ * Git reports this error in several scenarios:
+ * - Branch is directly checked out in the worktree
+ * - Branch is being rebased (worktree is in detached HEAD but branch is still locked)
+ * - Branch is being cherry-picked or bisected
+ * - Any other operation that locks the branch to a worktree
+ *
+ * @example
+ * try {
+ *   await git.deleteBranch(repoPath, branchName)
+ * } catch (error) {
+ *   if (error instanceof WorktreeConflictError) {
+ *     // Handle the conflict by removing the worktree
+ *     await removeWorktree(error.worktreePath)
+ *     await git.deleteBranch(repoPath, branchName)
+ *   }
+ * }
+ */
+export class WorktreeConflictError extends BranchError {
+  constructor(
+    public readonly branchName: string,
+    public readonly worktreePath: string,
+    cause?: unknown
+  ) {
+    super(
+      `Cannot delete branch '${branchName}': used by worktree at '${worktreePath}'`,
+      branchName,
+      'delete',
+      cause
+    )
+    this.name = 'WorktreeConflictError'
+  }
+}
+
+/**
  * Supported trunk protection operations.
  */
 export type TrunkProtectedOperation = 'delete' | 'rename' | 'cleanup'

@@ -799,6 +799,153 @@ describe('deleteBranch', () => {
     // Try to delete develop branch - should throw TrunkProtectionError
     await expect(BranchOperation.delete(repoPath, 'develop')).rejects.toThrow(TrunkProtectionError)
   })
+
+  it('should detect worktree when branch is mid-rebase with conflict (dirty worktree error)', async () => {
+    // This test verifies that listWorktrees correctly detects the branch being rebased
+    // even when the worktree is in detached HEAD state. The worktree will be "dirty"
+    // due to conflict markers, so the operation should fail with an uncommitted changes error
+    // (NOT a "cannot delete branch used by worktree" git error).
+
+    // Setup: main -> commit1 -> commit2 (modifies file1.txt)
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch at commit1
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Add conflicting commit on main
+    await fs.promises.writeFile(file1, 'main-change')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "main change"', { cwd: repoPath })
+
+    // Create worktree for feature and create conflicting commit
+    const worktreePath = path.join(os.tmpdir(), `teapot-wt-rebase-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" feature`, { cwd: repoPath })
+
+    // Add conflicting change in feature branch
+    await fs.promises.writeFile(path.join(worktreePath, 'file1.txt'), 'feature-change')
+    execSync('git add file1.txt', { cwd: worktreePath })
+    execSync('git commit -m "feature change"', { cwd: worktreePath })
+
+    // Start a rebase that will conflict (this puts the worktree in detached HEAD)
+    try {
+      execSync('git rebase main', { cwd: worktreePath, stdio: 'pipe' })
+    } catch {
+      // Expected - rebase conflicts
+    }
+
+    // Verify worktree is in detached HEAD state (mid-rebase)
+    const worktreeList = execSync('git worktree list --porcelain', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    })
+    expect(worktreeList).toContain('detached')
+
+    try {
+      // Delete should fail because worktree has uncommitted changes (conflict markers).
+      // This verifies that the worktree IS being detected (via rebase-merge/head-name),
+      // otherwise we'd get a git error "cannot delete branch used by worktree" instead.
+      await expect(BranchOperation.delete(repoPath, 'feature')).rejects.toThrow(
+        /has uncommitted changes/
+      )
+
+      // Branch should still exist
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+        .filter(Boolean)
+      expect(branches).toContain('feature')
+    } finally {
+      // Cleanup worktree
+      try {
+        execSync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore if already removed
+      }
+      try {
+        await fs.promises.rm(worktreePath, { recursive: true, force: true })
+      } catch {
+        // Ignore
+      }
+    }
+  })
+
+  it('should remove worktree when branch is mid-rebase with no conflicts', async () => {
+    // This test verifies that we can delete a branch when its worktree is mid-rebase
+    // but has no uncommitted changes (clean rebase with no conflicts).
+
+    // Setup: main -> commit1
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit 1"', { cwd: repoPath })
+
+    // Create feature branch at commit1
+    execSync('git branch feature', { cwd: repoPath })
+
+    // Add non-conflicting commit on main (different file)
+    await fs.promises.writeFile(path.join(repoPath, 'file2.txt'), 'main-change')
+    execSync('git add file2.txt', { cwd: repoPath })
+    execSync('git commit -m "main change"', { cwd: repoPath })
+
+    // Create worktree for feature and make a commit (different file)
+    const worktreePath = path.join(os.tmpdir(), `teapot-wt-rebase-clean-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" feature`, { cwd: repoPath })
+
+    // Add non-conflicting change in feature branch
+    await fs.promises.writeFile(path.join(worktreePath, 'feature-file.txt'), 'feature-change')
+    execSync('git add feature-file.txt', { cwd: worktreePath })
+    execSync('git commit -m "feature change"', { cwd: worktreePath })
+
+    // Start a rebase that will succeed (no conflicts, but leaves worktree in detached HEAD during operation)
+    // We use rebase -i with a noop to pause mid-rebase
+    try {
+      // Use GIT_SEQUENCE_EDITOR to break after the first pick
+      execSync('GIT_SEQUENCE_EDITOR="sed -i.bak s/^pick/break/" git rebase -i main', {
+        cwd: worktreePath,
+        stdio: 'pipe'
+      })
+    } catch {
+      // Expected - rebase stops at break point
+    }
+
+    // Verify worktree is in detached HEAD state (mid-rebase)
+    const worktreeList = execSync('git worktree list --porcelain', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    })
+    expect(worktreeList).toContain('detached')
+
+    try {
+      // Delete should succeed - worktree is mid-rebase but clean
+      await BranchOperation.delete(repoPath, 'feature')
+
+      // Local branch should be gone
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+        .split('\n')
+        .map((b) => b.trim().replace(/^[*+]\s*/, ''))
+        .filter(Boolean)
+      expect(branches).not.toContain('feature')
+
+      // Worktree should be gone
+      const worktreesAfter = execSync('git worktree list', { cwd: repoPath, encoding: 'utf-8' })
+      expect(worktreesAfter).not.toContain(worktreePath)
+    } finally {
+      // Cleanup worktree if test fails partway through
+      try {
+        execSync(`git worktree remove "${worktreePath}" --force`, { cwd: repoPath })
+      } catch {
+        // Ignore if already removed
+      }
+      try {
+        await fs.promises.rm(worktreePath, { recursive: true, force: true })
+      } catch {
+        // Ignore
+      }
+    }
+  })
 })
 
 describe('renameBranch', () => {

@@ -5,12 +5,16 @@
  * consistent handling across the codebase.
  */
 
+import { exec } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
+import { promisify } from 'util'
 
 import { log } from '@shared/logger'
 
 import { getGitAdapter } from '../adapters/git'
+
+const execAsync = promisify(exec)
 
 /**
  * Result of checking whether a worktree is stale
@@ -314,4 +318,27 @@ export async function retryWithPrune<T>(
 
   // Should never reach here, but TypeScript needs this
   throw lastError
+}
+
+/**
+ * Checks if a worktree has uncommitted changes.
+ *
+ * A worktree is considered "dirty" if `git status --porcelain` returns
+ * any output, indicating modified, staged, or untracked files.
+ *
+ * This is important for branch deletion - we don't want to remove a
+ * worktree (and lose access to the branch) if it has uncommitted work.
+ *
+ * @param worktreePath - Path to the worktree directory
+ * @returns true if the worktree has uncommitted changes, false otherwise
+ */
+export async function isWorktreeDirty(worktreePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync(`git -C "${worktreePath}" status --porcelain`)
+    return stdout.trim().length > 0
+  } catch {
+    // If we can't check status (e.g., path doesn't exist), assume clean
+    // The caller should have already validated the path exists
+    return false
+  }
 }

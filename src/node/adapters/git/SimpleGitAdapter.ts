@@ -13,6 +13,7 @@ import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
 import { promisify } from 'util'
 import type { GitAdapter } from './interface'
+import { WorktreeConflictError } from '../../shared/errors'
 import type {
   ApplyPatchResult,
   BranchOptions,
@@ -587,8 +588,38 @@ export class SimpleGitAdapter implements GitAdapter {
       const git = this.createGit(dir)
       await git.branch(['-D', ref])
     } catch (error) {
+      // Check for worktree conflict error and throw structured error
+      const worktreePath = this.parseWorktreeConflictFromError(error)
+      if (worktreePath) {
+        throw new WorktreeConflictError(ref, worktreePath, error)
+      }
       throw this.createError('deleteBranch', error)
     }
+  }
+
+  /**
+   * Parses git's error message to extract worktree path when a branch deletion fails
+   * because the branch is checked out in a worktree.
+   *
+   * Git error format: "error: cannot delete branch 'X' used by worktree at 'Y'"
+   *
+   * This parsing happens at the adapter layer so callers get typed errors and don't
+   * need to parse error messages themselves.
+   *
+   * @param error - The error from git branch deletion
+   * @returns The worktree path if this is a worktree conflict, null otherwise
+   */
+  private parseWorktreeConflictFromError(error: unknown): string | null {
+    const message = error instanceof Error ? error.message : String(error)
+
+    // Git error format: "error: cannot delete branch 'X' used by worktree at 'Y'"
+    // The path may or may not be quoted, and may contain spaces
+    const match = message.match(/cannot delete branch .+ used by worktree at '?([^']+)'?/)
+    if (match) {
+      return match[1].trim()
+    }
+
+    return null
   }
 
   async renameBranch(dir: string, oldRef: string, newRef: string): Promise<void> {

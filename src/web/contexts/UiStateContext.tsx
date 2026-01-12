@@ -50,10 +50,11 @@ interface UiStateContextValue {
   renameBranch: (params: { oldBranchName: string; newBranchName: string }) => Promise<void>
   createPullRequest: (params: { headBranch: string }) => Promise<void>
   updatePullRequest: (params: { headBranch: string }) => Promise<void>
-  getFoldPreview: (params: { branchName: string }) => Promise<SquashPreview>
-  foldIntoParent: (params: {
+  getSquashPreview: (params: { branchName: string }) => Promise<SquashPreview>
+  squashIntoParent: (params: {
     branchName: string
     commitMessage?: string
+    branchChoice?: import('@shared/types').BranchChoice
   }) => Promise<SquashResult | undefined>
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string }) => Promise<void>
@@ -105,8 +106,8 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   renameBranch: async () => {},
   createPullRequest: async () => {},
   updatePullRequest: async () => {},
-  getFoldPreview: async () => ({ canSquash: false, commits: [], combinedMessage: '' }),
-  foldIntoParent: async () => undefined,
+  getSquashPreview: async () => ({ canSquash: false, commits: [], combinedMessage: '' }),
+  squashIntoParent: async () => undefined,
   uncommit: async () => {},
   shipIt: async () => {},
   syncTrunk: async () => {},
@@ -694,33 +695,34 @@ export function UiStateProvider({
     await resolveWorktreeConflicts('delete')
   }, [resolveWorktreeConflicts])
 
-  const getFoldPreview = useCallback(
+  const getSquashPreview = useCallback(
     async (params: { branchName: string }): Promise<SquashPreview> => {
       if (!repoPath) throw new Error('No repository selected')
-      return window.api.getFoldPreview({ repoPath, ...params })
+      return window.api.getSquashPreview({ repoPath, ...params })
     },
     [repoPath]
   )
 
-  const foldIntoParent = useCallback(
+  const squashIntoParent = useCallback(
     async (params: {
       branchName: string
       commitMessage?: string
+      branchChoice?: import('@shared/types').BranchChoice
     }): Promise<SquashResult | undefined> => {
       if (!repoPath) return
 
       try {
-        const result = await window.api.foldIntoParent({ repoPath, ...params })
+        const result = await window.api.squashIntoParent({ repoPath, ...params })
 
         if (result.success) {
-          toast.success(`Folded ${params.branchName} into parent`)
+          toast.success(`Squashed ${params.branchName} into parent`)
           // Optimistically mark checks as pending for all pushed branches
           if (result.modifiedBranches) {
             result.modifiedBranches.forEach((branch) => markPrChecksPending(branch))
           }
           await refreshRepo()
         } else if (result.localSuccess) {
-          toast.warning('Local fold succeeded but push failed. Retry git push manually.')
+          toast.warning('Local squash succeeded but push failed. Retry git push manually.')
           await refreshRepo()
         } else {
           toast.error(getSquashErrorMessage(result.error, result.errorDetail))
@@ -728,7 +730,7 @@ export function UiStateProvider({
 
         return result
       } catch (error) {
-        toast.error('Fold failed', {
+        toast.error('Squash failed', {
           description: error instanceof Error ? error.message : String(error)
         })
         throw error
@@ -793,8 +795,8 @@ export function UiStateProvider({
       renameBranch,
       createPullRequest,
       updatePullRequest,
-      getFoldPreview,
-      foldIntoParent,
+      getSquashPreview,
+      squashIntoParent,
       uncommit,
       shipIt,
       syncTrunk,
@@ -832,8 +834,8 @@ export function UiStateProvider({
       renameBranch,
       createPullRequest,
       updatePullRequest,
-      getFoldPreview,
-      foldIntoParent,
+      getSquashPreview,
+      squashIntoParent,
       uncommit,
       shipIt,
       syncTrunk,
@@ -1012,26 +1014,28 @@ function handleRebaseError(error: unknown, operationName: string): void {
 function getSquashErrorMessage(error?: SquashBlocker, detail?: string): string {
   switch (error) {
     case 'no_parent':
-      return 'Cannot fold: this branch has no parent'
+      return 'Cannot squash: this branch has no parent'
     case 'not_linear':
-      return 'Cannot fold: stack is not linear'
-    case 'multi_commit':
-      return 'Cannot fold: branch has multiple commits relative to parent'
+      return 'Cannot squash: stack is not linear'
     case 'ancestry_mismatch':
-      return 'Cannot fold: parent changed, restack first'
+      return 'Cannot squash: parent changed, restack first'
     case 'dirty_tree':
-      return detail ? `Cannot fold: ${detail}` : 'Cannot fold: working tree is dirty'
-    case 'descendant_has_pr':
-      return `Cannot fold: descendant branch has an open PR${detail ? ` (${detail})` : ''}`
+      return detail ? `Cannot squash: ${detail}` : 'Cannot squash: working tree is dirty'
+    case 'rebase_in_progress':
+      return 'Cannot squash: a rebase is already in progress'
+    case 'parent_is_trunk':
+      return 'Cannot squash: parent branch is trunk'
     case 'is_trunk':
-      return 'Cannot fold trunk branches'
+      return 'Cannot squash trunk branches'
     case 'conflict':
-      return 'Cannot fold: changes conflict with parent'
+      return 'Cannot squash: changes conflict with parent'
     case 'descendant_conflict':
-      return 'Cannot fold: descendant rebase conflicted'
+      return 'Cannot squash: descendant rebase conflicted'
     case 'push_failed':
       return detail ? `Push failed: ${detail}` : 'Push failed'
+    case 'worktree_conflict':
+      return detail ? detail : 'Cannot squash: branch is checked out in another worktree'
     default:
-      return 'Fold failed'
+      return 'Squash failed'
   }
 }

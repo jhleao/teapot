@@ -1,11 +1,11 @@
 import { getDeleteBranchPermission } from '@shared/permissions'
-import type { SquashPreview, UiBranch } from '@shared/types'
+import type { BranchChoice, SquashPreview, UiBranch } from '@shared/types'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
-import { FoldConfirmDialog } from './FoldConfirmDialog'
 import { RenameBranchDialog } from './RenameBranchDialog'
+import { SquashConfirmDialog } from './SquashConfirmDialog'
 
 export const BranchBadge = memo(function BranchBadge({
   data
@@ -17,16 +17,16 @@ export const BranchBadge = memo(function BranchBadge({
     deleteBranch,
     isWorkingTreeDirty,
     createWorktree,
-    getFoldPreview,
-    foldIntoParent,
+    getSquashPreview,
+    squashIntoParent,
     repoPath
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
-  const [isFoldDialogOpen, setIsFoldDialogOpen] = useState(false)
-  const [foldPreviewData, setFoldPreviewData] = useState<SquashPreview | null>(null)
-  const [isLoadingFoldPreview, setIsLoadingFoldPreview] = useState(false)
-  const [isFolding, setIsFolding] = useState(false)
+  const [isSquashDialogOpen, setIsSquashDialogOpen] = useState(false)
+  const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
+  const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
+  const [isSquashing, setIsSquashing] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -94,45 +94,50 @@ export const BranchBadge = memo(function BranchBadge({
     }
   }, [openablePath])
 
-  const handleOpenFoldDialog = useCallback(async () => {
-    if (isWorkingTreeDirty) {
-      toast.error('Cannot fold while working tree has changes')
+  const handleOpenSquashDialog = useCallback(async () => {
+    // Only block dirty worktree if this is the current branch
+    if (data.isCurrent && isWorkingTreeDirty) {
+      toast.error('Cannot squash while working tree has changes')
       return
     }
 
-    setIsLoadingFoldPreview(true)
+    setIsLoadingSquashPreview(true)
     try {
-      const preview = await getFoldPreview({ branchName: data.name })
+      const preview = await getSquashPreview({ branchName: data.name })
       if (!preview.canSquash) {
-        toast.error(preview.errorDetail || 'Cannot fold this branch')
+        toast.error(preview.errorDetail || 'Cannot squash this branch')
         return
       }
-      setFoldPreviewData(preview)
-      setIsFoldDialogOpen(true)
+      setSquashPreviewData(preview)
+      setIsSquashDialogOpen(true)
     } catch (error) {
-      toast.error('Failed to load fold preview', {
+      toast.error('Failed to load squash preview', {
         description: error instanceof Error ? error.message : String(error)
       })
     } finally {
-      setIsLoadingFoldPreview(false)
+      setIsLoadingSquashPreview(false)
     }
-  }, [data.name, getFoldPreview, isWorkingTreeDirty])
+  }, [data.isCurrent, data.name, getSquashPreview, isWorkingTreeDirty])
 
-  const handleConfirmFold = useCallback(
-    async (commitMessage: string) => {
-      if (!foldPreviewData) return
-      setIsFolding(true)
+  const handleConfirmSquash = useCallback(
+    async (commitMessage: string, branchChoice?: BranchChoice) => {
+      if (!squashPreviewData) return
+      setIsSquashing(true)
       try {
-        const result = await foldIntoParent({ branchName: data.name, commitMessage })
+        const result = await squashIntoParent({
+          branchName: data.name,
+          commitMessage,
+          branchChoice
+        })
         if (result?.success || result?.localSuccess) {
-          setIsFoldDialogOpen(false)
-          setFoldPreviewData(null)
+          setIsSquashDialogOpen(false)
+          setSquashPreviewData(null)
         }
       } finally {
-        setIsFolding(false)
+        setIsSquashing(false)
       }
     },
-    [data.name, foldIntoParent, foldPreviewData]
+    [data.name, squashIntoParent, squashPreviewData]
   )
 
   // Can't create worktree for branch that already has one
@@ -172,9 +177,13 @@ export const BranchBadge = memo(function BranchBadge({
                 Delete branch
               </ContextMenuItem>
             )}
-            {data.canFold && (
-              <ContextMenuItem onClick={handleOpenFoldDialog} disabled={isLoadingFoldPreview}>
-                {isLoadingFoldPreview ? 'Checking...' : 'Fold into parent'}
+            {!data.isRemote && !data.isTrunk && (
+              <ContextMenuItem
+                onClick={handleOpenSquashDialog}
+                disabled={!data.canSquash || isLoadingSquashPreview}
+                disabledReason={data.squashDisabledReason}
+              >
+                {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
               </ContextMenuItem>
             )}
             {data.canCreateWorktree && (
@@ -218,16 +227,16 @@ export const BranchBadge = memo(function BranchBadge({
         onOpenChange={setIsRenameDialogOpen}
         branchName={data.name}
       />
-      {foldPreviewData && (
-        <FoldConfirmDialog
-          open={isFoldDialogOpen}
+      {squashPreviewData && (
+        <SquashConfirmDialog
+          open={isSquashDialogOpen}
           onOpenChange={(open) => {
-            setIsFoldDialogOpen(open)
-            if (!open) setFoldPreviewData(null)
+            setIsSquashDialogOpen(open)
+            if (!open) setSquashPreviewData(null)
           }}
-          preview={foldPreviewData}
-          onConfirm={handleConfirmFold}
-          isSubmitting={isFolding}
+          preview={squashPreviewData}
+          onConfirm={handleConfirmSquash}
+          isSubmitting={isSquashing}
         />
       )}
     </>

@@ -1088,6 +1088,16 @@ export class RebaseExecutor {
     session: StoredRebaseSession,
     git: GitAdapter
   ): Promise<void> {
+    // First, detach HEAD in the execution path (temp worktree) to release any branch refs.
+    // This must happen BEFORE re-attaching branches to their original worktrees,
+    // otherwise git will complain that the branch is already in use.
+    try {
+      await WorktreeOperation.detachHead(executionPath)
+    } catch {
+      // Best-effort: if detach fails, we'll still try to re-checkout branches
+      // The re-checkout may fail if the branch is still held by this worktree
+    }
+
     const detachedWorktrees = session.autoDetachedWorktrees ?? []
     const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
 
@@ -1102,11 +1112,12 @@ export class RebaseExecutor {
       }
     }
 
-    // Only checkout to original branch in execution path (not the active worktree)
+    // Try to checkout to original branch in execution path (not the active worktree)
+    // This is best-effort since the worktree will be cleaned up anyway
     try {
       await git.checkout(executionPath, session.originalBranch)
     } catch {
-      // Original branch might not exist anymore; ignore checkout failure
+      // Original branch might not exist anymore or detach is sufficient; ignore checkout failure
     }
 
     if (reattachFailures.length > 0) {

@@ -315,16 +315,44 @@ const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (
   _event,
   { repoPath, branchName }
 ) => {
-  await BranchOperation.delete(repoPath, branchName)
-  return UiStateOperation.getUiState(repoPath)
+  try {
+    await BranchOperation.delete(repoPath, branchName)
+    return UiStateOperation.getUiState(repoPath)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Failed to Delete Branch',
+      message: `Unable to delete branch '${branchName}'`,
+      detail: errorMessage,
+      buttons: ['OK']
+    })
+
+    throw error
+  }
 }
 
 const cleanupBranchHandler: IpcHandlerOf<'cleanupBranch'> = async (
   _event,
   { repoPath, branchName }
 ) => {
-  await BranchOperation.cleanup(repoPath, branchName)
-  return UiStateOperation.getUiState(repoPath)
+  try {
+    await BranchOperation.cleanup(repoPath, branchName)
+    return UiStateOperation.getUiState(repoPath)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Failed to Cleanup Branch',
+      message: `Unable to cleanup branch '${branchName}'`,
+      detail: errorMessage,
+      buttons: ['OK']
+    })
+
+    throw error
+  }
 }
 
 // ============================================================================

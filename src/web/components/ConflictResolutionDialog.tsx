@@ -1,26 +1,14 @@
 import type { UiWorkingTreeFile } from '@shared/types'
-import { AlertTriangle, CheckCircle, Clipboard, ExternalLink, Terminal } from 'lucide-react'
-import React, { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
+import { AlertTriangle, CheckCircle } from 'lucide-react'
+import React, { useState } from 'react'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { findRebasingBranchName } from '../utils/stack-utils'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader } from './Dialog'
 
 export function ConflictResolutionDialog(): React.JSX.Element {
-  const { continueRebase, abortRebase, uiState, repoPath } = useUiStateContext()
+  const { continueRebase, abortRebase, uiState } = useUiStateContext()
   const [isPending, setIsPending] = useState(false)
-  const [executionPath, setExecutionPath] = useState<string | null>(null)
-
-  // Fetch the execution path when dialog mounts
-  useEffect(() => {
-    if (!repoPath) return
-    window.api.getRebaseExecutionPath({ repoPath }).then((result) => {
-      if (result.path) {
-        setExecutionPath(result.path)
-      }
-    })
-  }, [repoPath])
 
   // Derive conflicted files from workingTree
   const conflictedFiles = uiState?.workingTree.filter((f) => f.status === 'conflicted') ?? []
@@ -47,32 +35,6 @@ export function ConflictResolutionDialog(): React.JSX.Element {
       setIsPending(false)
     }
   }
-
-  const handleCopyPath = useCallback(async () => {
-    if (!executionPath) return
-    const result = await window.api.copyWorktreePath({ worktreePath: executionPath })
-    if (result.success) {
-      toast.success('Path copied to clipboard')
-    } else {
-      toast.error('Failed to copy path', { description: result.error })
-    }
-  }, [executionPath])
-
-  const handleOpenInEditor = useCallback(async () => {
-    if (!executionPath) return
-    const result = await window.api.openWorktreeInEditor({ worktreePath: executionPath })
-    if (!result.success) {
-      toast.error('Failed to open in editor', { description: result.error })
-    }
-  }, [executionPath])
-
-  const handleOpenInTerminal = useCallback(async () => {
-    if (!executionPath) return
-    const result = await window.api.openWorktreeInTerminal({ worktreePath: executionPath })
-    if (!result.success) {
-      toast.error('Failed to open in terminal', { description: result.error })
-    }
-  }, [executionPath])
 
   return (
     <Dialog open={true} onOpenChange={() => {}}>
@@ -110,34 +72,6 @@ export function ConflictResolutionDialog(): React.JSX.Element {
             {allResolved
               ? `All conflicts resolved. Click Continue to proceed.`
               : `${unresolvedFiles.length} of ${conflictedFiles.length} file${conflictedFiles.length > 1 ? 's' : ''} with conflicts remaining.`}
-          </div>
-        )}
-
-        {executionPath && (
-          <div className="border-border flex flex-col gap-2 border-t px-4 py-3">
-            <button
-              onClick={handleOpenInEditor}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 flex w-full items-center justify-center gap-2 rounded px-3 py-1.5 text-sm transition-colors"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open in Editor
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={handleOpenInTerminal}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted flex flex-1 items-center justify-center gap-2 rounded px-2 py-1 text-xs transition-colors"
-              >
-                <Terminal className="h-3.5 w-3.5" />
-                Terminal
-              </button>
-              <button
-                onClick={handleCopyPath}
-                className="text-muted-foreground hover:text-foreground hover:bg-muted flex flex-1 items-center justify-center gap-2 rounded px-2 py-1 text-xs transition-colors"
-              >
-                <Clipboard className="h-3.5 w-3.5" />
-                Copy Path
-              </button>
-            </div>
           </div>
         )}
 

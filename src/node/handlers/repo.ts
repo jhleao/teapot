@@ -315,44 +315,16 @@ const deleteBranchHandler: IpcHandlerOf<'deleteBranch'> = async (
   _event,
   { repoPath, branchName }
 ) => {
-  try {
-    await BranchOperation.delete(repoPath, branchName)
-    return UiStateOperation.getUiState(repoPath)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-
-    await dialog.showMessageBox({
-      type: 'error',
-      title: 'Failed to Delete Branch',
-      message: `Unable to delete branch '${branchName}'`,
-      detail: errorMessage,
-      buttons: ['OK']
-    })
-
-    throw error
-  }
+  await BranchOperation.delete(repoPath, branchName)
+  return UiStateOperation.getUiState(repoPath)
 }
 
 const cleanupBranchHandler: IpcHandlerOf<'cleanupBranch'> = async (
   _event,
   { repoPath, branchName }
 ) => {
-  try {
-    await BranchOperation.cleanup(repoPath, branchName)
-    return UiStateOperation.getUiState(repoPath)
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error)
-
-    await dialog.showMessageBox({
-      type: 'error',
-      title: 'Failed to Cleanup Branch',
-      message: `Unable to cleanup branch '${branchName}'`,
-      detail: errorMessage,
-      buttons: ['OK']
-    })
-
-    throw error
-  }
+  await BranchOperation.cleanup(repoPath, branchName)
+  return UiStateOperation.getUiState(repoPath)
 }
 
 // ============================================================================
@@ -550,17 +522,6 @@ const createWorktree: IpcHandlerOf<'createWorktree'> = async (_event, { repoPath
   return result
 }
 
-const getRebaseExecutionPath: IpcHandlerOf<'getRebaseExecutionPath'> = async (
-  _event,
-  { repoPath }
-) => {
-  const context = await ExecutionContextService.getStoredContext(repoPath)
-  if (!context) {
-    return { path: null, isTemporary: false }
-  }
-  return { path: context.executionPath, isTemporary: context.isTemporary }
-}
-
 // ============================================================================
 // Registration
 // ============================================================================
@@ -621,5 +582,4 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.openWorktreeInTerminal, openWorktreeInTerminal)
   ipcMain.handle(IPC_CHANNELS.copyWorktreePath, copyWorktreePath)
   ipcMain.handle(IPC_CHANNELS.createWorktree, createWorktree)
-  ipcMain.handle(IPC_CHANNELS.getRebaseExecutionPath, getRebaseExecutionPath)
 }

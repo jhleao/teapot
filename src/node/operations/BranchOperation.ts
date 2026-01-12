@@ -258,11 +258,7 @@ export class BranchOperation {
       }
 
       // Acquire execution context for checkout/merge operations
-      // Pass trunkName as target since we'll be checking it out
-      const context = await ExecutionContextService.acquire(repoPath, {
-        operation: 'sync-trunk',
-        targetBranch: trunkName
-      })
+      const context = await ExecutionContextService.acquire(repoPath, 'sync-trunk')
       try {
         // Perform fast-forward using the execution path
         const ffResult = await this.fastForwardTrunk(

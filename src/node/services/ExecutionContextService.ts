@@ -1,22 +1,20 @@
 /**
  * ExecutionContextService - Manages execution contexts for Git operations
  *
- * This service always creates a temporary worktree for Git operations (rebase, etc.)
- * to provide consistent UX and keep the user's working directory untouched.
+ * When the active worktree has uncommitted changes, this service creates
+ * a temporary worktree for Git operations. Operations execute transparently
+ * while the user's uncommitted changes remain untouched.
  *
  * Key features:
- * - Always-temp-worktree: Operations always run in an isolated temp worktree
  * - Persistent context storage (survives crashes)
  * - Mutex locking (prevents race conditions)
  * - Stale context detection with TTL
  * - Observability (metadata, timestamps, operation tracking)
  *
  * Strategy:
- * 1. If rebase is in progress in active worktree -> use it (legacy/continue support)
- * 2. Otherwise -> create a temporary worktree for execution
+ * 1. If active worktree is clean -> use it (current behavior)
+ * 2. If active worktree is dirty -> create a temporary worktree for execution
  *    - Temp worktree stored in .git/teapot-worktrees/ (relative to repo)
- *    - If targetBranch specified, worktree is created at that branch directly
- *    - HEAD is detached in active worktree if dirty OR if on same branch as target
  *    - Context persisted to disk for crash recovery
  *    - Cleaned up after operation completes
  */
@@ -232,14 +230,6 @@ export class ExecutionContextService {
   }
 
   /**
-   * Options for acquiring an execution context.
-   */
-  static AcquireOptions: {
-    operation?: ExecutionOperation
-    targetBranch?: string
-  }
-
-  /**
    * Acquire an execution context for Git operations.
    * Returns a clean worktree path that can be used for rebase/checkout operations.
    *
@@ -249,18 +239,12 @@ export class ExecutionContextService {
    * - Persistent storage for crash recovery
    *
    * @param repoPath - Path to the git repository
-   * @param operationOrOptions - Either an operation string (legacy) or options object
+   * @param operation - Which operation is acquiring the context (for tracking)
    */
   static async acquire(
     repoPath: string,
-    operationOrOptions: ExecutionOperation | { operation?: ExecutionOperation; targetBranch?: string } = 'unknown'
+    operation: ExecutionOperation = 'unknown'
   ): Promise<ExecutionContext> {
-    // Support both legacy (string) and new (options object) calling conventions
-    const options = typeof operationOrOptions === 'string'
-      ? { operation: operationOrOptions, targetBranch: undefined }
-      : operationOrOptions
-    const operation = options.operation ?? 'unknown'
-    const targetBranch = options.targetBranch
     // Validate repoPath early to fail fast with a clear error
     if (!repoPath || typeof repoPath !== 'string') {
       throw new Error('repoPath is required')
@@ -305,13 +289,33 @@ export class ExecutionContextService {
       const git = getGitAdapter()
       const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
 
+      // Check if active worktree is clean
       const activeStatus = await git.getWorkingTreeStatus(activeWorktreePath)
+      const isActiveClean =
+        activeStatus.staged.length === 0 &&
+        activeStatus.modified.length === 0 &&
+        activeStatus.deleted.length === 0 &&
+        activeStatus.conflicted.length === 0
+
+      if (isActiveClean) {
+        log.debug('[ExecutionContextService] Active worktree is clean, using it for execution')
+        const context: ExecutionContext = {
+          executionPath: activeWorktreePath,
+          isTemporary: false,
+          requiresCleanup: false,
+          createdAt: Date.now(),
+          operation,
+          repoPath
+        }
+        contextEvents.emit('acquired', context, repoPath)
+        return context
+      }
 
       // If a rebase is in progress in the active worktree, use it directly.
-      // This handles the legacy case where a rebase was started in-place (before
-      // always-temp-worktree), hit a conflict, and now the user is continuing.
-      // Note: Rebases started via temp worktree have their context persisted and
-      // are handled by the persistedContext check above.
+      // This handles the case where a rebase was started with a clean worktree,
+      // hit a conflict, and now the user is continuing. The worktree appears "dirty"
+      // because of the conflict resolution files, but we should use it, not create
+      // a new temp worktree.
       if (activeStatus.isRebasing) {
         log.debug(
           '[ExecutionContextService] Rebase in progress in active worktree, using it for continue/abort'
@@ -328,51 +332,33 @@ export class ExecutionContextService {
         return context
       }
 
-      // Always create a temporary worktree for new operations.
-      // This provides consistent UX and keeps the user's working directory untouched.
-      const isActiveClean =
-        activeStatus.staged.length === 0 &&
-        activeStatus.modified.length === 0 &&
-        activeStatus.deleted.length === 0 &&
-        activeStatus.conflicted.length === 0
-
-      const currentBranch = await git.currentBranch(activeWorktreePath)
-
-      // Determine if we need to detach HEAD to release the branch ref:
-      // 1. Active worktree is dirty - must detach to preserve uncommitted changes
-      // 2. Active worktree is on the same branch as target - must detach to allow
-      //    the temp worktree to check out that branch
-      const isOnTargetBranch = targetBranch && currentBranch === targetBranch
-      const needsDetach = !isActiveClean || isOnTargetBranch
-
+      // Active worktree is dirty (but not rebasing) - create a temporary worktree for full isolation
       log.info(
-        `[ExecutionContextService] Creating temporary worktree for ${operation}` +
-        ` (active: ${isActiveClean ? 'clean' : 'dirty'}, branch: ${currentBranch ?? 'detached'}` +
-        `${targetBranch ? `, target: ${targetBranch}` : ''}, needsDetach: ${needsDetach})...`
+        `[ExecutionContextService] Active worktree is dirty, creating temporary worktree for ${operation}...`
       )
 
-      // Detach HEAD if needed to release the branch ref
-      let originalBranch: string | null = null
-      if (needsDetach && currentBranch) {
-        originalBranch = currentBranch
+      // Get current branch BEFORE detaching so we can rollback on failure
+      const originalBranch = await git.currentBranch(activeWorktreePath)
 
-        const detachResult = await WorktreeOperation.detachHead(activeWorktreePath)
-        if (!detachResult.success) {
-          throw new WorktreeCreationError(
-            `Failed to detach HEAD in active worktree: ${detachResult.error}`,
-            repoPath,
-            0
-          )
-        }
+      // Detach HEAD in active worktree before creating temp worktree.
+      // This releases the branch ref so it can be checked out in the temp worktree.
+      // The uncommitted changes are preserved since git checkout --detach keeps them.
+      const detachResult = await WorktreeOperation.detachHead(activeWorktreePath)
+      if (!detachResult.success) {
+        throw new WorktreeCreationError(
+          `Failed to detach HEAD in active worktree: ${detachResult.error}`,
+          repoPath,
+          0
+        )
       }
 
-      // Try to create temp worktree at the target branch (if specified)
-      // This avoids an extra checkout step after worktree creation
+      // Try to create temp worktree - if this fails, we need to rollback the HEAD detach
       let tempWorktree: string
       try {
-        tempWorktree = await this.createTemporaryWorktree(repoPath, targetBranch)
+        tempWorktree = await this.createTemporaryWorktree(repoPath)
       } catch (error) {
-        // Rollback: restore original branch in active worktree (only if we detached)
+        // Rollback: restore original branch in active worktree
+        // This is critical - without rollback, the user's worktree is left in a broken state
         if (originalBranch) {
           log.warn(
             `[ExecutionContextService] Temp worktree creation failed, rolling back HEAD detach`,
@@ -383,6 +369,8 @@ export class ExecutionContextService {
             originalBranch
           )
           if (!rollbackResult.success) {
+            // Rollback failed - log error but still throw original error
+            // User will need to manually checkout their branch
             log.error(
               `[ExecutionContextService] CRITICAL: Failed to rollback HEAD detach after temp worktree creation failure`,
               {
@@ -1088,21 +1076,15 @@ export class ExecutionContextService {
   /**
    * Create a temporary worktree with retry logic.
    * Retries handle transient failures like locked index files.
-   *
-   * @param repoPath - Path to the git repository
-   * @param targetBranch - Optional branch to check out in the temp worktree
    */
-  private static async createTemporaryWorktree(
-    repoPath: string,
-    targetBranch?: string
-  ): Promise<string> {
+  private static async createTemporaryWorktree(repoPath: string): Promise<string> {
     const baseDir = this.getWorktreeDir(repoPath)
     let lastError: Error | null = null
     let finalAttempt = 0
 
     for (let attempt = 1; attempt <= MAX_WORKTREE_RETRIES; attempt++) {
       finalAttempt = attempt
-      const result = await WorktreeOperation.createTemporary(repoPath, baseDir, targetBranch)
+      const result = await WorktreeOperation.createTemporary(repoPath, baseDir)
 
       if (result.success && result.worktreePath) {
         return result.worktreePath

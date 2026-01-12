@@ -50,27 +50,19 @@ describe('ExecutionContextService', () => {
   })
 
   describe('acquire', () => {
-    it('creates temporary worktree even when active worktree is clean', async () => {
+    it('returns active worktree path when clean', async () => {
       const context = await ExecutionContextService.acquire(repoPath)
 
-      // Always creates temp worktree for consistent UX
-      expect(context.executionPath).not.toBe(repoPath)
-      expect(context.executionPath).toContain('teapot-exec-')
-      expect(context.isTemporary).toBe(true)
-      expect(context.requiresCleanup).toBe(true)
+      expect(context.executionPath).toBe(repoPath)
+      expect(context.isTemporary).toBe(false)
+      expect(context.requiresCleanup).toBe(false)
       expect(context.createdAt).toBeGreaterThan(0)
       expect(context.operation).toBe('unknown')
-
-      // Clean up
-      await ExecutionContextService.release(context)
     })
 
     it('tracks operation type when provided', async () => {
       const context = await ExecutionContextService.acquire(repoPath, 'rebase')
       expect(context.operation).toBe('rebase')
-
-      // Clean up
-      await ExecutionContextService.release(context)
     })
 
     it('creates temporary worktree when active worktree is dirty (staged changes)', async () => {

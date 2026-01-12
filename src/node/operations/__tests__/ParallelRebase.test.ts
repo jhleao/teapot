@@ -111,12 +111,11 @@ describe('Parallel Rebase Workflow', () => {
       const context = await ExecutionContextService.acquire(repoPath, 'rebase')
 
       try {
-        // Assert: Always creates temp worktree now (even for untracked-only)
-        expect(context.isTemporary).toBe(true)
-        expect(context.executionPath).not.toBe(repoPath)
-        expect(context.executionPath).toContain('teapot-exec-')
+        // Assert: No temp worktree needed for untracked files only
+        expect(context.isTemporary).toBe(false)
+        expect(context.executionPath).toBe(repoPath)
 
-        // Assert: Untracked file is still in the main worktree (not in temp)
+        // Assert: Untracked file is still there
         const wipContent = await fs.promises.readFile(path.join(repoPath, 'wip.txt'), 'utf-8')
         expect(wipContent).toBe(uncommittedContent)
       } finally {
@@ -173,18 +172,16 @@ describe('Parallel Rebase Workflow', () => {
       }
     })
 
-    it('creates temp worktree even when working tree is clean', async () => {
+    it('uses main worktree when working tree is clean', async () => {
       // Working tree is clean (no uncommitted changes)
-      // But we still create temp worktree for consistent UX
 
       // Act: Acquire execution context
       const context = await ExecutionContextService.acquire(repoPath, 'rebase')
 
       try {
-        // Assert: Always creates temp worktree now (for consistent UX)
-        expect(context.isTemporary).toBe(true)
-        expect(context.executionPath).not.toBe(repoPath)
-        expect(context.executionPath).toContain('teapot-exec-')
+        // Assert: Context uses the main worktree (no temp needed)
+        expect(context.isTemporary).toBe(false)
+        expect(context.executionPath).toBe(repoPath)
       } finally {
         await ExecutionContextService.release(context)
       }
@@ -283,7 +280,7 @@ describe('Parallel Rebase Workflow', () => {
       expect(featureBranchParent).toBe(mainSha)
     })
 
-    it('handles rebase with clean worktree (uses temp worktree)', async () => {
+    it('handles rebase with clean worktree (no temp worktree needed)', async () => {
       // Arrange: Add a new commit to main
       execSync('git checkout main', { cwd: repoPath })
       await fs.promises.writeFile(path.join(repoPath, 'main-update.txt'), 'main update')
@@ -308,10 +305,9 @@ describe('Parallel Rebase Workflow', () => {
       const confirmResult = await RebaseOperation.confirmRebaseIntent(repoPath)
       expect(confirmResult).not.toBeNull()
 
-      // Assert: Rebase completed - check the feature branch ref (not HEAD, since we use temp worktree)
-      // The branch ref should have been updated even though rebase happened in temp worktree
-      const featureParentSha = execSync('git rev-parse feature^', { cwd: repoPath }).toString().trim()
-      expect(featureParentSha).toBe(mainSha)
+      // Assert: Rebase completed
+      const parentSha = execSync('git rev-parse HEAD^', { cwd: repoPath }).toString().trim()
+      expect(parentSha).toBe(mainSha)
     })
   })
 

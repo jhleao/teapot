@@ -145,8 +145,7 @@ export const IPC_CHANNELS = {
   getLastClonePath: 'getLastClonePath',
   readClipboardText: 'readClipboardText',
   checkCloneFolderName: 'checkCloneFolderName',
-  checkTargetPath: 'checkTargetPath',
-  getRebaseExecutionPath: 'getRebaseExecutionPath'
+  checkTargetPath: 'checkTargetPath'
 } as const
 
 export const IPC_EVENTS = {
@@ -400,10 +399,6 @@ export interface IpcContract {
   [IPC_CHANNELS.checkTargetPath]: {
     request: { targetPath: string }
     response: { valid: boolean; error?: string }
-  }
-  [IPC_CHANNELS.getRebaseExecutionPath]: {
-    request: { repoPath: string }
-    response: { path: string | null; isTemporary: boolean }
   }
 }
 

@@ -14,7 +14,6 @@
 
 import { log } from '@shared/logger'
 import {
-  IPC_EVENTS,
   type Commit,
   type CommitRewrite,
   type RebaseIntent,
@@ -22,8 +21,6 @@ import {
   type RebasePlan,
   type RebaseState
 } from '@shared/types'
-import { BrowserWindow } from 'electron'
-import * as fs from 'fs'
 import type { GitAdapter } from '../adapters/git'
 import {
   getGitAdapter,
@@ -40,7 +37,6 @@ import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { checkConflictResolution } from '../utils/conflict-markers'
-import { WorktreeOperation } from './WorktreeOperation'
 import { parseWorktreeConflictError } from './WorktreeUtils'
 
 /**
@@ -126,32 +122,12 @@ type ContextAcquisitionResult =
   | { success: false; error: RebaseExecutionResult }
 
 /**
- * Gets the first pending job's branch from a rebase state.
- * Used to optimize worktree creation by creating it at the target branch directly.
- */
-function getFirstPendingBranch(state: RebaseState): string | undefined {
-  const firstPendingId = state.queue.pendingJobIds[0]
-  if (!firstPendingId) return undefined
-  const job = state.jobsById[firstPendingId]
-  return job?.branch
-}
-
-/**
  * Acquires an execution context with proper error handling.
  * Returns either a context or an error result that can be returned directly.
- *
- * @param repoPath - Path to the git repository
- * @param targetBranch - Optional branch that will be operated on (helps optimize worktree creation)
  */
-async function acquireContext(
-  repoPath: string,
-  targetBranch?: string
-): Promise<ContextAcquisitionResult> {
+async function acquireContext(repoPath: string): Promise<ContextAcquisitionResult> {
   try {
-    const context = await ExecutionContextService.acquire(repoPath, {
-      operation: 'rebase',
-      targetBranch
-    })
+    const context = await ExecutionContextService.acquire(repoPath, 'rebase')
     return { success: true, context }
   } catch (error) {
     if (error instanceof WorktreeCreationError) {
@@ -240,8 +216,7 @@ export class RebaseExecutor {
         jobCount: Object.keys(existingSession.state.jobsById).length
       })
       // Acquire execution context - will reuse stored context if there's a conflict in progress
-      const targetBranch = getFirstPendingBranch(existingSession.state)
-      const acquisition = await acquireContext(repoPath, targetBranch)
+      const acquisition = await acquireContext(repoPath)
       if (!acquisition.success) {
         return acquisition.error
       }
@@ -306,9 +281,8 @@ export class RebaseExecutor {
       }
     }
 
-    // Acquire execution context for new session - pass first branch to optimize worktree creation
-    const targetBranch = getFirstPendingBranch(plan.state)
-    const acquisition = await acquireContext(repoPath, targetBranch)
+    // Acquire execution context for new session
+    const acquisition = await acquireContext(repoPath)
     if (!acquisition.success) {
       await SessionService.clearSession(repoPath)
       return acquisition.error
@@ -328,9 +302,7 @@ export class RebaseExecutor {
     const session = await SessionService.getSession(repoPath)
 
     // Acquire execution context - will reuse stored context from conflict
-    // Pass target branch in case we need to create a new context (e.g., stored context was cleared)
-    const targetBranch = session ? getFirstPendingBranch(session.state) : undefined
-    const acquisition = await acquireContext(repoPath, targetBranch)
+    const acquisition = await acquireContext(repoPath)
     if (!acquisition.success) {
       return acquisition.error
     }
@@ -601,14 +573,13 @@ export class RebaseExecutor {
     }
 
     // Acquire execution context - will reuse stored context from conflict
-    const session = await SessionService.getSession(repoPath)
-    const targetBranch = session ? getFirstPendingBranch(session.state) : undefined
-    const acquisition = await acquireContext(repoPath, targetBranch)
+    const acquisition = await acquireContext(repoPath)
     if (!acquisition.success) {
       return acquisition.error
     }
     const context = acquisition.context
 
+    const session = await SessionService.getSession(repoPath)
     const result = await git.rebaseSkip(context.executionPath)
 
     if (!result.success && result.conflicts.length > 0) {
@@ -1088,47 +1059,16 @@ export class RebaseExecutor {
     session: StoredRebaseSession,
     git: GitAdapter
   ): Promise<void> {
-    const detachedWorktrees = session.autoDetachedWorktrees ?? []
-    const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
-
-    for (const { worktreePath, branch } of detachedWorktrees) {
-      if (!fs.existsSync(worktreePath)) continue
-      const result = await WorktreeOperation.checkoutBranchInWorktree(worktreePath, branch)
-      if (!result.success) {
-        log.error(
-          `[RebaseExecutor] Failed to re-checkout ${branch} in worktree ${worktreePath}: ${result.error}`
-        )
-        reattachFailures.push({ worktreePath, branch, error: result.error })
-      }
-    }
+    // Note: We intentionally do NOT re-checkout branches in auto-detached worktrees.
+    // Auto-detach before rebase is necessary to allow the rebase to proceed, but
+    // auto re-checkout after rebase causes issues when the branch is already checked
+    // out elsewhere. Users can manually checkout the branch if needed.
 
     // Only checkout to original branch in execution path (not the active worktree)
     try {
       await git.checkout(executionPath, session.originalBranch)
     } catch {
       // Original branch might not exist anymore; ignore checkout failure
-    }
-
-    if (reattachFailures.length > 0) {
-      SessionService.clearAutoDetachedWorktrees(repoPath)
-      const warning = reattachFailures
-        .map(
-          (failure) =>
-            `${failure.branch} @ ${failure.worktreePath}${failure.error ? ` (${failure.error})` : ''}`
-        )
-        .join(', ')
-
-      // Send warning to all windows - wrap in try-catch since windows may be destroyed
-      BrowserWindow.getAllWindows().forEach((win) => {
-        try {
-          win.webContents.send(
-            IPC_EVENTS.rebaseWarning,
-            `Rebase finished but could not re-checkout: ${warning}`
-          )
-        } catch {
-          // Window may have been destroyed between getAllWindows and send - ignore
-        }
-      })
     }
 
     const finalState: RebaseState = {

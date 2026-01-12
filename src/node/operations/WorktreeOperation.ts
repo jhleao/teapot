@@ -279,18 +279,39 @@ export class WorktreeOperation {
    *
    * @param repoPath - Path to the git repository
    * @param baseDir - Optional base directory for the worktree (defaults to /tmp/teapot/exec)
+   * @param targetRef - Optional ref to check out (branch name or commit SHA). If not provided,
+   *                    creates at trunk (main/master) with detached HEAD.
    */
   static async createTemporary(
     repoPath: string,
-    baseDir?: string
+    baseDir?: string,
+    targetRef?: string
   ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
     try {
       const git = getGitAdapter()
 
-      // Get trunk ref for detached HEAD
-      const branches = await git.listBranches(repoPath)
-      const trunkName =
-        branches.find((b) => b === 'main') ?? branches.find((b) => b === 'master') ?? 'HEAD'
+      // Determine the ref to check out
+      let refToCheckout: string
+      let checkoutMode: 'branch' | 'detached'
+
+      if (targetRef) {
+        // Check if targetRef is a branch name
+        const branches = await git.listBranches(repoPath)
+        if (branches.includes(targetRef)) {
+          refToCheckout = targetRef
+          checkoutMode = 'branch'
+        } else {
+          // Assume it's a commit SHA - use detached HEAD
+          refToCheckout = targetRef
+          checkoutMode = 'detached'
+        }
+      } else {
+        // Default: trunk with detached HEAD
+        const branches = await git.listBranches(repoPath)
+        refToCheckout =
+          branches.find((b) => b === 'main') ?? branches.find((b) => b === 'master') ?? 'HEAD'
+        checkoutMode = 'detached'
+      }
 
       // Generate unique directory name using crypto
       const uniqueId = randomBytes(8).toString('hex')
@@ -301,14 +322,20 @@ export class WorktreeOperation {
       // Ensure the parent directory exists
       await fs.promises.mkdir(effectiveBaseDir, { recursive: true })
 
-      // Create worktree with detached HEAD for faster checkout
-      await execAsync(`git -C "${repoPath}" worktree add --detach "${worktreePath}" "${trunkName}"`)
+      // Create worktree - either at branch or with detached HEAD
+      if (checkoutMode === 'branch') {
+        await execAsync(`git -C "${repoPath}" worktree add "${worktreePath}" "${refToCheckout}"`)
+      } else {
+        await execAsync(
+          `git -C "${repoPath}" worktree add --detach "${worktreePath}" "${refToCheckout}"`
+        )
+      }
 
       // Resolve symlinks to get the canonical path (e.g., /var -> /private/var on macOS)
       const resolvedPath = await fs.promises.realpath(worktreePath)
 
       log.info(
-        `[WorktreeOperation] Created temporary worktree ${resolvedPath} at ${trunkName} (detached)`
+        `[WorktreeOperation] Created temporary worktree ${resolvedPath} at ${refToCheckout} (${checkoutMode})`
       )
       return { success: true, worktreePath: resolvedPath }
     } catch (error) {

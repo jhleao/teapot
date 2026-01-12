@@ -522,6 +522,17 @@ const createWorktree: IpcHandlerOf<'createWorktree'> = async (_event, { repoPath
   return result
 }
 
+const getRebaseExecutionPath: IpcHandlerOf<'getRebaseExecutionPath'> = async (
+  _event,
+  { repoPath }
+) => {
+  const context = await ExecutionContextService.getStoredContext(repoPath)
+  if (!context) {
+    return { path: null, isTemporary: false }
+  }
+  return { path: context.executionPath, isTemporary: context.isTemporary }
+}
+
 // ============================================================================
 // Registration
 // ============================================================================
@@ -582,4 +593,5 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.openWorktreeInTerminal, openWorktreeInTerminal)
   ipcMain.handle(IPC_CHANNELS.copyWorktreePath, copyWorktreePath)
   ipcMain.handle(IPC_CHANNELS.createWorktree, createWorktree)
+  ipcMain.handle(IPC_CHANNELS.getRebaseExecutionPath, getRebaseExecutionPath)
 }

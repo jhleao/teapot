@@ -310,7 +310,9 @@ describe('Parallel Rebase Workflow', () => {
 
       // Assert: Rebase completed - check the feature branch ref (not HEAD, since we use temp worktree)
       // The branch ref should have been updated even though rebase happened in temp worktree
-      const featureParentSha = execSync('git rev-parse feature^', { cwd: repoPath }).toString().trim()
+      const featureParentSha = execSync('git rev-parse feature^', { cwd: repoPath })
+        .toString()
+        .trim()
       expect(featureParentSha).toBe(mainSha)
     })
   })

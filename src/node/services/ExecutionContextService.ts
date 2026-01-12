@@ -33,7 +33,7 @@ import { WorktreeOperation } from '../operations/WorktreeOperation'
 import { configStore } from '../store'
 
 /** Supported operations for tracking */
-export type ExecutionOperation = 'rebase' | 'sync-trunk' | 'ship-it' | 'unknown'
+export type ExecutionOperation = 'rebase' | 'sync-trunk' | 'ship-it' | 'squash' | 'unknown'
 
 /**
  * Custom error class for lock acquisition failures.
@@ -253,12 +253,15 @@ export class ExecutionContextService {
    */
   static async acquire(
     repoPath: string,
-    operationOrOptions: ExecutionOperation | { operation?: ExecutionOperation; targetBranch?: string } = 'unknown'
+    operationOrOptions:
+      | ExecutionOperation
+      | { operation?: ExecutionOperation; targetBranch?: string } = 'unknown'
   ): Promise<ExecutionContext> {
     // Support both legacy (string) and new (options object) calling conventions
-    const options = typeof operationOrOptions === 'string'
-      ? { operation: operationOrOptions, targetBranch: undefined }
-      : operationOrOptions
+    const options =
+      typeof operationOrOptions === 'string'
+        ? { operation: operationOrOptions, targetBranch: undefined }
+        : operationOrOptions
     const operation = options.operation ?? 'unknown'
     const targetBranch = options.targetBranch
     // Validate repoPath early to fail fast with a clear error
@@ -347,8 +350,8 @@ export class ExecutionContextService {
 
       log.info(
         `[ExecutionContextService] Creating temporary worktree for ${operation}` +
-        ` (active: ${isActiveClean ? 'clean' : 'dirty'}, branch: ${currentBranch ?? 'detached'}` +
-        `${targetBranch ? `, target: ${targetBranch}` : ''}, needsDetach: ${needsDetach})...`
+          ` (active: ${isActiveClean ? 'clean' : 'dirty'}, branch: ${currentBranch ?? 'detached'}` +
+          `${targetBranch ? `, target: ${targetBranch}` : ''}, needsDetach: ${needsDetach})...`
       )
 
       // Detach HEAD if needed to release the branch ref

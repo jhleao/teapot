@@ -635,7 +635,26 @@ export class UiStateBuilder {
       // This keeps all business logic in the backend, making the UI dumb
       const isCurrent = branch.ref === state.currentBranch
       const canRename = !branch.isRemote && !branch.isTrunk
-      const canFold = !branch.isRemote && !branch.isTrunk
+      const canDelete = !isCurrent && !branch.isTrunk
+
+      // For squash: check if parent commit is on trunk (can't squash into trunk)
+      const branchCommit = state.commitMap.get(branch.headSha)
+      const parentSha = branchCommit?.parentSha
+      const parentIsOnTrunk = parentSha ? state.trunkShas.has(parentSha) : true
+      const canSquash = !branch.isRemote && !branch.isTrunk && !parentIsOnTrunk
+
+      // Compute the reason why squash is disabled (for tooltip)
+      let squashDisabledReason: string | undefined
+      if (!canSquash) {
+        if (branch.isRemote) {
+          squashDisabledReason = 'Cannot squash remote branches'
+        } else if (branch.isTrunk) {
+          squashDisabledReason = 'Cannot squash trunk branches'
+        } else if (parentIsOnTrunk) {
+          squashDisabledReason = 'Cannot squash: parent commit is on trunk'
+        }
+      }
+
       const canCreateWorktree = !branch.isRemote && !branch.isTrunk
 
       commitNode.branches.push({
@@ -649,7 +668,9 @@ export class UiStateBuilder {
         worktree,
         ownedCommitShas,
         canRename,
-        canFold,
+        canDelete,
+        canSquash,
+        squashDisabledReason,
         canCreateWorktree
       })
     })

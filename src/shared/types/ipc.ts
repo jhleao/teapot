@@ -1,7 +1,7 @@
 import { IpcMainInvokeEvent } from 'electron'
 import type { ForgeStateResult, MergeStrategy } from './git-forge'
 import type { RebaseState, WorktreeConflict } from './rebase'
-import type { SquashPreview, SquashResult } from './squash'
+import type { BranchChoice, SquashPreview, SquashResult } from './squash'
 import type { LocalRepo, UiState } from './ui'
 
 /**
@@ -119,8 +119,8 @@ export const IPC_CHANNELS = {
   createPullRequest: 'createPullRequest',
   uncommit: 'uncommit',
   updatePullRequest: 'updatePullRequest',
-  getFoldPreview: 'getFoldPreview',
-  foldIntoParent: 'foldIntoParent',
+  getSquashPreview: 'getSquashPreview',
+  squashIntoParent: 'squashIntoParent',
   shipIt: 'shipIt',
   syncTrunk: 'syncTrunk',
   createBranch: 'createBranch',
@@ -310,12 +310,17 @@ export interface IpcContract {
     }
     response: UiState | null
   }
-  [IPC_CHANNELS.getFoldPreview]: {
+  [IPC_CHANNELS.getSquashPreview]: {
     request: { repoPath: string; branchName: string }
     response: SquashPreview
   }
-  [IPC_CHANNELS.foldIntoParent]: {
-    request: { repoPath: string; branchName: string; commitMessage?: string }
+  [IPC_CHANNELS.squashIntoParent]: {
+    request: {
+      repoPath: string
+      branchName: string
+      commitMessage?: string
+      branchChoice?: BranchChoice
+    }
     response: SquashResult
   }
   [IPC_CHANNELS.shipIt]: {

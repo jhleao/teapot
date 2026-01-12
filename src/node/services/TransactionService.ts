@@ -25,7 +25,12 @@ import { log } from '@shared/logger'
 import type { RebaseState } from '@shared/types'
 
 /** Intent types for different operations */
-export type IntentType = 'continue' | 'abort' | 'execute-job' | 'finalize'
+export type IntentType =
+  | 'continue'
+  | 'abort'
+  | 'execute-job'
+  | 'finalize'
+  | 'squash-descendant-rebase'
 
 /** Intent status for tracking operation state */
 export type IntentStatus = 'pending' | 'executing' | 'completed' | 'failed'

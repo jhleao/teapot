@@ -186,27 +186,26 @@ describe('ExecutionContextService', () => {
 
   describe('storeContext / hasStoredContext / getStoredExecutionPath', () => {
     it('stores and retrieves temporary context', async () => {
-      // Create a real temp directory that exists (since loadPersistedContext validates existence)
-      const fakeTempPath = path.join(tempDir, 'fake-temp-worktree')
-      await fs.promises.mkdir(fakeTempPath, { recursive: true })
+      // Create a dirty state to force temp worktree creation
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
 
-      const context = {
-        executionPath: fakeTempPath,
-        isTemporary: true,
-        requiresCleanup: true,
-        createdAt: Date.now(),
-        operation: 'rebase' as const,
-        repoPath
-      }
+      // Acquire a real temp worktree (validates against git worktree list on load)
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+      expect(context.isTemporary).toBe(true)
 
       await ExecutionContextService.storeContext(repoPath, context)
 
       expect(await ExecutionContextService.hasStoredContext(repoPath)).toBe(true)
-      expect(await ExecutionContextService.getStoredExecutionPath(repoPath)).toBe(fakeTempPath)
+      expect(await ExecutionContextService.getStoredExecutionPath(repoPath)).toBe(
+        context.executionPath
+      )
 
       // Verify operation is persisted
       const storedContext = await ExecutionContextService.getStoredContext(repoPath)
       expect(storedContext?.operation).toBe('rebase')
+
+      // Clean up
+      await ExecutionContextService.clearStoredContext(repoPath)
     })
 
     it('does not store non-temporary context', async () => {
@@ -426,24 +425,18 @@ describe('ExecutionContextService', () => {
     })
 
     it('getStoredContextOrThrow returns context when it exists', async () => {
-      // Create a real temp directory for the worktree
-      const fakeTempPath = path.join(tempDir, 'fake-temp-worktree')
-      await fs.promises.mkdir(fakeTempPath, { recursive: true })
+      // Create a dirty state to force temp worktree creation
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
 
-      const context = {
-        executionPath: fakeTempPath,
-        isTemporary: true,
-        requiresCleanup: true,
-        createdAt: Date.now(),
-        operation: 'rebase' as const,
-        repoPath
-      }
+      // Acquire a real temp worktree (validates against git worktree list on load)
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+      expect(context.isTemporary).toBe(true)
 
       await ExecutionContextService.storeContext(repoPath, context)
 
       // Should not throw
       const stored = await ExecutionContextService.getStoredContextOrThrow(repoPath)
-      expect(stored.executionPath).toBe(fakeTempPath)
+      expect(stored.executionPath).toBe(context.executionPath)
       expect(stored.operation).toBe('rebase')
 
       // Clean up
@@ -564,6 +557,35 @@ describe('ExecutionContextService', () => {
 
       // Context file should be cleared
       expect(fs.existsSync(contextFilePath)).toBe(false)
+    })
+
+    it('rejects context pointing to unregistered worktree', async () => {
+      // Create a directory that exists but isn't in git worktree list
+      const orphanDir = path.join(repoPath, '.git', 'teapot-worktrees', 'teapot-exec-orphan')
+      await fs.promises.mkdir(orphanDir, { recursive: true })
+
+      // Manually create context file pointing to orphan directory
+      const contextFilePath = path.join(repoPath, '.git', 'teapot-exec-context.json')
+      await fs.promises.writeFile(
+        contextFilePath,
+        JSON.stringify({
+          executionPath: orphanDir,
+          repoPath,
+          isTemporary: true,
+          createdAt: Date.now(),
+          operation: 'rebase'
+        })
+      )
+
+      // Should return null because directory exists but isn't a registered worktree
+      const context = await ExecutionContextService.getStoredContext(repoPath)
+      expect(context).toBeNull()
+
+      // Context file should be cleared
+      expect(fs.existsSync(contextFilePath)).toBe(false)
+
+      // Clean up the orphan directory
+      await fs.promises.rm(orphanDir, { recursive: true, force: true })
     })
   })
 

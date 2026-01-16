@@ -209,7 +209,10 @@ export class BranchOperation {
    * Syncs the trunk branch with origin by fetching and fast-forwarding.
    * Detects the trunk branch automatically (main, master, etc.).
    * This is the ONLY operation that does fast-forwarding.
-   * Automatically uses a clean worktree if the active worktree is dirty.
+   *
+   * If the user is on trunk with uncommitted changes, the operation is blocked
+   * with a helpful error message (to prevent confusing detached HEAD state).
+   * If the user is on a different branch, a temp worktree is used for the sync.
    */
   static async syncTrunk(repoPath: string): Promise<SyncTrunkResult> {
     const git = getGitAdapter()
@@ -244,6 +247,21 @@ export class BranchOperation {
           status: 'success',
           message: `Created ${trunkName} from origin`,
           trunkName
+        }
+      }
+
+      // Block if user is on trunk with dirty tree - prevents confusing detached HEAD state
+      const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+      const currentBranch = await git.currentBranch(activeWorktreePath)
+
+      if (currentBranch === trunkName) {
+        const isDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
+        if (isDirty) {
+          return {
+            status: 'error',
+            message: `Cannot sync ${trunkName} while you have uncommitted changes. Commit, stash, or discard your changes first.`,
+            trunkName
+          }
         }
       }
 

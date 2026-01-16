@@ -1,5 +1,5 @@
 import type { BranchChoice, SquashPreview, UiBranch } from '@shared/types'
-import React, { memo, useCallback, useMemo, useState } from 'react'
+import React, { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'

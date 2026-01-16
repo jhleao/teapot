@@ -245,10 +245,7 @@ function createRepoWithBranch(scenario: BranchScenario): Repo {
   // If this isn't trunk, we need a trunk branch for the repo to be valid
   const branches = isTrunk
     ? [branch]
-    : [
-        createBranch({ ref: 'main', headSha: commit.sha, isTrunk: true }),
-        branch
-      ]
+    : [createBranch({ ref: 'main', headSha: commit.sha, isTrunk: true }), branch]
 
   return createRepo({
     commits: [commit],

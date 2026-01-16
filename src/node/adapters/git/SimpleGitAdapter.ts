@@ -1167,8 +1167,18 @@ export class SimpleGitAdapter implements GitAdapter {
 
   /**
    * Resolve the actual git directory path.
-   * In linked worktrees, .git is a file containing "gitdir: /path/to/actual/git/dir".
-   * In regular repos, .git is a directory.
+   *
+   * In main worktrees, .git is a directory containing git state.
+   * In linked worktrees (created via `git worktree add`), .git is a file
+   * containing "gitdir: /path/to/actual/git/dir" pointing to the real git directory.
+   *
+   * This distinction is critical for accessing git-internal state like:
+   * - rebase-merge/ and rebase-apply/ (rebase state detection)
+   * - index.lock (lock file detection)
+   * - Other git internals that live in the git directory
+   *
+   * Code that assumes .git is always a directory will fail silently or incorrectly
+   * for linked worktrees. Always use this method when accessing git internals.
    */
   private async resolveGitDir(dir: string): Promise<string> {
     const gitPath = path.join(dir, '.git')

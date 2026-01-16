@@ -1212,13 +1212,16 @@ export class SimpleGitAdapter implements GitAdapter {
     timeoutMs: number,
     operationName: string
   ): Promise<T> {
+    let timeoutId: NodeJS.Timeout
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
+      timeoutId = setTimeout(
         () => reject(new Error(`Git '${operationName}' timed out after ${timeoutMs}ms`)),
         timeoutMs
       )
     })
-    return Promise.race([operation(), timeoutPromise])
+    return Promise.race([operation(), timeoutPromise]).finally(() => {
+      clearTimeout(timeoutId)
+    })
   }
 
   // ============================================================================

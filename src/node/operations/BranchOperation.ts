@@ -8,7 +8,6 @@
  */
 
 import { log } from '@shared/logger'
-import { getDeleteBranchPermission } from '@shared/permissions'
 import { findOpenPr } from '@shared/types/git-forge'
 import { isTrunkRef, type CheckoutResult } from '@shared/types/repo'
 import {
@@ -146,17 +145,13 @@ export class BranchOperation {
   static async delete(repoPath: string, branchName: string): Promise<void> {
     const git = getGitAdapter()
 
-    // Check permission using shared permission logic
-    const isTrunk = isTrunkRef(branchName, false)
+    // Validate branch can be deleted
+    if (isTrunkRef(branchName, false)) {
+      throw new TrunkProtectionError(branchName, 'delete')
+    }
     const currentBranch = await git.currentBranch(repoPath)
-    const isCurrent = currentBranch === branchName
-
-    const permission = getDeleteBranchPermission({ isTrunk, isCurrent })
-    if (!permission.allowed) {
-      if (permission.reason === 'is-trunk') {
-        throw new TrunkProtectionError(branchName, 'delete')
-      }
-      throw new BranchError(permission.deniedReason, branchName, 'delete')
+    if (currentBranch === branchName) {
+      throw new BranchError('Cannot delete the checked out branch', branchName, 'delete')
     }
 
     await this.removeWorktreeForBranch(repoPath, branchName, 'delete')

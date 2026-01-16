@@ -637,6 +637,16 @@ export class UiStateBuilder {
       const canRename = !branch.isRemote && !branch.isTrunk
       const canDelete = !isCurrent && !branch.isTrunk
 
+      // Compute the reason why delete is disabled (for tooltip)
+      let deleteDisabledReason: string | undefined
+      if (!canDelete) {
+        if (branch.isTrunk) {
+          deleteDisabledReason = 'Cannot delete trunk'
+        } else if (isCurrent) {
+          deleteDisabledReason = 'Cannot delete the checked out branch'
+        }
+      }
+
       // For squash: check if parent commit is on trunk (can't squash into trunk)
       const branchCommit = state.commitMap.get(branch.headSha)
       const parentSha = branchCommit?.parentSha
@@ -669,6 +679,7 @@ export class UiStateBuilder {
         ownedCommitShas,
         canRename,
         canDelete,
+        deleteDisabledReason,
         canSquash,
         squashDisabledReason,
         canCreateWorktree

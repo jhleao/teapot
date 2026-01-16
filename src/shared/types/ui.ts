@@ -87,6 +87,8 @@ export type UiBranch = {
   canRename: boolean
   /** True if this branch can be deleted. False for current and trunk branches. */
   canDelete: boolean
+  /** Human-readable reason why delete is disabled, if canDelete is false. */
+  deleteDisabledReason?: string
   /** True if this branch can be squashed into its parent. False for remote, trunk, and branches whose parent is trunk. */
   canSquash: boolean
   /** Human-readable reason why squash is disabled, if canSquash is false. */

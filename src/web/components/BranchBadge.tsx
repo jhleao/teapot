@@ -1,4 +1,3 @@
-import { getDeleteBranchPermission } from '@shared/permissions'
 import type { BranchChoice, SquashPreview, UiBranch } from '@shared/types'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -145,11 +144,6 @@ export const BranchBadge = memo(function BranchBadge({
   // Show "Open in..." options if we have an openable path
   const canOpen = openablePath != null
 
-  const deletePermission = useMemo(
-    () => getDeleteBranchPermission({ isTrunk: data.isTrunk, isCurrent: data.isCurrent }),
-    [data.isTrunk, data.isCurrent]
-  )
-
   return (
     <>
       <ContextMenu
@@ -171,8 +165,8 @@ export const BranchBadge = memo(function BranchBadge({
             {!data.isRemote && (
               <ContextMenuItem
                 onClick={handleDelete}
-                disabled={!deletePermission.allowed}
-                disabledReason={deletePermission.deniedReason}
+                disabled={!data.canDelete}
+                disabledReason={data.deleteDisabledReason}
               >
                 Delete branch
               </ContextMenuItem>

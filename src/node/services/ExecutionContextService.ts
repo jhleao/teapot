@@ -1045,6 +1045,25 @@ export class ExecutionContextService {
         return null
       }
 
+      // Validate the temp worktree is registered with git
+      if (context.isTemporary) {
+        const git = getGitAdapter()
+        const worktrees = await git.listWorktrees(repoPath)
+        const resolvedPath = await fs.promises
+          .realpath(context.executionPath)
+          .catch(() => context.executionPath)
+        const isRegistered = worktrees.some((wt) => wt.path === resolvedPath)
+
+        if (!isRegistered) {
+          log.warn(
+            `[ExecutionContextService] Persisted context points to unregistered worktree: ${context.executionPath}`,
+            { repoPath, registeredWorktrees: worktrees.map((wt) => wt.path) }
+          )
+          await this.clearPersistedContext(repoPath)
+          return null
+        }
+      }
+
       return context
     } catch {
       return null

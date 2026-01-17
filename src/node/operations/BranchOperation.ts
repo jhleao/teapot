@@ -7,6 +7,9 @@
  * - Sync trunk with remote (fast-forward only)
  */
 
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
 import { log } from '@shared/logger'
 import { getDeleteBranchPermission } from '@shared/permissions'
 import { findOpenPr } from '@shared/types/git-forge'
@@ -25,6 +28,8 @@ import { BranchError, TrunkProtectionError, type TrunkProtectedOperation } from 
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
 import { normalizePath, pruneIfStale } from './WorktreeUtils'
+
+const execAsync = promisify(exec)
 
 /**
  * Options for trunk protection validation.
@@ -250,18 +255,18 @@ export class BranchOperation {
         }
       }
 
-      // Block if user is on trunk with dirty tree - prevents confusing detached HEAD state
+      // Check current branch and dirty state
       const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
       const currentBranch = await git.currentBranch(activeWorktreePath)
+      const isOnTrunk = currentBranch === trunkName
+      const isDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
 
-      if (currentBranch === trunkName) {
-        const isDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
-        if (isDirty) {
-          return {
-            status: 'error',
-            message: `Cannot sync ${trunkName} while you have uncommitted changes. Commit, stash, or discard your changes first.`,
-            trunkName
-          }
+      // Block if user is on trunk with dirty tree - prevents confusing state
+      if (isOnTrunk && isDirty) {
+        return {
+          status: 'error',
+          message: `Cannot sync ${trunkName} while you have uncommitted changes. Commit, stash, or discard your changes first.`,
+          trunkName
         }
       }
 
@@ -275,11 +280,31 @@ export class BranchOperation {
         }
       }
 
-      // Acquire execution context for checkout/merge operations
-      // Pass trunkName as target since we'll be checking it out
+      // If user is on trunk with clean tree, we can merge in place without a temp worktree
+      if (isOnTrunk && !isDirty) {
+        const ffResult = await this.fastForwardTrunk(
+          activeWorktreePath,
+          trunkName,
+          remoteRef,
+          git
+        )
+        if (!ffResult.success) {
+          return {
+            status: 'error',
+            message: ffResult.error ?? 'Fast-forward failed',
+            trunkName
+          }
+        }
+        return {
+          status: 'success',
+          message: `Synced ${trunkName} with origin`,
+          trunkName
+        }
+      }
+
+      // User is on a different branch - use temp worktree for the operation
       const context = await ExecutionContextService.acquire(repoPath, {
-        operation: 'sync-trunk',
-        targetBranch: trunkName
+        operation: 'sync-trunk'
       })
       try {
         // Perform fast-forward using the execution path
@@ -433,38 +458,28 @@ export class BranchOperation {
       return { success: true }
     }
 
-    // We're on a different branch - need to checkout trunk, FF, then return
-    const originalHead = await git.resolveRef(repoPath, 'HEAD')
-
+    // We're on a different branch (or detached HEAD).
+    // Use fetch with refspec to update the local branch ref directly.
+    // This works even if the branch is checked out in another worktree.
     try {
-      await git.checkout(repoPath, trunkName)
+      // Parse remote name from remoteRef (e.g., "origin/main" -> "origin")
+      const remoteName = remoteRef.split('/')[0] ?? 'origin'
 
-      if (supportsMerge(git)) {
-        const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
-        if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-          await this.restoreBranch(repoPath, currentBranch, originalHead, git)
-          return { success: false, error: mergeResult.error }
-        }
-      }
-
-      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
+      // Fetch and update local branch to match remote
+      // The refspec "refs/heads/main:refs/heads/main" updates local main to match remote main
+      await execAsync(
+        `git -C "${repoPath}" fetch "${remoteName}" "refs/heads/${trunkName}:refs/heads/${trunkName}"`
+      )
       return { success: true }
     } catch (error) {
-      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
-      throw error
-    }
-  }
+      const message = error instanceof Error ? error.message : String(error)
 
-  private static async restoreBranch(
-    repoPath: string,
-    branchName: string | null,
-    fallbackRef: string,
-    git: GitAdapter
-  ): Promise<void> {
-    try {
-      await git.checkout(repoPath, branchName ?? fallbackRef)
-    } catch {
-      log.error('[BranchOperation] Failed to restore original branch')
+      // Check for non-fast-forward error
+      if (message.includes('non-fast-forward') || message.includes('rejected')) {
+        return { success: false, error: `Cannot fast-forward ${trunkName}: local branch has diverged` }
+      }
+
+      return { success: false, error: message }
     }
   }
 }

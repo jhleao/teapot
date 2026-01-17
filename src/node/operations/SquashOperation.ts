@@ -102,14 +102,10 @@ async function verifyBranchPosition(
  * Acquire an execution context for the squash operation.
  * Uses a temporary worktree to keep the user's working directory untouched.
  */
-async function acquireSquashContext(
-  repoPath: string,
-  targetBranch: string
-): Promise<SquashContextResult> {
+async function acquireSquashContext(repoPath: string): Promise<SquashContextResult> {
   try {
     const context = await ExecutionContextService.acquire(repoPath, {
-      operation: 'squash',
-      targetBranch
+      operation: 'squash'
     })
     return { success: true, context }
   } catch (error) {
@@ -368,7 +364,7 @@ export class SquashOperation {
     // working directory untouched. The temp worktree shares .git with the main
     // repo, so branch operations performed there affect the main repo too.
     options.onPhaseStart?.('acquiring-context')
-    const contextResult = await acquireSquashContext(repoPath, parentBranch)
+    const contextResult = await acquireSquashContext(repoPath)
     if (!contextResult.success) {
       return contextResult.error
     }

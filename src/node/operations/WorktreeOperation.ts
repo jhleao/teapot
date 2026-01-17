@@ -17,7 +17,7 @@ import { promisify } from 'util'
 
 import { log } from '@shared/logger'
 
-import { getGitAdapter } from '../adapters/git'
+import { getGitAdapter, resolveTrunkRef } from '../adapters/git'
 import { BranchUtils } from '../domain/BranchUtils'
 import { configStore } from '../store'
 import { ExternalApps } from '../utils/ExternalApps'
@@ -287,10 +287,10 @@ export class WorktreeOperation {
     try {
       const git = getGitAdapter()
 
-      // Find trunk branch to use as base
+      // Find trunk branch to use as base (consistent with resolveTrunkRef used elsewhere)
       const branches = await git.listBranches(repoPath)
-      const refToCheckout =
-        branches.find((b) => b === 'main') ?? branches.find((b) => b === 'master') ?? 'HEAD'
+      const trunkName = await resolveTrunkRef(repoPath, branches)
+      const refToCheckout = trunkName ?? 'HEAD'
 
       // Generate unique directory name using crypto
       const uniqueId = randomBytes(8).toString('hex')

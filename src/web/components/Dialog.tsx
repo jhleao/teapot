@@ -59,6 +59,7 @@ export function DialogContent({
       className={cn(
         'bg-background text-foreground border-border animate-in fade-in slide-in-from-top-2 fixed top-[50%] left-[50%]',
         'z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
+        'max-h-[85vh] overflow-y-auto',
         'gap-4 border p-6 shadow-lg duration-200 sm:rounded-lg',
         className
       )}

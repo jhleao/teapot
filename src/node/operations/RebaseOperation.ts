@@ -10,6 +10,7 @@
  * Internally delegates execution to `RebaseExecutor`.
  */
 
+import { log } from '@shared/logger'
 import type {
   Configuration,
   DetachedWorktree,
@@ -110,6 +111,13 @@ export class RebaseOperation {
     baseSha: string,
     options: { preDetachedWorktrees?: DetachedWorktree[] } = {}
   ): Promise<SubmitRebaseIntentResponse> {
+    log.debug('[RebaseOperation] submitRebaseIntent() called', {
+      repoPath,
+      headSha: headSha?.slice(0, 8),
+      baseSha: baseSha?.slice(0, 8),
+      preDetachedWorktreeCount: options.preDetachedWorktrees?.length ?? 0
+    })
+
     const config: Configuration = { repoPath }
     const gitAdapter = getGitAdapter()
     const [repo, forgeState, currentBranch] = await Promise.all([
@@ -204,7 +212,13 @@ export class RebaseOperation {
    * Returns updated UI state; throws on fatal errors.
    */
   static async confirmRebaseIntent(repoPath: string): Promise<RebaseOperationResponse> {
+    log.debug('[RebaseOperation] confirmRebaseIntent() called', { repoPath })
     const session = await SessionService.getSession(repoPath)
+    log.debug('[RebaseOperation] confirmRebaseIntent() session state', {
+      hasSession: !!session,
+      intentTargetCount: session?.intent.targets.length,
+      pendingJobCount: session?.state.queue.pendingJobIds.length
+    })
 
     if (!session) {
       // No session is a benign scenario (e.g., user retried); return current UI state.
@@ -220,6 +234,11 @@ export class RebaseOperation {
       )
 
       if (result.status === 'error') {
+        log.error('[RebaseOperation] confirmRebaseIntent() execution failed', {
+          repoPath,
+          errorCode: result.errorCode,
+          message: result.message
+        })
         await SessionService.clearSession(repoPath)
         throw new RebaseOperationError(result.message, result.errorCode)
       }
@@ -242,8 +261,13 @@ export class RebaseOperation {
    * Also cleans up any stored execution context and temp worktree from parallel mode.
    */
   static async cancelRebaseIntent(repoPath: string) {
+    log.debug('[RebaseOperation] cancelRebaseIntent() called', { repoPath })
     // Get session info BEFORE clearing - we need originalBranch to restore active worktree
     const session = await SessionService.getSession(repoPath)
+    log.debug('[RebaseOperation] cancelRebaseIntent() session state', {
+      hasSession: !!session,
+      originalBranch: session?.originalBranch
+    })
 
     // Check for stored execution context (temp worktree)
     const storedContext = await ExecutionContextService.getStoredContext(repoPath)
@@ -303,7 +327,12 @@ export class RebaseOperation {
    * Continue a rebase after conflicts are resolved.
    */
   static async continueRebase(repoPath: string): Promise<RebaseOperationResponse> {
+    log.debug('[RebaseOperation] continueRebase() called', { repoPath })
     const result = await RebaseExecutor.continue(repoPath)
+    log.debug('[RebaseOperation] continueRebase() result', {
+      status: result.status,
+      hasConflicts: result.status === 'conflict' ? result.conflicts?.length : undefined
+    })
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (result.status === 'error') {
@@ -321,7 +350,9 @@ export class RebaseOperation {
    * Abort a rebase and return updated UI state.
    */
   static async abortRebase(repoPath: string): Promise<RebaseOperationResponse> {
+    log.debug('[RebaseOperation] abortRebase() called', { repoPath })
     const result = await RebaseExecutor.abort(repoPath)
+    log.debug('[RebaseOperation] abortRebase() result', { success: result.success })
     const uiState = await UiStateOperation.getUiState(repoPath)
 
     if (!result.success) {
@@ -357,6 +388,7 @@ export class RebaseOperation {
    * the execution context path for rebase state, not the main repo path.
    */
   static async getRebaseStatus(repoPath: string): Promise<RebaseStatusResponse> {
+    log.debug('[RebaseOperation] getRebaseStatus() called', { repoPath })
     try {
       const adapter = getGitAdapter()
       const session = await SessionService.getSession(repoPath)
@@ -381,14 +413,25 @@ export class RebaseOperation {
         }
       }
 
-      return {
+      const status: RebaseStatusResponse = {
         isRebasing: workingTreeStatus.isRebasing,
         hasSession: session !== null,
         state: session?.state,
         conflicts: workingTreeStatus.conflicted,
         progress
       }
-    } catch {
+      log.debug('[RebaseOperation] getRebaseStatus() returning', {
+        isRebasing: status.isRebasing,
+        hasSession: status.hasSession,
+        conflictCount: status.conflicts?.length ?? 0,
+        sessionStatus: session?.state.session.status,
+        executionPath
+      })
+      return status
+    } catch (error) {
+      log.debug('[RebaseOperation] getRebaseStatus() error, returning default', {
+        error: error instanceof Error ? error.message : String(error)
+      })
       return { isRebasing: false, hasSession: false, conflicts: [] }
     }
   }

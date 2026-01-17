@@ -329,7 +329,14 @@ export class GitHubAdapter implements GitForgeAdapter {
     for (let i = 0; i < openPrs.length; i += CONCURRENCY) {
       const batch = openPrs.slice(i, i + CONCURRENCY)
       const results = await Promise.all(
-        batch.map((pr) => this.fetchPrDetailsWithChecks(pr.number).catch(() => null))
+        batch.map((pr) =>
+          this.fetchPrDetailsWithChecks(pr.number).catch((error) => {
+            log.debug(`[GitHubAdapter] fetchPrDetailsWithChecks() failed for PR #${pr.number}`, {
+              message: error instanceof Error ? error.message : String(error)
+            })
+            return null
+          })
+        )
       )
       batch.forEach((pr, idx) => {
         const result = results[idx]

@@ -14,6 +14,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const [pat, setPat] = useState('')
   const [editor, setEditor] = useState('')
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
+  const [debugLogging, setDebugLogging] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -25,14 +26,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor, storedStrategy] = await Promise.all([
+      const [storedPat, storedEditor, storedStrategy, storedDebugLogging] = await Promise.all([
         window.api.getGithubPat(),
         window.api.getPreferredEditor(),
-        window.api.getMergeStrategy()
+        window.api.getMergeStrategy(),
+        window.api.getDebugLogging()
       ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
       setMergeStrategy(storedStrategy)
+      setDebugLogging(storedDebugLogging)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -67,6 +70,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
       await window.api.setMergeStrategy({ strategy: newStrategy })
     } catch (error) {
       log.error('Failed to save merge strategy:', error)
+    }
+  }
+
+  const handleDebugLoggingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const enabled = e.target.checked
+    setDebugLogging(enabled)
+    try {
+      await window.api.setDebugLogging({ enabled })
+    } catch (error) {
+      log.error('Failed to save debug logging setting:', error)
     }
   }
 
@@ -150,6 +163,39 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
               <option value="squash">Squash (single commit)</option>
               <option value="merge">Merge commit (preserve branch history)</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm leading-none font-medium">Debug Logging</h4>
+            <p className="text-muted-foreground text-sm">
+              Capture detailed logs for troubleshooting. Each repository has its own log file at{' '}
+              <code className="bg-muted rounded px-1 py-0.5 text-xs">.git/teapot-debug.log</code>,
+              cleared when Teapot starts.
+            </p>
+            <div className="flex items-center justify-between">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={debugLogging}
+                  onChange={handleDebugLoggingChange}
+                  disabled={isLoading}
+                  className="accent-accent h-4 w-4 rounded border-gray-300"
+                />
+                <span className="text-sm">Enable debug logging</span>
+              </label>
+              <button
+                type="button"
+                onClick={async () => {
+                  const result = await window.api.showDebugLogFile()
+                  if (!result.success && result.error) {
+                    log.warn('Could not show debug log file:', result.error)
+                  }
+                }}
+                className="text-accent text-sm hover:underline"
+              >
+                Show log file
+              </button>
+            </div>
           </div>
         </div>
       </DialogContent>

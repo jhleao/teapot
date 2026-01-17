@@ -12,6 +12,111 @@ import { log } from '@shared/logger'
 
 import { getGitAdapter } from '../adapters/git'
 
+// ===========================================================================
+// Git Directory Resolution
+// ===========================================================================
+
+/**
+ * Cache for resolved git directories to avoid repeated I/O.
+ * Maps repoPath -> resolved git directory path.
+ */
+const gitDirCache: Map<string, string> = new Map()
+
+/**
+ * Resolve the actual git directory path for a repository.
+ *
+ * In a regular git repository, .git is a directory containing the git data.
+ * In a linked worktree, .git is a file containing "gitdir: /path/to/actual/git/dir".
+ *
+ * This function handles both cases and returns the path where git stores its data
+ * (lock files, context files, worktree directories, etc.).
+ *
+ * Results are cached per repoPath since the git directory doesn't change during execution.
+ *
+ * @param repoPath - Path to the repository (or worktree)
+ * @returns The resolved git directory path
+ */
+export async function resolveGitDir(repoPath: string): Promise<string> {
+  // Check cache first
+  const cached = gitDirCache.get(repoPath)
+  if (cached) {
+    return cached
+  }
+
+  const gitPath = path.join(repoPath, '.git')
+
+  try {
+    const stat = await fs.promises.stat(gitPath)
+    if (stat.isDirectory()) {
+      gitDirCache.set(repoPath, gitPath)
+      return gitPath
+    }
+
+    // It's a file - read the gitdir pointer
+    const content = await fs.promises.readFile(gitPath, 'utf-8')
+    const match = content.match(/^gitdir:\s*(.+)$/m)
+    if (match) {
+      const linkedGitDir = match[1].trim()
+      const resolvedDir = path.isAbsolute(linkedGitDir)
+        ? linkedGitDir
+        : path.resolve(repoPath, linkedGitDir)
+      gitDirCache.set(repoPath, resolvedDir)
+      return resolvedDir
+    }
+
+    // Fallback if format doesn't match
+    gitDirCache.set(repoPath, gitPath)
+    return gitPath
+  } catch {
+    // If we can't stat, assume it's a directory
+    gitDirCache.set(repoPath, gitPath)
+    return gitPath
+  }
+}
+
+/**
+ * Synchronous version of resolveGitDir for use in exit handlers.
+ * Does NOT use the cache since this is only called during process exit.
+ *
+ * @param repoPath - Path to the repository (or worktree)
+ * @returns The resolved git directory path
+ */
+export function resolveGitDirSync(repoPath: string): string {
+  const gitPath = path.join(repoPath, '.git')
+
+  try {
+    const stat = fs.statSync(gitPath)
+    if (stat.isDirectory()) {
+      return gitPath
+    }
+
+    // It's a file - read the gitdir pointer
+    const content = fs.readFileSync(gitPath, 'utf-8')
+    const match = content.match(/^gitdir:\s*(.+)$/m)
+    if (match) {
+      const linkedGitDir = match[1].trim()
+      return path.isAbsolute(linkedGitDir)
+        ? linkedGitDir
+        : path.resolve(repoPath, linkedGitDir)
+    }
+
+    return gitPath
+  } catch {
+    return gitPath
+  }
+}
+
+/**
+ * Clear the git directory cache. Useful for testing.
+ */
+export function clearGitDirCache(): void {
+  gitDirCache.clear()
+}
+
+// ===========================================================================
+// Stale Worktree Detection
+// ===========================================================================
+
 /**
  * Result of checking whether a worktree is stale
  */

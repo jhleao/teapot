@@ -14,12 +14,15 @@ vi.mock('../../store', () => ({
 }))
 
 import {
+  clearGitDirCache,
   isWorktreeConflictError,
   isWorktreeStale,
   normalizePath,
   parseWorktreeConflictError,
   pruneIfStale,
   pruneStaleWorktrees,
+  resolveGitDir,
+  resolveGitDirSync,
   retryWithPrune
 } from '../WorktreeUtils'
 
@@ -136,6 +139,121 @@ describe('normalizePath', () => {
     } finally {
       await fs.promises.rm(tempDir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('resolveGitDir', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    clearGitDirCache()
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-resolve-git-dir-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    clearGitDirCache()
+    try {
+      execSync('git worktree prune', { cwd: repoPath })
+    } catch {
+      // ignore
+    }
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should return .git path for regular repository', async () => {
+    const result = await resolveGitDir(repoPath)
+    expect(result).toBe(path.join(repoPath, '.git'))
+  })
+
+  it('should resolve gitdir pointer for linked worktree', async () => {
+    // Create a linked worktree
+    const worktreePath = path.join(os.tmpdir(), `teapot-test-linked-wt-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" -b linked-branch`, { cwd: repoPath })
+
+    try {
+      // Verify .git is a file in the linked worktree
+      const gitPath = path.join(worktreePath, '.git')
+      const stat = await fs.promises.stat(gitPath)
+      expect(stat.isFile()).toBe(true)
+
+      // resolveGitDir should return the actual git directory
+      const result = await resolveGitDir(worktreePath)
+      expect(result).toContain('.git/worktrees/')
+      expect(result).not.toBe(gitPath)
+
+      // Should be able to access files in the resolved directory
+      const headPath = path.join(result, 'HEAD')
+      expect(fs.existsSync(headPath)).toBe(true)
+    } finally {
+      execSync(`git worktree remove "${worktreePath}"`, { cwd: repoPath })
+    }
+  })
+
+  it('should cache results for repeated calls', async () => {
+    clearGitDirCache()
+
+    const result1 = await resolveGitDir(repoPath)
+    const result2 = await resolveGitDir(repoPath)
+
+    expect(result1).toBe(result2)
+  })
+
+  it('should handle non-existent paths gracefully', async () => {
+    const result = await resolveGitDir('/non/existent/path')
+    expect(result).toBe('/non/existent/path/.git')
+  })
+})
+
+describe('resolveGitDirSync', () => {
+  let repoPath: string
+
+  beforeEach(async () => {
+    repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-resolve-sync-'))
+    execSync('git init -b main', { cwd: repoPath })
+    execSync('git config user.name "Test User"', { cwd: repoPath })
+    execSync('git config user.email "test@example.com"', { cwd: repoPath })
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'initial')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "initial commit"', { cwd: repoPath })
+  })
+
+  afterEach(async () => {
+    try {
+      execSync('git worktree prune', { cwd: repoPath })
+    } catch {
+      // ignore
+    }
+    await fs.promises.rm(repoPath, { recursive: true, force: true })
+  })
+
+  it('should work synchronously for regular repository', () => {
+    const result = resolveGitDirSync(repoPath)
+    expect(result).toBe(path.join(repoPath, '.git'))
+  })
+
+  it('should resolve gitdir pointer synchronously for linked worktree', async () => {
+    const worktreePath = path.join(os.tmpdir(), `teapot-test-linked-sync-${Date.now()}`)
+    execSync(`git worktree add "${worktreePath}" -b linked-sync-branch`, { cwd: repoPath })
+
+    try {
+      const result = resolveGitDirSync(worktreePath)
+      expect(result).toContain('.git/worktrees/')
+    } finally {
+      execSync(`git worktree remove "${worktreePath}"`, { cwd: repoPath })
+    }
+  })
+
+  it('should handle non-existent paths gracefully', () => {
+    const result = resolveGitDirSync('/non/existent/path')
+    expect(result).toBe('/non/existent/path/.git')
   })
 })
 

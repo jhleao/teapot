@@ -215,9 +215,12 @@ export class BranchOperation {
    * Detects the trunk branch automatically (main, master, etc.).
    * This is the ONLY operation that does fast-forwarding.
    *
-   * If the user is on trunk with uncommitted changes, the operation is blocked
-   * with a helpful error message (to prevent confusing detached HEAD state).
-   * If the user is on a different branch, a temp worktree is used for the sync.
+   * Strategy:
+   * - If user is on trunk with clean tree → merge in place (simple, intuitive)
+   * - If user is on trunk with dirty tree → block (can't merge with uncommitted changes)
+   * - If user is NOT on trunk:
+   *   - If trunk is checked out in another worktree → return error with guidance
+   *   - If trunk is not checked out anywhere → use fetch with refspec (no worktree needed)
    */
   static async syncTrunk(repoPath: string): Promise<SyncTrunkResult> {
     const git = getGitAdapter()
@@ -255,7 +258,7 @@ export class BranchOperation {
         }
       }
 
-      // Check current branch and dirty state
+      // Check current branch and dirty state in the ACTIVE worktree
       const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
       const currentBranch = await git.currentBranch(activeWorktreePath)
       const isOnTrunk = currentBranch === trunkName
@@ -280,21 +283,25 @@ export class BranchOperation {
         }
       }
 
-      // If user is on trunk with clean tree, we can merge in place
-      if (isOnTrunk && !isDirty) {
-        const ffResult = await this.fastForwardTrunk(
-          activeWorktreePath,
-          trunkName,
-          'origin',
-          git
-        )
-        return this.toSyncResult(ffResult, trunkName)
+      // CASE 1: User is on trunk with clean tree → merge in place
+      if (isOnTrunk) {
+        return this.mergeInPlace(activeWorktreePath, trunkName, 'origin', git)
       }
 
-      // User is on a different branch - fetch with refspec directly (no worktree needed)
-      // The fetch-with-refspec approach updates the branch ref in the shared git database,
-      // so it works regardless of which worktree or branch we're currently on.
-      const ffResult = await this.fastForwardTrunk(repoPath, trunkName, 'origin', git)
+      // CASE 2: User is NOT on trunk
+      // Check if trunk is checked out in ANY worktree (including main worktree)
+      const worktreeWithTrunk = await this.findWorktreeWithBranch(repoPath, trunkName, git)
+      if (worktreeWithTrunk) {
+        // Trunk is checked out somewhere else - user should sync from there
+        return {
+          status: 'error',
+          message: `Cannot sync ${trunkName}: it's checked out at ${worktreeWithTrunk}. Please sync from that worktree instead.`,
+          trunkName
+        }
+      }
+
+      // CASE 3: Trunk is not checked out anywhere → fetch with refspec
+      const ffResult = await this.fetchWithRefspec(repoPath, trunkName, 'origin')
       return this.toSyncResult(ffResult, trunkName)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -402,48 +409,44 @@ export class BranchOperation {
   }
 
   /**
-   * Fast-forwards the trunk branch to match the remote.
-   * Uses merge --ff-only when on trunk, fetch with refspec otherwise.
+   * Merges the remote branch into the current branch using --ff-only.
+   * Assumes the worktree is on the target branch and is clean.
    *
-   * @param repoPath - Path to the git repository (or worktree)
+   * @param worktreePath - Path to the worktree where we're on trunk
    * @param trunkName - Name of the trunk branch (e.g., 'main')
    * @param remoteName - Name of the remote (e.g., 'origin')
    * @param git - Git adapter instance
    */
-  private static async fastForwardTrunk(
-    repoPath: string,
+  private static async mergeInPlace(
+    worktreePath: string,
     trunkName: string,
     remoteName: string,
     git: GitAdapter
-  ): Promise<{ success: boolean; error?: string }> {
-    const currentBranch = await git.currentBranch(repoPath)
-    const isOnTrunk = currentBranch === trunkName
-
-    if (isOnTrunk) {
-      // On trunk: prefer merge --ff-only, fall back to fetch with refspec
-      if (supportsMerge(git)) {
-        const remoteRef = `${remoteName}/${trunkName}`
-        const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
-        if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-          return { success: false, error: mergeResult.error }
-        }
-        return { success: true }
-      }
-      // Adapter doesn't support merge - fall through to fetch with refspec
-    }
-
-    // Not on trunk, or adapter doesn't support merge.
-    // Check if trunk is checked out in another worktree - git won't let us update it.
-    const worktreeWithTrunk = await this.findWorktreeWithBranch(repoPath, trunkName, git)
-    if (worktreeWithTrunk) {
+  ): Promise<SyncTrunkResult> {
+    if (!supportsMerge(git)) {
       return {
-        success: false,
-        error: `Cannot sync ${trunkName}: it's checked out in another worktree at ${worktreeWithTrunk}. Please sync from that location instead.`
+        status: 'error',
+        message: `Cannot sync ${trunkName}: git adapter does not support merge operations.`,
+        trunkName
       }
     }
 
-    // Use fetch with refspec to update the branch ref directly
-    return this.fetchWithRefspec(repoPath, trunkName, remoteName)
+    const remoteRef = `${remoteName}/${trunkName}`
+    const mergeResult = await git.merge(worktreePath, remoteRef, { ffOnly: true })
+
+    if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
+      return {
+        status: 'error',
+        message: mergeResult.error ?? 'Merge failed',
+        trunkName
+      }
+    }
+
+    return {
+      status: 'success',
+      message: `Synced ${trunkName} with origin`,
+      trunkName
+    }
   }
 
   /**

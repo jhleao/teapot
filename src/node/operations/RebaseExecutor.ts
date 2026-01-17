@@ -1068,11 +1068,17 @@ export class RebaseExecutor {
     const detachedWorktrees = session.autoDetachedWorktrees ?? []
     const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
 
-    // Release any branch ref held by the execution worktree before attempting re-checkout.
-    // This prevents "branch already checked out" errors when the temp worktree was created
-    // at the same branch that needs to be re-checked out in another worktree.
+    // Belt-and-suspenders: detach HEAD in temp worktree before re-checkout.
+    // Temp worktrees are created at detached HEAD, so this is usually a no-op,
+    // but it guards against edge cases where the temp worktree somehow ended up
+    // with a branch checked out (e.g., during the rebase itself).
     if (executionPath !== repoPath && detachedWorktrees.length > 0) {
-      await WorktreeOperation.detachHead(executionPath)
+      const detachResult = await WorktreeOperation.detachHead(executionPath)
+      if (!detachResult.success) {
+        log.warn(
+          `[RebaseExecutor] Failed to detach HEAD in execution path (continuing anyway): ${detachResult.error}`
+        )
+      }
     }
 
     for (const { worktreePath, branch } of detachedWorktrees) {

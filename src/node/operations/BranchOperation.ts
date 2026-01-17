@@ -288,18 +288,7 @@ export class BranchOperation {
           remoteRef,
           git
         )
-        if (!ffResult.success) {
-          return {
-            status: 'error',
-            message: ffResult.error ?? 'Fast-forward failed',
-            trunkName
-          }
-        }
-        return {
-          status: 'success',
-          message: `Synced ${trunkName} with origin`,
-          trunkName
-        }
+        return this.toSyncResult(ffResult, trunkName)
       }
 
       // User is on a different branch - use temp worktree for the operation
@@ -307,26 +296,13 @@ export class BranchOperation {
         operation: 'sync-trunk'
       })
       try {
-        // Perform fast-forward using the execution path
         const ffResult = await this.fastForwardTrunk(
           context.executionPath,
           trunkName,
           remoteRef,
           git
         )
-        if (!ffResult.success) {
-          return {
-            status: 'error',
-            message: ffResult.error ?? 'Fast-forward failed',
-            trunkName
-          }
-        }
-
-        return {
-          status: 'success',
-          message: `Synced ${trunkName} with origin`,
-          trunkName
-        }
+        return this.toSyncResult(ffResult, trunkName)
       } finally {
         await ExecutionContextService.release(context)
       }
@@ -508,5 +484,26 @@ export class BranchOperation {
     const worktrees = await git.listWorktrees(repoPath)
     const worktreeWithBranch = worktrees.find((wt) => wt.branch === branchName)
     return worktreeWithBranch?.path ?? null
+  }
+
+  /**
+   * Converts a fast-forward result to a SyncTrunkResult.
+   */
+  private static toSyncResult(
+    ffResult: { success: boolean; error?: string },
+    trunkName: string
+  ): SyncTrunkResult {
+    if (!ffResult.success) {
+      return {
+        status: 'error',
+        message: ffResult.error ?? 'Fast-forward failed',
+        trunkName
+      }
+    }
+    return {
+      status: 'success',
+      message: `Synced ${trunkName} with origin`,
+      trunkName
+    }
   }
 }

@@ -24,7 +24,11 @@ function setupAutoUpdater(): void {
   autoUpdater.on('update-available', (info) => {
     log.info('[UPDATER] Update available:', info)
     BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send(IPC_EVENTS.updateDownloading, info.version)
+      try {
+        window.webContents.send(IPC_EVENTS.updateDownloading, info.version)
+      } catch {
+        // Window may have been destroyed or render frame disposed - ignore
+      }
     })
   })
 
@@ -45,7 +49,11 @@ function setupAutoUpdater(): void {
   autoUpdater.on('update-downloaded', (info) => {
     log.info('[UPDATER] Update downloaded. Will install on quit:', info)
     BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send(IPC_EVENTS.updateDownloaded, info.version)
+      try {
+        window.webContents.send(IPC_EVENTS.updateDownloaded, info.version)
+      } catch {
+        // Window may have been destroyed or render frame disposed - ignore
+      }
     })
   })
 }

@@ -127,7 +127,8 @@ type ContextAcquisitionResult =
 
 /**
  * Gets the first pending job's branch from a rebase state.
- * Used to optimize worktree creation by creating it at the target branch directly.
+ * Used to pass targetBranch to ExecutionContextService so it can release
+ * the branch ref if the user is on that branch.
  */
 function getFirstPendingBranch(state: RebaseState): string | undefined {
   const firstPendingId = state.queue.pendingJobIds[0]
@@ -141,7 +142,7 @@ function getFirstPendingBranch(state: RebaseState): string | undefined {
  * Returns either a context or an error result that can be returned directly.
  *
  * @param repoPath - Path to the git repository
- * @param targetBranch - Optional branch that will be operated on (helps optimize worktree creation)
+ * @param targetBranch - Optional branch that will be operated on (helps release branch ref if user is on it)
  */
 async function acquireContext(
   repoPath: string,
@@ -326,7 +327,7 @@ export class RebaseExecutor {
       }
     }
 
-    // Acquire execution context for new session - pass first branch to optimize worktree creation
+    // Acquire execution context for new session - pass first branch to release ref if user is on it
     const targetBranch = getFirstPendingBranch(plan.state)
     const acquisition = await acquireContext(repoPath, targetBranch)
     if (!acquisition.success) {

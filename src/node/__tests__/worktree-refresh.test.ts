@@ -179,3 +179,137 @@ describe('WorktreeOperation create/remove works correctly', () => {
     cleanupTestRepo(testRepo)
   })
 })
+
+describe('WorktreeOperation.createTemporary', () => {
+  let testRepo: string
+
+  beforeEach(async () => {
+    testRepo = await createTestRepo()
+  })
+
+  it('creates a temporary worktree with detached HEAD', async () => {
+    const result = await WorktreeOperation.createTemporary(testRepo)
+
+    expect(result.success).toBe(true)
+    expect(result.worktreePath).toBeDefined()
+
+    // Verify the worktree exists
+    const adapter = new SimpleGitAdapter()
+    const worktrees = await adapter.listWorktrees(testRepo, { skipDirtyCheck: true })
+    expect(worktrees.length).toBe(2)
+
+    // Verify the temp worktree has detached HEAD (no branch)
+    const tempWorktree = worktrees.find((wt) => wt.path === result.worktreePath)
+    expect(tempWorktree).toBeDefined()
+    expect(tempWorktree?.branch).toBeNull() // Detached HEAD means no branch
+
+    // Cleanup
+    if (result.worktreePath) {
+      const { execSync } = await import('child_process')
+      execSync(`git worktree remove "${result.worktreePath}"`, { cwd: testRepo })
+    }
+    cleanupTestRepo(testRepo)
+  })
+
+  it('creates worktree at trunk (main or master branch)', async () => {
+    const { execSync } = await import('child_process')
+
+    // Get the trunk branch name (could be main or master depending on git config)
+    const branches = execSync('git branch', { cwd: testRepo, encoding: 'utf-8' })
+    const trunkBranch = branches.includes('main') ? 'main' : 'master'
+
+    // Get the commit SHA of trunk
+    const trunkSha = execSync(`git rev-parse ${trunkBranch}`, {
+      cwd: testRepo,
+      encoding: 'utf-8'
+    }).trim()
+
+    const result = await WorktreeOperation.createTemporary(testRepo)
+    expect(result.success).toBe(true)
+
+    // Verify the temp worktree is at the same commit as trunk
+    const tempSha = execSync(`git -C "${result.worktreePath}" rev-parse HEAD`, {
+      encoding: 'utf-8'
+    }).trim()
+    expect(tempSha).toBe(trunkSha)
+
+    // Cleanup
+    if (result.worktreePath) {
+      execSync(`git worktree remove "${result.worktreePath}"`, { cwd: testRepo })
+    }
+    cleanupTestRepo(testRepo)
+  })
+
+  it('creates worktree at master when main does not exist', async () => {
+    const { execSync } = await import('child_process')
+
+    // Check if we have main branch - if so, rename it to master for this test
+    const branches = execSync('git branch', { cwd: testRepo, encoding: 'utf-8' })
+    if (branches.includes('main')) {
+      execSync('git branch -m main master', { cwd: testRepo })
+    }
+
+    // Get the commit SHA of master
+    const masterSha = execSync('git rev-parse master', { cwd: testRepo, encoding: 'utf-8' }).trim()
+
+    const result = await WorktreeOperation.createTemporary(testRepo)
+    expect(result.success).toBe(true)
+
+    // Verify the temp worktree is at the same commit as master
+    const tempSha = execSync(`git -C "${result.worktreePath}" rev-parse HEAD`, {
+      encoding: 'utf-8'
+    }).trim()
+    expect(tempSha).toBe(masterSha)
+
+    // Cleanup
+    if (result.worktreePath) {
+      execSync(`git worktree remove "${result.worktreePath}"`, { cwd: testRepo })
+    }
+    cleanupTestRepo(testRepo)
+  })
+
+  it('uses custom base directory when provided', async () => {
+    const customBaseDir = path.join(os.tmpdir(), `teapot-custom-base-${Date.now()}`)
+
+    const result = await WorktreeOperation.createTemporary(testRepo, customBaseDir)
+    expect(result.success).toBe(true)
+    expect(result.worktreePath).toContain('teapot-exec-')
+
+    // The worktree path should be under the custom base dir (accounting for symlink resolution)
+    const resolvedCustomBase = await fs.promises.realpath(customBaseDir)
+    expect(result.worktreePath?.startsWith(resolvedCustomBase)).toBe(true)
+
+    // Cleanup
+    if (result.worktreePath) {
+      const { execSync } = await import('child_process')
+      execSync(`git worktree remove "${result.worktreePath}"`, { cwd: testRepo })
+    }
+    await fs.promises.rm(customBaseDir, { recursive: true, force: true })
+    cleanupTestRepo(testRepo)
+  })
+
+  it('generates unique worktree names for concurrent calls', async () => {
+    const [result1, result2] = await Promise.all([
+      WorktreeOperation.createTemporary(testRepo),
+      WorktreeOperation.createTemporary(testRepo)
+    ])
+
+    expect(result1.success).toBe(true)
+    expect(result2.success).toBe(true)
+    expect(result1.worktreePath).not.toBe(result2.worktreePath)
+
+    // Both should contain the teapot-exec- prefix
+    expect(result1.worktreePath).toContain('teapot-exec-')
+    expect(result2.worktreePath).toContain('teapot-exec-')
+
+    // Cleanup
+    const { execSync } = await import('child_process')
+    if (result1.worktreePath) {
+      execSync(`git worktree remove "${result1.worktreePath}"`, { cwd: testRepo })
+    }
+    if (result2.worktreePath) {
+      execSync(`git worktree remove "${result2.worktreePath}"`, { cwd: testRepo })
+    }
+    cleanupTestRepo(testRepo)
+  })
+})

@@ -15,8 +15,9 @@
  * 1. If rebase is in progress in active worktree -> use it (legacy/continue support)
  * 2. Otherwise -> create a temporary worktree for execution
  *    - Temp worktree stored in .git/teapot-worktrees/ (relative to repo)
- *    - If targetBranch specified, worktree is created at that branch directly
+ *    - Temp worktree always created at trunk with detached HEAD for isolation
  *    - HEAD is detached in active worktree if dirty OR if on same branch as target
+ *      (dirty: to preserve uncommitted changes; on target: to release branch ref)
  *    - Context persisted to disk for crash recovery
  *    - Cleaned up after operation completes
  */
@@ -232,14 +233,6 @@ export class ExecutionContextService {
   }
 
   /**
-   * Options for acquiring an execution context.
-   */
-  static AcquireOptions: {
-    operation?: ExecutionOperation
-    targetBranch?: string
-  }
-
-  /**
    * Acquire an execution context for Git operations.
    * Returns a clean worktree path that can be used for rebase/checkout operations.
    *
@@ -259,9 +252,7 @@ export class ExecutionContextService {
   ): Promise<ExecutionContext> {
     // Support both legacy (string) and new (options object) calling conventions
     const options =
-      typeof operationOrOptions === 'string'
-        ? { operation: operationOrOptions, targetBranch: undefined }
-        : operationOrOptions
+      typeof operationOrOptions === 'string' ? { operation: operationOrOptions } : operationOrOptions
     const operation = options.operation ?? 'unknown'
     const targetBranch = options.targetBranch
     // Validate repoPath early to fail fast with a clear error
@@ -369,11 +360,10 @@ export class ExecutionContextService {
         }
       }
 
-      // Try to create temp worktree at the target branch (if specified)
-      // This avoids an extra checkout step after worktree creation
+      // Create temp worktree at detached HEAD
       let tempWorktree: string
       try {
-        tempWorktree = await this.createTemporaryWorktree(repoPath, targetBranch)
+        tempWorktree = await this.createTemporaryWorktree(repoPath)
       } catch (error) {
         // Rollback: restore original branch in active worktree (only if we detached)
         if (originalBranch) {
@@ -1112,19 +1102,15 @@ export class ExecutionContextService {
    * Retries handle transient failures like locked index files.
    *
    * @param repoPath - Path to the git repository
-   * @param targetBranch - Optional branch to check out in the temp worktree
    */
-  private static async createTemporaryWorktree(
-    repoPath: string,
-    targetBranch?: string
-  ): Promise<string> {
+  private static async createTemporaryWorktree(repoPath: string): Promise<string> {
     const baseDir = this.getWorktreeDir(repoPath)
     let lastError: Error | null = null
     let finalAttempt = 0
 
     for (let attempt = 1; attempt <= MAX_WORKTREE_RETRIES; attempt++) {
       finalAttempt = attempt
-      const result = await WorktreeOperation.createTemporary(repoPath, baseDir, targetBranch)
+      const result = await WorktreeOperation.createTemporary(repoPath, baseDir)
 
       if (result.success && result.worktreePath) {
         return result.worktreePath

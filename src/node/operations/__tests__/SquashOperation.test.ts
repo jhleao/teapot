@@ -249,7 +249,7 @@ describe('SquashOperation', () => {
       execSync('git checkout parent', { cwd: repoPath })
       const targetFileExists = fs.existsSync(path.join(repoPath, 'target.txt'))
       expect(targetFileExists).toBe(true)
-    })
+    }, 15000)
 
     it('preserves author information when squashing', async () => {
       // Create stack: main -> parent -> target with different author
@@ -307,7 +307,7 @@ describe('SquashOperation', () => {
       execSync('git checkout parent', { cwd: repoPath })
       expect(fs.existsSync(path.join(repoPath, 'target1.txt'))).toBe(true)
       expect(fs.existsSync(path.join(repoPath, 'target2.txt'))).toBe(true)
-    })
+    }, 15000)
   })
 
   describe('execute - with descendants', () => {

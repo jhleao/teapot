@@ -49,7 +49,15 @@ const sessionStore = new SessionStore(configStore)
 // --- Public API ---
 
 export function getSession(repoPath: string): StoredRebaseSession | null {
-  return sessionStore.get(normalizePath(repoPath))
+  const session = sessionStore.get(normalizePath(repoPath))
+  log.debug('[SessionService] getSession()', {
+    repoPath,
+    hasSession: !!session,
+    sessionStatus: session?.state.session.status,
+    activeJobId: session?.state.queue.activeJobId,
+    pendingJobCount: session?.state.queue.pendingJobIds.length
+  })
+  return session
 }
 
 export function hasSession(repoPath: string): boolean {
@@ -67,7 +75,17 @@ export function createSession(
   autoDetachedWorktrees?: DetachedWorktree[]
 ): void {
   const key = normalizePath(repoPath)
+  log.debug('[SessionService] createSession() called', {
+    repoPath,
+    key,
+    originalBranch,
+    intentTargetCount: plan.intent.targets.length,
+    pendingJobCount: plan.state.queue.pendingJobIds.length,
+    autoDetachedWorktreeCount: autoDetachedWorktrees?.length ?? 0
+  })
+
   if (sessionStore.has(key)) {
+    log.error('[SessionService] createSession() failed - session already exists', { key })
     throw new Error('Session already exists')
   }
 
@@ -81,6 +99,7 @@ export function createSession(
     createdAtMs: now,
     updatedAtMs: now
   })
+  log.debug('[SessionService] createSession() completed', { key })
 }
 
 export function clearSession(repoPath: string): void {
@@ -101,8 +120,22 @@ export function updateState(repoPath: string, state: RebaseState): void {
   const key = normalizePath(repoPath)
   const existing = sessionStore.get(key)
   if (!existing) {
+    log.error('[SessionService] updateState() failed - session not found', { repoPath, key })
     throw new Error(`Session not found: ${repoPath}`)
   }
+
+  log.debug('[SessionService] updateState() called', {
+    repoPath,
+    key,
+    oldVersion: existing.version,
+    newVersion: existing.version + 1,
+    oldStatus: existing.state.session.status,
+    newStatus: state.session.status,
+    oldActiveJobId: existing.state.queue.activeJobId,
+    newActiveJobId: state.queue.activeJobId,
+    oldPendingCount: existing.state.queue.pendingJobIds.length,
+    newPendingCount: state.queue.pendingJobIds.length
+  })
 
   sessionStore.set(key, {
     ...existing,

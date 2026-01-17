@@ -155,6 +155,13 @@ async function acquireContext(
     return { success: true, context }
   } catch (error) {
     if (error instanceof WorktreeCreationError) {
+      log.error('[RebaseExecutor] acquireContext() WorktreeCreationError', {
+        repoPath,
+        targetBranch,
+        message: error.message,
+        attempts: error.attempts,
+        cause: error.cause?.message
+      })
       return {
         success: false,
         error: {
@@ -166,6 +173,13 @@ async function acquireContext(
       }
     }
     const message = error instanceof Error ? error.message : String(error)
+    log.error('[RebaseExecutor] acquireContext() failed', {
+      repoPath,
+      targetBranch,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      message,
+      stack: error instanceof Error ? error.stack : undefined
+    })
     return {
       success: false,
       error: {
@@ -230,6 +244,12 @@ export class RebaseExecutor {
     git: GitAdapter,
     options: ExecutorOptions = {}
   ): Promise<RebaseExecutionResult> {
+    log.debug('[RebaseExecutor] execute() called', {
+      repoPath,
+      intentTargets: plan.intent.targets.map((t) => t.node.branch),
+      pendingJobCount: plan.state.queue.pendingJobIds.length
+    })
+
     const existingSession = await SessionService.getSession(repoPath)
 
     if (existingSession) {
@@ -324,8 +344,15 @@ export class RebaseExecutor {
    * Continue rebase after resolving conflicts.
    */
   static async continue(repoPath: string): Promise<RebaseExecutionResult> {
+    log.debug('[RebaseExecutor] continue() called', { repoPath })
     const git = getGitAdapter()
     const session = await SessionService.getSession(repoPath)
+    log.debug('[RebaseExecutor] continue() session state', {
+      hasSession: !!session,
+      activeJobId: session?.state.queue.activeJobId,
+      pendingJobIds: session?.state.queue.pendingJobIds,
+      sessionStatus: session?.state.session.status
+    })
 
     // Acquire execution context - will reuse stored context from conflict
     // Pass target branch in case we need to create a new context (e.g., stored context was cleared)
@@ -514,10 +541,16 @@ export class RebaseExecutor {
    * Abort rebase and restore original state.
    */
   static async abort(repoPath: string): Promise<{ success: boolean; message?: string }> {
+    log.debug('[RebaseExecutor] abort() called', { repoPath })
     const git = getGitAdapter()
 
     // Get the stored context to properly release temp worktree if exists
     const storedContext = await ExecutionContextService.getStoredContext(repoPath)
+    log.debug('[RebaseExecutor] abort() context state', {
+      hasStoredContext: !!storedContext,
+      executionPath: storedContext?.executionPath,
+      isTemporary: storedContext?.isTemporary
+    })
     const executionPath = storedContext?.executionPath ?? repoPath
 
     // Get session info BEFORE clearing - we need originalBranch to restore active worktree
@@ -811,10 +844,24 @@ export class RebaseExecutor {
     intent: RebaseIntent,
     options: ExecutorOptions
   ): Promise<RebaseExecutionResult> {
+    log.debug('[RebaseExecutor] executeJobs() starting', {
+      repoPath,
+      executionPath,
+      intentTargetCount: intent.targets.length
+    })
     const generateJobId = options.generateJobId ?? createJobIdGenerator()
 
+    let loopIteration = 0
     while (true) {
+      loopIteration++
       const session = await SessionService.getSession(repoPath)
+      log.debug('[RebaseExecutor] executeJobs() loop iteration', {
+        iteration: loopIteration,
+        hasSession: !!session,
+        sessionStatus: session?.state.session.status,
+        activeJobId: session?.state.queue.activeJobId,
+        pendingJobCount: session?.state.queue.pendingJobIds.length
+      })
       if (!session) {
         // Session was cleared externally - return error instead of throwing
         log.error('[RebaseExecutor] Session not found during job execution', { repoPath })
@@ -919,6 +966,15 @@ export class RebaseExecutor {
     job: RebaseJob,
     git: GitAdapter
   ): Promise<JobExecutionResult> {
+    log.debug('[RebaseExecutor] executeJob() starting', {
+      repoPath,
+      jobId: job.id,
+      branch: job.branch,
+      originalBaseSha: job.originalBaseSha?.slice(0, 8),
+      originalHeadSha: job.originalHeadSha?.slice(0, 8),
+      targetBaseSha: job.targetBaseSha?.slice(0, 8)
+    })
+
     if (!supportsRebase(git)) {
       return { status: 'error', message: 'Git adapter does not support rebase' }
     }
@@ -933,14 +989,31 @@ export class RebaseExecutor {
 
       await git.checkout(repoPath, job.branch)
 
+      log.debug('[RebaseExecutor] executeJob() calling git.rebase()', {
+        jobId: job.id,
+        onto: job.targetBaseSha?.slice(0, 8),
+        from: job.originalBaseSha?.slice(0, 8),
+        to: job.branch
+      })
+
       const result = await git.rebase(repoPath, {
         onto: job.targetBaseSha,
         from: job.originalBaseSha,
         to: job.branch
       })
 
+      log.debug('[RebaseExecutor] executeJob() git.rebase() result', {
+        jobId: job.id,
+        success: result.success,
+        conflictCount: result.conflicts?.length ?? 0
+      })
+
       if (!result.success) {
         if (result.conflicts.length > 0) {
+          log.debug('[RebaseExecutor] executeJob() conflicts detected', {
+            jobId: job.id,
+            conflicts: result.conflicts
+          })
           return { status: 'conflict', conflicts: result.conflicts }
         }
         return { status: 'error', message: 'Rebase failed without conflicts' }
@@ -986,6 +1059,14 @@ export class RebaseExecutor {
     git: GitAdapter,
     options: ExecutorOptions
   ): Promise<RebaseExecutionResult> {
+    log.debug('[RebaseExecutor] handleConflict() called', {
+      repoPath,
+      jobId: job.id,
+      branch: job.branch,
+      conflictCount: conflicts.length,
+      conflicts
+    })
+
     const updatedJob = RebaseStateMachine.recordConflict({
       job,
       workingTree: await git.getWorkingTreeStatus(executionPath),
@@ -1014,6 +1095,14 @@ export class RebaseExecutor {
     generateJobId: () => string,
     options: ExecutorOptions
   ): Promise<void> {
+    log.debug('[RebaseExecutor] handleJobCompletion() called', {
+      repoPath,
+      jobId: job.id,
+      branch: job.branch,
+      newHeadSha: newHeadSha?.slice(0, 8),
+      rewriteCount: rewrites.length
+    })
+
     const completionResult = RebaseStateMachine.completeJob({
       job,
       rebasedHeadSha: newHeadSha,
@@ -1088,6 +1177,16 @@ export class RebaseExecutor {
     session: StoredRebaseSession,
     git: GitAdapter
   ): Promise<void> {
+    log.debug('[RebaseExecutor] finalizeRebase() called', {
+      repoPath,
+      executionPath,
+      originalBranch: session.originalBranch,
+      autoDetachedWorktreeCount: session.autoDetachedWorktrees?.length ?? 0,
+      completedJobCount: Object.values(session.state.jobsById).filter(
+        (j) => j.status === 'completed'
+      ).length
+    })
+
     const detachedWorktrees = session.autoDetachedWorktrees ?? []
     const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
 

@@ -283,7 +283,16 @@ export class TransactionService {
       const filePath = this.getIntentFilePath(repoPath)
       const content = await fs.promises.readFile(filePath, 'utf-8')
       return JSON.parse(content) as TransactionIntent
-    } catch {
+    } catch (error) {
+      // ENOENT is expected (no intent file), but parse errors should be logged
+      const errCode = (error as NodeJS.ErrnoException).code
+      if (errCode !== 'ENOENT') {
+        log.warn('[TransactionService] loadIntent() failed to parse intent file', {
+          repoPath,
+          errCode,
+          message: error instanceof Error ? error.message : String(error)
+        })
+      }
       return null
     }
   }

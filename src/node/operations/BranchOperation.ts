@@ -7,6 +7,9 @@
  * - Sync trunk with remote (fast-forward only)
  */
 
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
 import { log } from '@shared/logger'
 import { getDeleteBranchPermission } from '@shared/permissions'
 import { findOpenPr } from '@shared/types/git-forge'
@@ -25,6 +28,8 @@ import { BranchError, TrunkProtectionError, type TrunkProtectedOperation } from 
 import { configStore } from '../store'
 import { WorktreeOperation } from './WorktreeOperation'
 import { normalizePath, pruneIfStale } from './WorktreeUtils'
+
+const execAsync = promisify(exec)
 
 /**
  * Options for trunk protection validation.
@@ -222,9 +227,12 @@ export class BranchOperation {
    * Detects the trunk branch automatically (main, master, etc.).
    * This is the ONLY operation that does fast-forwarding.
    *
-   * If the user is on trunk with uncommitted changes, the operation is blocked
-   * with a helpful error message (to prevent confusing detached HEAD state).
-   * If the user is on a different branch, a temp worktree is used for the sync.
+   * Strategy:
+   * - If user is on trunk with clean tree → merge in place (simple, intuitive)
+   * - If user is on trunk with dirty tree → block (can't merge with uncommitted changes)
+   * - If user is NOT on trunk:
+   *   - If trunk is checked out in another worktree → return error with guidance
+   *   - If trunk is not checked out anywhere → use fetch with refspec (no worktree needed)
    */
   static async syncTrunk(repoPath: string): Promise<SyncTrunkResult> {
     const git = getGitAdapter()
@@ -262,18 +270,18 @@ export class BranchOperation {
         }
       }
 
-      // Block if user is on trunk with dirty tree - prevents confusing detached HEAD state
+      // Check current branch and dirty state in the ACTIVE worktree
       const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
       const currentBranch = await git.currentBranch(activeWorktreePath)
+      const isOnTrunk = currentBranch === trunkName
+      const isDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
 
-      if (currentBranch === trunkName) {
-        const isDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
-        if (isDirty) {
-          return {
-            status: 'error',
-            message: `Cannot sync ${trunkName} while you have uncommitted changes. Commit, stash, or discard your changes first.`,
-            trunkName
-          }
+      // Block if user is on trunk with dirty tree - prevents confusing state
+      if (isOnTrunk && isDirty) {
+        return {
+          status: 'error',
+          message: `Cannot sync ${trunkName} while you have uncommitted changes. Commit, stash, or discard your changes first.`,
+          trunkName
         }
       }
 
@@ -287,36 +295,26 @@ export class BranchOperation {
         }
       }
 
-      // Acquire execution context for checkout/merge operations
-      // Pass trunkName as target since we'll be checking it out
-      const context = await ExecutionContextService.acquire(repoPath, {
-        operation: 'sync-trunk',
-        targetBranch: trunkName
-      })
-      try {
-        // Perform fast-forward using the execution path
-        const ffResult = await this.fastForwardTrunk(
-          context.executionPath,
-          trunkName,
-          remoteRef,
-          git
-        )
-        if (!ffResult.success) {
-          return {
-            status: 'error',
-            message: ffResult.error ?? 'Fast-forward failed',
-            trunkName
-          }
-        }
+      // CASE 1: User is on trunk with clean tree → merge in place
+      if (isOnTrunk) {
+        return this.mergeInPlace(activeWorktreePath, trunkName, 'origin', git)
+      }
 
+      // CASE 2: User is NOT on trunk
+      // Check if trunk is checked out in ANY worktree (including main worktree)
+      const worktreeWithTrunk = await this.findWorktreeWithBranch(repoPath, trunkName, git)
+      if (worktreeWithTrunk) {
+        // Trunk is checked out somewhere else - user should sync from there
         return {
-          status: 'success',
-          message: `Synced ${trunkName} with origin`,
+          status: 'error',
+          message: `Cannot sync ${trunkName}: it's checked out at ${worktreeWithTrunk}. Please sync from that worktree instead.`,
           trunkName
         }
-      } finally {
-        await ExecutionContextService.release(context)
       }
+
+      // CASE 3: Trunk is not checked out anywhere → fetch with refspec
+      const ffResult = await this.fetchWithRefspec(repoPath, trunkName, 'origin')
+      return this.toSyncResult(ffResult, trunkName)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       log.error(`[BranchOperation.syncTrunk] Failed to sync trunk:`, error)
@@ -374,6 +372,8 @@ export class BranchOperation {
       throw new Error('Cannot delete the currently checked out branch')
     }
 
+    // Find non-main worktree with this branch (can't remove the main worktree)
+    // Note: Similar to findWorktreeWithBranch, but we need the full worktree object here
     const worktrees = await git.listWorktrees(repoPath)
     const worktreeUsingBranch = worktrees.find((wt) => wt.branch === branchName && !wt.isMain)
 
@@ -421,62 +421,113 @@ export class BranchOperation {
   }
 
   /**
-   * Fast-forwards the trunk branch to match the remote ref.
-   * Handles both the case where we're on trunk and where we're on another branch.
+   * Merges the remote branch into the current branch using --ff-only.
+   * Assumes the worktree is on the target branch and is clean.
+   *
+   * @param worktreePath - Path to the worktree where we're on trunk
+   * @param trunkName - Name of the trunk branch (e.g., 'main')
+   * @param remoteName - Name of the remote (e.g., 'origin')
+   * @param git - Git adapter instance
    */
-  private static async fastForwardTrunk(
-    repoPath: string,
+  private static async mergeInPlace(
+    worktreePath: string,
     trunkName: string,
-    remoteRef: string,
+    remoteName: string,
     git: GitAdapter
-  ): Promise<{ success: boolean; error?: string }> {
-    const currentBranch = await git.currentBranch(repoPath)
-    const isOnTrunk = currentBranch === trunkName
-
-    if (isOnTrunk) {
-      // Simple case: we're on trunk, just merge --ff-only
-      if (!supportsMerge(git)) {
-        return { success: true }
+  ): Promise<SyncTrunkResult> {
+    if (!supportsMerge(git)) {
+      return {
+        status: 'error',
+        message: `Cannot sync ${trunkName}: git adapter does not support merge operations.`,
+        trunkName
       }
-      const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
-      if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-        return { success: false, error: mergeResult.error }
-      }
-      return { success: true }
     }
 
-    // We're on a different branch - need to checkout trunk, FF, then return
-    const originalHead = await git.resolveRef(repoPath, 'HEAD')
+    const remoteRef = `${remoteName}/${trunkName}`
+    const mergeResult = await git.merge(worktreePath, remoteRef, { ffOnly: true })
 
-    try {
-      await git.checkout(repoPath, trunkName)
-
-      if (supportsMerge(git)) {
-        const mergeResult = await git.merge(repoPath, remoteRef, { ffOnly: true })
-        if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
-          await this.restoreBranch(repoPath, currentBranch, originalHead, git)
-          return { success: false, error: mergeResult.error }
-        }
+    if (!mergeResult.success && !mergeResult.alreadyUpToDate) {
+      return {
+        status: 'error',
+        message: mergeResult.error ?? 'Merge failed',
+        trunkName
       }
+    }
 
-      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
-      return { success: true }
-    } catch (error) {
-      await this.restoreBranch(repoPath, currentBranch, originalHead, git)
-      throw error
+    return {
+      status: 'success',
+      message: `Synced ${trunkName} with origin`,
+      trunkName
     }
   }
 
-  private static async restoreBranch(
+  /**
+   * Updates a local branch ref to match the remote using fetch with refspec.
+   * This works without needing to checkout the branch.
+   */
+  private static async fetchWithRefspec(
     repoPath: string,
-    branchName: string | null,
-    fallbackRef: string,
-    git: GitAdapter
-  ): Promise<void> {
+    branchName: string,
+    remoteName: string
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      await git.checkout(repoPath, branchName ?? fallbackRef)
-    } catch {
-      log.error('[BranchOperation] Failed to restore original branch')
+      await execAsync(
+        `git -C "${repoPath}" fetch "${remoteName}" "refs/heads/${branchName}:refs/heads/${branchName}"`
+      )
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      if (message.includes('non-fast-forward') || message.includes('rejected')) {
+        return { success: false, error: `Cannot fast-forward ${branchName}: local branch has diverged` }
+      }
+
+      // Handle case where branch is checked out (defense-in-depth)
+      if (message.includes('refusing to fetch into branch') && message.includes('checked out')) {
+        const match = message.match(/checked out at '([^']+)'/)
+        const path = match?.[1] ?? 'another location'
+        return {
+          success: false,
+          error: `Cannot sync ${branchName}: it's checked out at ${path}. Please sync from that location instead.`
+        }
+      }
+
+      return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Finds a worktree that has a specific branch checked out.
+   * Returns the worktree path if found, null otherwise.
+   */
+  private static async findWorktreeWithBranch(
+    repoPath: string,
+    branchName: string,
+    git: GitAdapter
+  ): Promise<string | null> {
+    const worktrees = await git.listWorktrees(repoPath)
+    const worktreeWithBranch = worktrees.find((wt) => wt.branch === branchName)
+    return worktreeWithBranch?.path ?? null
+  }
+
+  /**
+   * Converts a fast-forward result to a SyncTrunkResult.
+   */
+  private static toSyncResult(
+    ffResult: { success: boolean; error?: string },
+    trunkName: string
+  ): SyncTrunkResult {
+    if (!ffResult.success) {
+      return {
+        status: 'error',
+        message: ffResult.error ?? 'Fast-forward failed',
+        trunkName
+      }
+    }
+    return {
+      status: 'success',
+      message: `Synced ${trunkName} with origin`,
+      trunkName
     }
   }
 }

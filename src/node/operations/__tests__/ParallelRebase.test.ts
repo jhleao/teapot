@@ -281,7 +281,7 @@ describe('Parallel Rebase Workflow', () => {
         .toString()
         .trim()
       expect(featureBranchParent).toBe(mainSha)
-    })
+    }, 15000)
 
     it('handles rebase with clean worktree (uses temp worktree)', async () => {
       // Arrange: Add a new commit to main

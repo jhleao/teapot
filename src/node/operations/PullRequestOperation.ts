@@ -9,6 +9,7 @@
 
 import { log } from '@shared/logger'
 import type { Branch, Repo } from '@shared/types'
+import { extractLocalBranchName } from '@shared/types'
 import { findOpenPr, type MergeStrategy } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
@@ -270,18 +271,39 @@ export class PullRequestOperation {
     headCommitSha: string,
     git: GitAdapter
   ): Promise<string> {
-    const candidateBaseBranch = PrTargetResolver.findBaseBranch(repo, headCommitSha)
-
+    const trunkFallback = this.getTrunkBranchName(repo)
     const mergedBranchNames = await getMergedBranchNames(repoPath, repo, git)
+    const candidateBaseBranch = PrTargetResolver.findBaseBranch(
+      repo,
+      headCommitSha,
+      new Set(mergedBranchNames)
+    )
 
     const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
 
-    return PrTargetResolver.findValidPrTarget(
+    const resolvedBaseBranch = PrTargetResolver.findValidPrTarget(
       headBranch,
       candidateBaseBranch,
       forgeState.pullRequests,
-      new Set(mergedBranchNames)
+      new Set(mergedBranchNames),
+      trunkFallback ?? undefined
     )
+    log.debug('[PullRequestOperation.findBaseBranch] Resolved base branch', {
+      headBranch,
+      candidateBaseBranch,
+      resolvedBaseBranch,
+      trunkFallback,
+      mergedBranchCount: mergedBranchNames.length
+    })
+    return resolvedBaseBranch
+  }
+
+  private static getTrunkBranchName(repo: Repo): string | null {
+    const trunk =
+      repo.branches.find((b) => b.isTrunk && !b.isRemote) ?? repo.branches.find((b) => b.isTrunk)
+    if (!trunk) return null
+    const localName = trunk.isRemote ? extractLocalBranchName(trunk.ref) : trunk.ref
+    return isTrunk(localName) ? localName : null
   }
 
   private static async getOriginRemote(repoPath: string, git: GitAdapter): Promise<string> {

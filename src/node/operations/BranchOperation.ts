@@ -459,14 +459,18 @@ export class BranchOperation {
     }
 
     // We're on a different branch (or detached HEAD).
-    // Use fetch with refspec to update the local branch ref directly.
-    // This works even if the branch is checked out in another worktree.
-    try {
-      // Parse remote name from remoteRef (e.g., "origin/main" -> "origin")
-      const remoteName = remoteRef.split('/')[0] ?? 'origin'
+    // Check if trunk is checked out in another worktree - git won't let us update it.
+    const worktreeWithTrunk = await this.findWorktreeWithBranch(repoPath, trunkName, git)
+    if (worktreeWithTrunk) {
+      return {
+        success: false,
+        error: `Cannot sync ${trunkName}: it's checked out in another worktree at ${worktreeWithTrunk}. Please sync from that location instead.`
+      }
+    }
 
-      // Fetch and update local branch to match remote
-      // The refspec "refs/heads/main:refs/heads/main" updates local main to match remote main
+    // Trunk is not checked out anywhere - use fetch with refspec to update the ref directly
+    try {
+      const remoteName = remoteRef.split('/')[0] ?? 'origin'
       await execAsync(
         `git -C "${repoPath}" fetch "${remoteName}" "refs/heads/${trunkName}:refs/heads/${trunkName}"`
       )
@@ -474,12 +478,35 @@ export class BranchOperation {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
-      // Check for non-fast-forward error
       if (message.includes('non-fast-forward') || message.includes('rejected')) {
         return { success: false, error: `Cannot fast-forward ${trunkName}: local branch has diverged` }
       }
 
+      // Handle case where branch is checked out (shouldn't happen due to check above, but just in case)
+      if (message.includes('refusing to fetch into branch') && message.includes('checked out')) {
+        const match = message.match(/checked out at '([^']+)'/)
+        const path = match?.[1] ?? 'another location'
+        return {
+          success: false,
+          error: `Cannot sync ${trunkName}: it's checked out at ${path}. Please sync from that location instead.`
+        }
+      }
+
       return { success: false, error: message }
     }
+  }
+
+  /**
+   * Finds a worktree that has a specific branch checked out.
+   * Returns the worktree path if found, null otherwise.
+   */
+  private static async findWorktreeWithBranch(
+    repoPath: string,
+    branchName: string,
+    git: GitAdapter
+  ): Promise<string | null> {
+    const worktrees = await git.listWorktrees(repoPath)
+    const worktreeWithBranch = worktrees.find((wt) => wt.branch === branchName)
+    return worktreeWithBranch?.path ?? null
   }
 }

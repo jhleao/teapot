@@ -31,6 +31,7 @@ import { log } from '@shared/logger'
 
 import { getGitAdapter } from '../adapters/git'
 import { WorktreeOperation } from '../operations/WorktreeOperation'
+import { resolveGitDir, resolveGitDirSync } from '../operations/WorktreeUtils'
 import { configStore } from '../store'
 
 /** Supported operations for tracking */
@@ -164,7 +165,8 @@ let exitHandlerRegistered = false
 function cleanupOnExit(): void {
   for (const [repoPath, tempPath] of activeContexts) {
     try {
-      const lockPath = path.join(repoPath, '.git', LOCK_FILE)
+      const gitDir = resolveGitDirSync(repoPath)
+      const lockPath = path.join(gitDir, LOCK_FILE)
       fs.unlinkSync(lockPath)
     } catch {
       // Ignore - best effort
@@ -540,7 +542,7 @@ export class ExecutionContextService {
 
     // Validate path is within the teapot-worktrees directory (safety check)
     // This prevents accidentally deleting arbitrary directories
-    const expectedWorktreeDir = this.getWorktreeDir(context.repoPath)
+    const expectedWorktreeDir = await this.getWorktreeDir(context.repoPath)
     const worktreeName = path.basename(context.executionPath)
     const parentDir = path.dirname(context.executionPath)
 
@@ -587,7 +589,7 @@ export class ExecutionContextService {
     const releaseLock = await this.acquireLock(repoPath)
 
     try {
-      const teapotWorktreeDir = this.getWorktreeDir(repoPath)
+      const teapotWorktreeDir = await this.getWorktreeDir(repoPath)
       if (!fs.existsSync(teapotWorktreeDir)) {
         return
       }
@@ -681,7 +683,7 @@ export class ExecutionContextService {
     const storedContextAge = storedContext ? Date.now() - storedContext.createdAt : null
 
     // Check lock file
-    const lockPath = this.getLockFilePath(repoPath)
+    const lockPath = await this.getLockFilePath(repoPath)
     let lockFileExists = false
     let lockFileAge: number | null = null
     try {
@@ -699,7 +701,7 @@ export class ExecutionContextService {
     }
 
     // Check temp worktree directory
-    const tempWorktreeDir = this.getWorktreeDir(repoPath)
+    const tempWorktreeDir = await this.getWorktreeDir(repoPath)
     let tempWorktreeDirExists = false
     let tempWorktreeCount = 0
     try {
@@ -789,7 +791,7 @@ export class ExecutionContextService {
    * delete a stale lock and then both succeed in creating a new one.
    */
   private static async acquireFileLock(repoPath: string): Promise<void> {
-    const lockPath = this.getLockFilePath(repoPath)
+    const lockPath = await this.getLockFilePath(repoPath)
     const lockId = crypto.randomUUID()
     const maxAttempts = 10
     const baseRetryDelayMs = 100
@@ -958,27 +960,30 @@ export class ExecutionContextService {
 
   private static async releaseFileLock(repoPath: string): Promise<void> {
     try {
-      const lockPath = this.getLockFilePath(repoPath)
+      const lockPath = await this.getLockFilePath(repoPath)
       await fs.promises.unlink(lockPath)
     } catch {
       // Ignore errors releasing lock
     }
   }
 
-  private static getLockFilePath(repoPath: string): string {
-    return path.join(repoPath, '.git', LOCK_FILE)
+  private static async getLockFilePath(repoPath: string): Promise<string> {
+    const gitDir = await resolveGitDir(repoPath)
+    return path.join(gitDir, LOCK_FILE)
   }
 
   // ===========================================================================
   // Private: Persistent storage
   // ===========================================================================
 
-  private static getContextFilePath(repoPath: string): string {
-    return path.join(repoPath, '.git', CONTEXT_FILE)
+  private static async getContextFilePath(repoPath: string): Promise<string> {
+    const gitDir = await resolveGitDir(repoPath)
+    return path.join(gitDir, CONTEXT_FILE)
   }
 
-  private static getWorktreeDir(repoPath: string): string {
-    return path.join(repoPath, '.git', WORKTREE_DIR)
+  private static async getWorktreeDir(repoPath: string): Promise<string> {
+    const gitDir = await resolveGitDir(repoPath)
+    return path.join(gitDir, WORKTREE_DIR)
   }
 
   /**
@@ -1052,7 +1057,7 @@ export class ExecutionContextService {
 
   private static async loadPersistedContext(repoPath: string): Promise<PersistedContext | null> {
     try {
-      const filePath = this.getContextFilePath(repoPath)
+      const filePath = await this.getContextFilePath(repoPath)
       const content = await fs.promises.readFile(filePath, 'utf-8')
       const parsed: unknown = JSON.parse(content)
 
@@ -1103,7 +1108,7 @@ export class ExecutionContextService {
    * This prevents corruption if the process crashes mid-write.
    */
   private static async persistContext(repoPath: string, context: PersistedContext): Promise<void> {
-    const filePath = this.getContextFilePath(repoPath)
+    const filePath = await this.getContextFilePath(repoPath)
     const tempPath = `${filePath}.${process.pid}.tmp`
 
     try {
@@ -1124,7 +1129,7 @@ export class ExecutionContextService {
 
   private static async clearPersistedContext(repoPath: string): Promise<void> {
     try {
-      const filePath = this.getContextFilePath(repoPath)
+      const filePath = await this.getContextFilePath(repoPath)
       await fs.promises.unlink(filePath)
     } catch {
       // Ignore if file doesn't exist
@@ -1142,7 +1147,7 @@ export class ExecutionContextService {
    * @param repoPath - Path to the git repository
    */
   private static async createTemporaryWorktree(repoPath: string): Promise<string> {
-    const baseDir = this.getWorktreeDir(repoPath)
+    const baseDir = await this.getWorktreeDir(repoPath)
     let lastError: Error | null = null
     let finalAttempt = 0
 

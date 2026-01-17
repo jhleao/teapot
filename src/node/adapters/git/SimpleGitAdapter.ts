@@ -12,6 +12,7 @@ import fs from 'fs'
 import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
 import { promisify } from 'util'
+import { resolveGitDir } from '../../operations/WorktreeUtils'
 import type { GitAdapter } from './interface'
 import type {
   ApplyPatchResult,
@@ -1006,7 +1007,7 @@ export class SimpleGitAdapter implements GitAdapter {
     currentStep: number
     totalSteps: number
   } | null> {
-    const gitDir = await this.resolveGitDir(dir)
+    const gitDir = await resolveGitDir(dir)
     const rebaseMergePath = path.join(gitDir, 'rebase-merge')
     const rebaseApplyPath = path.join(gitDir, 'rebase-apply')
 
@@ -1148,7 +1149,7 @@ export class SimpleGitAdapter implements GitAdapter {
   }
 
   private async detectRebase(dir: string): Promise<boolean> {
-    const gitDir = await this.resolveGitDir(dir)
+    const gitDir = await resolveGitDir(dir)
     const rebaseMerge = path.join(gitDir, 'rebase-merge')
     const rebaseApply = path.join(gitDir, 'rebase-apply')
 
@@ -1165,39 +1166,8 @@ export class SimpleGitAdapter implements GitAdapter {
     }
   }
 
-  /**
-   * Resolve the actual git directory path.
-   * In linked worktrees, .git is a file containing "gitdir: /path/to/actual/git/dir".
-   * In regular repos, .git is a directory.
-   */
-  private async resolveGitDir(dir: string): Promise<string> {
-    const gitPath = path.join(dir, '.git')
-    try {
-      const stat = await fs.promises.stat(gitPath)
-      if (stat.isDirectory()) {
-        return gitPath
-      }
-      // It's a file - read the gitdir pointer
-      const content = await fs.promises.readFile(gitPath, 'utf-8')
-      const match = content.match(/^gitdir:\s*(.+)$/m)
-      if (match) {
-        const linkedGitDir = match[1].trim()
-        // Handle relative paths
-        if (path.isAbsolute(linkedGitDir)) {
-          return linkedGitDir
-        }
-        return path.resolve(dir, linkedGitDir)
-      }
-      // Fallback if format doesn't match
-      return gitPath
-    } catch {
-      // If we can't stat, assume it's a directory
-      return gitPath
-    }
-  }
-
   private async checkForLockFile(dir: string): Promise<{ locked: boolean; lockPath?: string }> {
-    const gitDir = await this.resolveGitDir(dir)
+    const gitDir = await resolveGitDir(dir)
     const indexLockPath = path.join(gitDir, 'index.lock')
     try {
       await fs.promises.access(indexLockPath)

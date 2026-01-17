@@ -119,8 +119,14 @@ export class BranchOperation {
     try {
       await git.deleteRemoteTrackingBranch(repoPath, 'origin', branchName)
       log.info(`[BranchOperation.cleanup] Deleted remote-tracking ref: origin/${branchName}`)
-    } catch {
-      // Ignore - the remote-tracking ref may not exist
+    } catch (error) {
+      // Expected if the remote-tracking ref doesn't exist
+      log.debug(
+        `[BranchOperation.cleanup] Remote-tracking ref cleanup skipped: origin/${branchName}`,
+        {
+          message: error instanceof Error ? error.message : String(error)
+        }
+      )
     }
 
     await git.deleteBranch(repoPath, branchName)
@@ -178,8 +184,14 @@ export class BranchOperation {
     try {
       await git.deleteRemoteTrackingBranch(repoPath, 'origin', branchName)
       log.info(`[BranchOperation.delete] Deleted remote-tracking ref: origin/${branchName}`)
-    } catch {
-      // Ignore - the remote-tracking ref may not exist
+    } catch (error) {
+      // Expected if the remote-tracking ref doesn't exist
+      log.debug(
+        `[BranchOperation.delete] Remote-tracking ref cleanup skipped: origin/${branchName}`,
+        {
+          message: error instanceof Error ? error.message : String(error)
+        }
+      )
     }
 
     await git.deleteBranch(repoPath, branchName)

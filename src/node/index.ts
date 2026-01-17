@@ -3,9 +3,10 @@ import { app, BrowserWindow, shell } from 'electron'
 import electronUpdater from 'electron-updater'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
-import { log } from '../shared/logger'
+import { initFileLogging, log } from '../shared/logger'
 import { IPC_EVENTS } from '../shared/types'
 import { registerHandlers } from './handlers'
+import { configStore } from './store'
 
 function setupAutoUpdater(): void {
   const { autoUpdater } = electronUpdater
@@ -94,7 +95,7 @@ function createWindow(): void {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -107,6 +108,12 @@ app.whenReady().then(() => {
 
   // Register all IPC handlers
   registerHandlers()
+
+  // Initialize file logging for debug mode
+  await initFileLogging(
+    () => configStore.getDebugLoggingEnabled(),
+    () => configStore.getSelectedRepoPath()
+  )
 
   createWindow()
 

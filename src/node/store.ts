@@ -27,6 +27,7 @@ interface StoreSchema {
   preferredEditor?: string
   mergeStrategy?: MergeStrategy
   lastClonePath?: string
+  debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
   forgeStateCache: Record<string, CachedForgeState>
 }
@@ -84,6 +85,26 @@ export class ConfigStore {
 
   setLastClonePath(path: string): void {
     this.store.set('lastClonePath', path)
+  }
+
+  // Debug logging methods
+
+  getDebugLoggingEnabled(): boolean {
+    return this.store.get('debugLoggingEnabled', false)
+  }
+
+  setDebugLoggingEnabled(enabled: boolean): void {
+    this.store.set('debugLoggingEnabled', enabled)
+  }
+
+  /**
+   * Get the path of the currently selected repo.
+   * Returns null if no repo is selected.
+   */
+  getSelectedRepoPath(): string | null {
+    const repos = this.getLocalRepos()
+    const selected = repos.find((r) => r.isSelected)
+    return selected?.path ?? null
   }
 
   private setRepos(repos: LocalRepo[]): void {

@@ -12,6 +12,71 @@ const styles: Record<LogLevel, { label: string; color: string; ansi: string }> =
   trace: { label: 'TRACE', color: '#9b59b6', ansi: '\x1b[35m' }
 }
 
+// --- File logging for Node.js only ---
+let fileLoggingInitialized = false
+let isEnabledFn: (() => boolean) | null = null
+let getRepoPathFn: (() => string | null) | null = null
+const clearedThisSession = new Set<string>()
+
+// Dynamic imports for Node.js only (not available in browser)
+let fs: typeof import('fs') | null = null
+let path: typeof import('path') | null = null
+
+/**
+ * Initialize file logging (call from main process on startup).
+ * @param isEnabled - function to check if debug logging is enabled
+ * @param getRepoPath - function to get current repo path
+ */
+export async function initFileLogging(
+  isEnabled: () => boolean,
+  getRepoPath: () => string | null
+): Promise<void> {
+  if (isBrowser) return
+
+  // Dynamic import for Node.js modules
+  fs = await import('fs')
+  path = await import('path')
+
+  fileLoggingInitialized = true
+  isEnabledFn = isEnabled
+  getRepoPathFn = getRepoPath
+}
+
+function writeToFile(level: LogLevel, message: string, args: any[]): void {
+  if (isBrowser || !fileLoggingInitialized || !fs || !path) return
+  if (!isEnabledFn || !isEnabledFn()) return
+
+  const repoPath = getRepoPathFn?.()
+  if (!repoPath) return
+
+  const logPath = path.join(repoPath, '.git', 'teapot-debug.log')
+
+  // Clear on first write this session
+  if (!clearedThisSession.has(repoPath)) {
+    try {
+      fs.writeFileSync(logPath, '')
+    } catch {
+      // Ignore errors (e.g., .git doesn't exist)
+    }
+    clearedThisSession.add(repoPath)
+  }
+
+  const timestamp = new Date().toISOString()
+  const argsStr =
+    args.length > 0
+      ? ' ' + args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ')
+      : ''
+  const line = `[${timestamp}] [${level.toUpperCase()}] ${message}${argsStr}\n`
+
+  try {
+    fs.appendFileSync(logPath, line)
+  } catch {
+    // Ignore write errors
+  }
+}
+
+// --- Existing logger code ---
+
 function getLogLevel(): LogLevel {
   if (isBrowser) return 'info'
   const envLevel = process.env.LOG_LEVEL as LogLevel | undefined
@@ -55,18 +120,23 @@ function getPerformanceNow(): number {
 
 export const log = {
   info: (message: any, ...args: any[]) => {
+    // File logging captures ALL levels when enabled (independent of console log level)
+    writeToFile('info', String(message), args)
     if (!shouldLog('info')) return
     console.info(...format('info', message, args))
   },
   warn: (message: any, ...args: any[]) => {
+    writeToFile('warn', String(message), args)
     if (!shouldLog('warn')) return
     console.warn(...format('warn', message, args))
   },
   error: (message: any, ...args: any[]) => {
+    writeToFile('error', String(message), args)
     if (!shouldLog('error')) return
     console.error(...format('error', message, args))
   },
   debug: (message: any, ...args: any[]) => {
+    writeToFile('debug', String(message), args)
     if (!shouldLog('debug')) return
     console.debug(...format('debug', message, args))
   },
@@ -81,8 +151,8 @@ export const log = {
    */
   trace: (message: string, extra?: { startMs?: number } & Record<string, unknown>): number => {
     const now = getPerformanceNow()
-    if (!shouldLog('trace')) return now
 
+    // Process message for both file and console
     let msg = message
     const extraCopy = extra ? { ...extra } : undefined
 
@@ -93,6 +163,12 @@ export const log = {
     }
 
     const hasExtra = extraCopy && Object.keys(extraCopy).length > 0
+
+    // File logging captures ALL levels when enabled
+    writeToFile('trace', msg, hasExtra ? [extraCopy] : [])
+
+    if (!shouldLog('trace')) return now
+
     if (hasExtra) {
       console.debug(...format('trace', msg, [extraCopy]))
     } else {

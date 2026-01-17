@@ -1,5 +1,7 @@
 import { IPC_CHANNELS, IpcHandlerOf } from '@shared/types'
-import { clipboard, dialog, ipcMain } from 'electron'
+import { clipboard, dialog, ipcMain, shell } from 'electron'
+import fs from 'fs'
+import path from 'path'
 import { CloneOperation } from '../operations/CloneOperation'
 import { gitForgeService } from '../services/ForgeService'
 import { configStore } from '../store'
@@ -50,6 +52,35 @@ const setPreferredEditorHandler: IpcHandlerOf<'setPreferredEditor'> = (_event, {
   configStore.setPreferredEditor(editor)
 }
 
+const getDebugLoggingHandler: IpcHandlerOf<'getDebugLogging'> = () => {
+  return configStore.getDebugLoggingEnabled()
+}
+
+const setDebugLoggingHandler: IpcHandlerOf<'setDebugLogging'> = (_event, { enabled }) => {
+  configStore.setDebugLoggingEnabled(enabled)
+}
+
+const showDebugLogFileHandler: IpcHandlerOf<'showDebugLogFile'> = () => {
+  const repoPath = configStore.getSelectedRepoPath()
+  if (!repoPath) {
+    return { success: false, error: 'No repository open' }
+  }
+
+  const logPath = path.join(repoPath, '.git', 'teapot-debug.log')
+
+  // Create the file if it doesn't exist so we have something to show
+  if (!fs.existsSync(logPath)) {
+    try {
+      fs.writeFileSync(logPath, '')
+    } catch {
+      return { success: false, error: 'Could not create log file' }
+    }
+  }
+
+  shell.showItemInFolder(logPath)
+  return { success: true }
+}
+
 const getMergeStrategyHandler: IpcHandlerOf<'getMergeStrategy'> = () => {
   return configStore.getMergeStrategy()
 }
@@ -98,6 +129,9 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.setGithubPat, setGithubPatHandler)
   ipcMain.handle(IPC_CHANNELS.getPreferredEditor, getPreferredEditorHandler)
   ipcMain.handle(IPC_CHANNELS.setPreferredEditor, setPreferredEditorHandler)
+  ipcMain.handle(IPC_CHANNELS.getDebugLogging, getDebugLoggingHandler)
+  ipcMain.handle(IPC_CHANNELS.setDebugLogging, setDebugLoggingHandler)
+  ipcMain.handle(IPC_CHANNELS.showDebugLogFile, showDebugLogFileHandler)
   ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.cloneRepository, cloneRepositoryHandler)

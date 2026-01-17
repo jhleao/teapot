@@ -264,6 +264,12 @@ export class ExecutionContextService {
         : operationOrOptions
     const operation = options.operation ?? 'unknown'
     const targetBranch = options.targetBranch
+
+    log.debug('[ExecutionContextService] acquire() called', {
+      repoPath,
+      operation,
+      targetBranch
+    })
     // Validate repoPath early to fail fast with a clear error
     if (!repoPath || typeof repoPath !== 'string') {
       throw new Error('repoPath is required')
@@ -291,9 +297,12 @@ export class ExecutionContextService {
           await this.clearPersistedContext(repoPath)
           contextEvents.emit('staleCleared', repoPath, age)
         } else {
-          log.debug(
-            `[ExecutionContextService] Reusing persisted context from ${persistedContext.operation}`
-          )
+          log.debug('[ExecutionContextService] acquire() reusing persisted context', {
+            executionPath: persistedContext.executionPath,
+            isTemporary: persistedContext.isTemporary,
+            operation: persistedContext.operation,
+            ageMs: Date.now() - persistedContext.createdAt
+          })
           return {
             executionPath: persistedContext.executionPath,
             isTemporary: persistedContext.isTemporary,
@@ -316,9 +325,12 @@ export class ExecutionContextService {
       // Note: Rebases started via temp worktree have their context persisted and
       // are handled by the persistedContext check above.
       if (activeStatus.isRebasing) {
-        log.debug(
-          '[ExecutionContextService] Rebase in progress in active worktree, using it for continue/abort'
-        )
+        log.debug('[ExecutionContextService] acquire() rebase in progress in active worktree', {
+          activeWorktreePath,
+          operation,
+          isRebasing: activeStatus.isRebasing,
+          conflictedCount: activeStatus.conflicted?.length ?? 0
+        })
         const context: ExecutionContext = {
           executionPath: activeWorktreePath,
           isTemporary: false,
@@ -417,6 +429,11 @@ export class ExecutionContextService {
         operation,
         repoPath
       }
+      log.debug('[ExecutionContextService] acquire() returning new temp worktree context', {
+        executionPath: context.executionPath,
+        isTemporary: context.isTemporary,
+        operation: context.operation
+      })
       contextEvents.emit('acquired', context, repoPath)
       return context
     } finally {
@@ -429,6 +446,13 @@ export class ExecutionContextService {
    * Persists to disk for crash recovery.
    */
   static async storeContext(repoPath: string, context: ExecutionContext): Promise<void> {
+    log.debug('[ExecutionContextService] storeContext() called', {
+      repoPath,
+      executionPath: context.executionPath,
+      isTemporary: context.isTemporary,
+      operation: context.operation
+    })
+
     if (context.isTemporary) {
       await this.persistContext(repoPath, {
         executionPath: context.executionPath,
@@ -449,6 +473,7 @@ export class ExecutionContextService {
    * Call this when a rebase completes or is aborted.
    */
   static async clearStoredContext(repoPath: string): Promise<void> {
+    log.debug('[ExecutionContextService] clearStoredContext() called', { repoPath })
     // Acquire lock to prevent race conditions when multiple processes
     // try to clear the context simultaneously
     const releaseLock = await this.acquireLock(repoPath)
@@ -827,10 +852,23 @@ export class ExecutionContextService {
           // Lock is held by active process - wait with jitter and retry
           const jitter = Math.random() * baseRetryDelayMs
           await new Promise((r) => setTimeout(r, baseRetryDelayMs * (attempt + 1) + jitter))
-        } else if (errCode === 'ENOENT') {
-          // .git directory doesn't exist, skip file locking
+        } else if (errCode === 'ENOENT' || errCode === 'ENOTDIR') {
+          // .git directory doesn't exist or isn't a directory (worktree .git is a file)
+          // Skip file locking - the caller will handle any issues
+          log.debug('[ExecutionContextService] acquireFileLock() skipping - .git not a directory', {
+            repoPath,
+            lockPath,
+            errCode
+          })
           return
         } else {
+          // Unexpected error - log and throw
+          log.error('[ExecutionContextService] acquireFileLock() unexpected error', {
+            repoPath,
+            lockPath,
+            errCode,
+            message: (err as Error).message
+          })
           throw err
         }
       }

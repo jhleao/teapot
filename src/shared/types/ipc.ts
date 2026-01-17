@@ -130,6 +130,9 @@ export const IPC_CHANNELS = {
   // Settings
   getPreferredEditor: 'getPreferredEditor',
   setPreferredEditor: 'setPreferredEditor',
+  getDebugLogging: 'getDebugLogging',
+  setDebugLogging: 'setDebugLogging',
+  showDebugLogFile: 'showDebugLogFile',
   // Worktree
   getActiveWorktree: 'getActiveWorktree',
   switchWorktree: 'switchWorktree',
@@ -283,6 +286,18 @@ export interface IpcContract {
   [IPC_CHANNELS.setPreferredEditor]: {
     request: { editor: string }
     response: void
+  }
+  [IPC_CHANNELS.getDebugLogging]: {
+    request: void
+    response: boolean
+  }
+  [IPC_CHANNELS.setDebugLogging]: {
+    request: { enabled: boolean }
+    response: void
+  }
+  [IPC_CHANNELS.showDebugLogFile]: {
+    request: void
+    response: { success: boolean; error?: string }
   }
   [IPC_CHANNELS.getMergeStrategy]: {
     request: void

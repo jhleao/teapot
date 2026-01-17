@@ -226,7 +226,7 @@ export class GitForgeClient {
     this.pendingCacheWrite = setTimeout(() => {
       if (this.repoPath && this.state.pullRequests.length > 0) {
         configStore.setCachedForgeState(this.repoPath, this.state)
-        log.info(`[GitForgeClient] Persisted cache for ${this.repoPath}`)
+        log.debug(`[GitForgeClient] Persisted cache for ${this.repoPath}`)
       }
       this.pendingCacheWrite = null
     }, this.DEBOUNCE_WRITE_MS)

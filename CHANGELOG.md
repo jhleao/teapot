@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.8.0](https://github.com/jhleao/teapot/compare/v0.7.0...v0.8.0) (2026-01-17)
+
+
+### Features
+
+* add "Open in..." options to branch context menu for branches with worktrees ([d9bd326](https://github.com/jhleao/teapot/commit/d9bd326cd3e73778b9c9262eec090129c1458046))
+* add clone repository option to repo selector ([ac675af](https://github.com/jhleao/teapot/commit/ac675af7c0605a9dee1a3351fa45914d9f2f9a56))
+* add comprehensive trunk branch protection ([2e07324](https://github.com/jhleao/teapot/commit/2e07324685bc4b0e112b5ec7452324e70533de68))
+* add customizable folder name for clone with validation ([541b6fe](https://github.com/jhleao/teapot/commit/541b6fe6b8406fc2de100783e62d20788d9f8e1a))
+* add debug logging for troubleshooting stuck states ([d0c80d8](https://github.com/jhleao/teapot/commit/d0c80d8cfd85dc9eaabe28d5136efa054c9a7989))
+* add edit commit message to commit context menu ([268508c](https://github.com/jhleao/teapot/commit/268508c9f3b92fe842cefa6a16400f565343755a))
+* add fold-into-parent operation with patch-based squash ([3f65a78](https://github.com/jhleao/teapot/commit/3f65a7885ec57d00aa4fa748268d4ed237cf0197))
+* add MultiBranchBadge for compact display of multiple branches on same commit ([701cdd6](https://github.com/jhleao/teapot/commit/701cdd6d63e5e9c9143a799149f9779f9b24cc88))
+* add parallel mode for operations with dirty worktree ([de6ab25](https://github.com/jhleao/teapot/commit/de6ab2521322ba98a946cc3946c99b81102dfde3))
+* Add PR status checks display with CI integration ([3d7a090](https://github.com/jhleao/teapot/commit/3d7a0907b3581aa53a8e4c6a68669d39324f52b1))
+* always rebase on temp worktree with Open in Editor actions ([9c84a9f](https://github.com/jhleao/teapot/commit/9c84a9f89bcc59148be9f656a65f9f4f63d8208c))
+* close PR when deleting branch via context menu ([f9ad460](https://github.com/jhleao/teapot/commit/f9ad460c6630bf02d5354cdcf89ae04982f1d003))
+* delete remote branch when uncommitting ([36bf710](https://github.com/jhleao/teapot/commit/36bf710319cfc0afd231f7ce37459b2221ec046a))
+* enable parallel rebase workflows with dirty worktree ([a6e2243](https://github.com/jhleao/teapot/commit/a6e22431058ad3f93edd9294ce0059a4a7780b6f))
+* harden worktree conflict handling ([30bf806](https://github.com/jhleao/teapot/commit/30bf80696ab00225877a8d04080d69832034a469))
+* migrate GitHub API to GraphQL and add rate limit handling ([32b8452](https://github.com/jhleao/teapot/commit/32b84525bdbd70d4162f1f55c330648fcfa6abfe))
+* re-activate Ship It button with bug fixes ([c5f2060](https://github.com/jhleao/teapot/commit/c5f20608c6f5114e21080fa81e42c9f666ecc3fc))
+* replace "Fold into parent" with "Squash into parent" ([8855cd3](https://github.com/jhleao/teapot/commit/8855cd3e10bb312419f4caa6a7aaa7590b64ca1a))
+* show "Open in..." for currently checked out branch ([f9f78bd](https://github.com/jhleao/teapot/commit/f9f78bdec99384f456d3421478264af02375dfcc))
+* Show disabled "Delete branch" menu option with tooltip ([1cc1b5b](https://github.com/jhleao/teapot/commit/1cc1b5b1d8d8e040bc32a0205792e195c27bf4e9))
+* validate temp worktree registration on context load ([79e2539](https://github.com/jhleao/teapot/commit/79e253986a60f8a0277f383cd1f82675bcc97033))
+
+
+### Bug Fixes
+
+* always create temp worktrees at trunk with detached HEAD ([efd45a7](https://github.com/jhleao/teapot/commit/efd45a7263c7e51be2d3c45be525bfde9cb0c226))
+* block syncTrunk when user has dirty tree on trunk branch ([c019a98](https://github.com/jhleao/teapot/commit/c019a98c3c2beaf7e8eec3e20c6a61adb0b522c7))
+* cleanup branch removes worktree first if branch is checked out there ([ea4099d](https://github.com/jhleao/teapot/commit/ea4099d1dd2b3214e84aa55a68de8ed33fccd23a))
+* clear timeout timer on success in SimpleGitAdapter.withTimeout ([b8f1a7f](https://github.com/jhleao/teapot/commit/b8f1a7f0ccf4bb5d4e19db336be600eec3b56b23))
+* delete branch removes associated worktree first ([364d875](https://github.com/jhleao/teapot/commit/364d8751aac042c3b5663f529cb30cb2b364fcc9))
+* delete remote branch when deleting branch with closed PR ([d447ad9](https://github.com/jhleao/teapot/commit/d447ad9d1047fe0e718ab168efa554d6eacbbe15))
+* delete remote-tracking refs during branch cleanup ([9956b4d](https://github.com/jhleao/teapot/commit/9956b4d27a3df5cf9bb3014da9df2b3e714b0736))
+* edit commit message button state and tooltip issues ([0ff5609](https://github.com/jhleao/teapot/commit/0ff5609f3668e28bfd70b0dcba474d7116109b1b))
+* extract ThemeContext to fix portal context error ([78a848e](https://github.com/jhleao/teapot/commit/78a848e99ea6ec2673e60e25538c715492591acf))
+* guard cleanup API state updates ([09f922a](https://github.com/jhleao/teapot/commit/09f922ab75af505344572caa5d0c3e89e9a3db3b))
+* handle disposed render frame in IPC sends ([b9c4846](https://github.com/jhleao/teapot/commit/b9c4846cf3b17ddb5140ad90435399bbce145b34))
+* handle stale worktree references causing checkout failures ([dcf8813](https://github.com/jhleao/teapot/commit/dcf88131c72b6f947566ae0e5394bc4455dfc19c))
+* improve merge strategy labels in settings dialog ([de9af53](https://github.com/jhleao/teapot/commit/de9af5340c99c725b5be7b5870ec2d81a177e96c))
+* improve multi-commit branch handling and drag highlighting ([bc6ae04](https://github.com/jhleao/teapot/commit/bc6ae0476a803eebb5c158838d3ae4f5dba0749c))
+* only block Ship It for current branch when working tree is dirty ([2ba224d](https://github.com/jhleao/teapot/commit/2ba224da4ccb5fd867d06b1eb497b3c5d583da67))
+* only show Rebase button for branches directly off trunk ([3aae231](https://github.com/jhleao/teapot/commit/3aae23152e013aeb7c19c301f6f7b86995cbb00a))
+* prevent lock queue chain breakage on error ([8f16a11](https://github.com/jhleao/teapot/commit/8f16a11a740ded98fc346d94064779c79f58a089))
+* prevent race condition in rapid rebase operations ([2102d06](https://github.com/jhleao/teapot/commit/2102d063a028094a13c32102be3f4290e403921f))
+* prevent UI crash when UiStateContext accessed during error recovery ([6655d41](https://github.com/jhleao/teapot/commit/6655d41870e14a411f8c51ba900c883de1afb91b))
+* resolve git directory correctly when operating from linked worktree ([d22c2ce](https://github.com/jhleao/teapot/commit/d22c2ce234d090c7ba5b27a519c296f63889dc71))
+* return null from currentBranch() for detached HEAD state ([a0dae99](https://github.com/jhleao/teapot/commit/a0dae995e581b4de026a7a72a67358ea756c12b4))
+* show error dialog when branch deletion or cleanup fails ([7e724bf](https://github.com/jhleao/teapot/commit/7e724bf3f214253610b0feb7a585a1c46225d8de))
+* show error instead of white screen when IPC hangs after wake ([5319d01](https://github.com/jhleao/teapot/commit/5319d016cc36026f3220fb67a78c8776128aaef9))
+* show Ship It button only on bottom branch of PR stack ([27d0de5](https://github.com/jhleao/teapot/commit/27d0de5faeb9b6d35ec3f4130eb245796196875b))
+* stabilize branch cleanup ([85ce0cc](https://github.com/jhleao/teapot/commit/85ce0cc38d117b2a721ab06e636fb276b772b5f6))
+* update PR base branch when updating PR after rebase ([9301f85](https://github.com/jhleao/teapot/commit/9301f85e6ef927f2d30d9cf10ecfb419af6f5c24))
+* use active worktree when rebase is in progress during continue ([c6f0e82](https://github.com/jhleao/teapot/commit/c6f0e822350035a641147d036058dedd04eac9d3))
+* use opaque background for status checks dropdown ([e8ca943](https://github.com/jhleao/teapot/commit/e8ca943623cc9fa4455c03f89e9c41e973978d1c))
+
+
+### Code Refactoring
+
+* improve clone repository architecture and UX ([ac675af](https://github.com/jhleao/teapot/commit/ac675af7c0605a9dee1a3351fa45914d9f2f9a56))
+
+
+### Documentation
+
+* add architect review and implementation specs to idea 07 ([11ebe5e](https://github.com/jhleao/teapot/commit/11ebe5eff0bf6b7a1e95eed26773a3c8ea9f7a70))
+* add ideas from worktree lifecycle and error handling post-mortems ([459fc89](https://github.com/jhleao/teapot/commit/459fc892ccefcc383fb08698b863c2ea8a90681f))
+* consolidate legacy docs into actionable implementation ideas ([01dff97](https://github.com/jhleao/teapot/commit/01dff97378bee86f28ef064aa33a61d7a3bc4366))
+* refine idea 02 with evidence and simpler design ([a33ae86](https://github.com/jhleao/teapot/commit/a33ae86324f9e6d04046dcbb917696241d0fd00f))
+* remove GitHub webhooks idea doc ([8449868](https://github.com/jhleao/teapot/commit/8449868b6a0f2e25c01d17f40f1276a1bd443621))
+* remove idea 08 (state immutability) - already addressed ([7ddf705](https://github.com/jhleao/teapot/commit/7ddf7052252a87c99b765e868081cc909d06bafc))
+* remove stale GraphQL API idea (already implemented) ([0d2cd0b](https://github.com/jhleao/teapot/commit/0d2cd0bb35b165a802f8075d6da0e234fc51dfe2))
+* remove stale rate limit handling idea ([c96d45d](https://github.com/jhleao/teapot/commit/c96d45d01bddce98b2e845118a7238850bc6a48d))
+* revise idea 11 to comprehensive diagnostics service ([64301e9](https://github.com/jhleao/teapot/commit/64301e92a4e1bff40caf19fd33a8d769cd924d98))
+
 ## [0.7.0](https://github.com/jhleao/teapot/compare/v0.6.0...v0.7.0) (2026-01-04)
 
 

@@ -109,9 +109,9 @@ app.whenReady().then(async () => {
   // Register all IPC handlers
   registerHandlers()
 
-  // Initialize file logging for debug mode
+  // Initialize file logging with level-based filtering
   await initFileLogging(
-    () => configStore.getDebugLoggingEnabled(),
+    () => configStore.getFileLogLevel(),
     () => configStore.getSelectedRepoPath()
   )
 

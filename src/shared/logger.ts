@@ -1,3 +1,5 @@
+import type { FileLogLevel } from './types/ipc'
+
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
 const LOG_LEVEL_ORDER: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace']
@@ -14,21 +16,94 @@ const styles: Record<LogLevel, { label: string; color: string; ansi: string }> =
 
 // --- File logging for Node.js only ---
 let fileLoggingInitialized = false
-let isEnabledFn: (() => boolean) | null = null
+let getFileLogLevelFn: (() => FileLogLevel) | null = null
 let getRepoPathFn: (() => string | null) | null = null
 const clearedThisSession = new Set<string>()
+
+// Async write buffer
+const writeBuffer: string[] = []
+let flushScheduled = false
+const FLUSH_INTERVAL_MS = 100
+const FLUSH_SIZE_THRESHOLD = 50
+
+// Log rotation settings
+const MAX_LOG_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
+const MAX_ROTATED_FILES = 3
 
 // Dynamic imports for Node.js only (not available in browser)
 let fs: typeof import('fs') | null = null
 let path: typeof import('path') | null = null
 
 /**
+ * Map FileLogLevel UI options to maximum LogLevel that should be written.
+ * - 'off': nothing
+ * - 'standard': error, warn, info
+ * - 'verbose': error, warn, info, debug
+ * - 'everything': error, warn, info, debug, trace
+ */
+function getMaxLogLevelForFileLevel(fileLevel: FileLogLevel): LogLevel | null {
+  switch (fileLevel) {
+    case 'off':
+      return null
+    case 'standard':
+      return 'info'
+    case 'verbose':
+      return 'debug'
+    case 'everything':
+      return 'trace'
+    default: {
+      const _exhaustive: never = fileLevel
+      return _exhaustive
+    }
+  }
+}
+
+/**
+ * Check if a log level should be written to file based on current file log level setting.
+ */
+function shouldLogToFile(level: LogLevel): boolean {
+  if (!getFileLogLevelFn) return false
+
+  const fileLevel = getFileLogLevelFn()
+  const maxLevel = getMaxLogLevelForFileLevel(fileLevel)
+  if (!maxLevel) return false
+
+  // Check if level is within the allowed range
+  const levelIndex = LOG_LEVEL_ORDER.indexOf(level)
+  const maxIndex = LOG_LEVEL_ORDER.indexOf(maxLevel)
+  return levelIndex <= maxIndex
+}
+
+/**
+ * Synchronously flush remaining logs to disk.
+ * Called on process exit to prevent data loss.
+ */
+function flushBufferSync(): void {
+  if (!fs || !path || writeBuffer.length === 0) return
+
+  const repoPath = getRepoPathFn?.()
+  if (!repoPath) return
+
+  const logPath = path.join(repoPath, '.git', 'teapot-debug.log')
+
+  // Drain buffer and write synchronously
+  const lines = writeBuffer.splice(0, writeBuffer.length)
+  const content = lines.join('')
+
+  try {
+    fs.appendFileSync(logPath, content)
+  } catch {
+    // Ignore write errors on exit
+  }
+}
+
+/**
  * Initialize file logging (call from main process on startup).
- * @param isEnabled - function to check if debug logging is enabled
+ * @param getFileLogLevel - function to get current file log level setting
  * @param getRepoPath - function to get current repo path
  */
 export async function initFileLogging(
-  isEnabled: () => boolean,
+  getFileLogLevel: () => FileLogLevel,
   getRepoPath: () => string | null
 ): Promise<void> {
   if (isBrowser) return
@@ -38,16 +113,74 @@ export async function initFileLogging(
   path = await import('path')
 
   fileLoggingInitialized = true
-  isEnabledFn = isEnabled
+  getFileLogLevelFn = getFileLogLevel
   getRepoPathFn = getRepoPath
+
+  // Flush remaining logs on process exit to prevent data loss
+  process.on('exit', flushBufferSync)
+  process.on('SIGINT', () => {
+    flushBufferSync()
+    process.exit(0)
+  })
+  process.on('SIGTERM', () => {
+    flushBufferSync()
+    process.exit(0)
+  })
 }
 
-function writeToFile(level: LogLevel, message: string, args: any[]): void {
-  if (isBrowser || !fileLoggingInitialized || !fs || !path) return
-  if (!isEnabledFn || !isEnabledFn()) return
+/**
+ * Rotate log files if the current log exceeds MAX_LOG_SIZE_BYTES.
+ * Rotation: .log -> .log.1 -> .log.2 -> .log.3 (deleted)
+ */
+function rotateLogIfNeeded(logPath: string): void {
+  if (!fs || !path) return
+
+  try {
+    const stats = fs.statSync(logPath)
+    if (stats.size < MAX_LOG_SIZE_BYTES) return
+
+    // Rotate existing files
+    for (let i = MAX_ROTATED_FILES; i >= 1; i--) {
+      const oldPath = i === 1 ? logPath : `${logPath}.${i - 1}`
+      const newPath = `${logPath}.${i}`
+
+      try {
+        if (i === MAX_ROTATED_FILES) {
+          // Delete the oldest file
+          fs.unlinkSync(newPath)
+        }
+      } catch {
+        // File doesn't exist, ignore
+      }
+
+      try {
+        if (fs.existsSync(oldPath)) {
+          fs.renameSync(oldPath, newPath)
+        }
+      } catch {
+        // Ignore rotation errors
+      }
+    }
+  } catch {
+    // File doesn't exist or can't stat, ignore
+  }
+}
+
+/**
+ * Flush the write buffer to disk asynchronously.
+ */
+function flushBuffer(): void {
+  if (!fs || !path || writeBuffer.length === 0) {
+    flushScheduled = false
+    return
+  }
 
   const repoPath = getRepoPathFn?.()
-  if (!repoPath) return
+  if (!repoPath) {
+    writeBuffer.length = 0
+    flushScheduled = false
+    return
+  }
 
   const logPath = path.join(repoPath, '.git', 'teapot-debug.log')
 
@@ -61,6 +194,37 @@ function writeToFile(level: LogLevel, message: string, args: any[]): void {
     clearedThisSession.add(repoPath)
   }
 
+  // Check for rotation before writing
+  rotateLogIfNeeded(logPath)
+
+  // Drain buffer and write
+  const lines = writeBuffer.splice(0, writeBuffer.length)
+  const content = lines.join('')
+
+  // Use async write to avoid blocking
+  fs.appendFile(logPath, content, () => {
+    // Ignore write errors
+  })
+
+  flushScheduled = false
+}
+
+/**
+ * Schedule a buffer flush if not already scheduled.
+ */
+function scheduleFlush(): void {
+  if (flushScheduled) return
+  flushScheduled = true
+  setTimeout(flushBuffer, FLUSH_INTERVAL_MS)
+}
+
+function writeToFile(level: LogLevel, message: string, args: any[]): void {
+  if (isBrowser || !fileLoggingInitialized || !fs || !path) return
+  if (!shouldLogToFile(level)) return
+
+  // Skip START logs - only log END with duration (reduces noise by ~50%)
+  if (message.endsWith(' START')) return
+
   const timestamp = new Date().toISOString()
   const argsStr =
     args.length > 0
@@ -68,10 +232,14 @@ function writeToFile(level: LogLevel, message: string, args: any[]): void {
       : ''
   const line = `[${timestamp}] [${level.toUpperCase()}] ${message}${argsStr}\n`
 
-  try {
-    fs.appendFileSync(logPath, line)
-  } catch {
-    // Ignore write errors
+  // Add to buffer
+  writeBuffer.push(line)
+
+  // Flush immediately if buffer is large, otherwise schedule
+  if (writeBuffer.length >= FLUSH_SIZE_THRESHOLD) {
+    flushBuffer()
+  } else {
+    scheduleFlush()
   }
 }
 
@@ -120,7 +288,6 @@ function getPerformanceNow(): number {
 
 export const log = {
   info: (message: any, ...args: any[]) => {
-    // File logging captures ALL levels when enabled (independent of console log level)
     writeToFile('info', String(message), args)
     if (!shouldLog('info')) return
     console.info(...format('info', message, args))
@@ -164,7 +331,6 @@ export const log = {
 
     const hasExtra = extraCopy && Object.keys(extraCopy).length > 0
 
-    // File logging captures ALL levels when enabled
     writeToFile('trace', msg, hasExtra ? [extraCopy] : [])
 
     if (!shouldLog('trace')) return now

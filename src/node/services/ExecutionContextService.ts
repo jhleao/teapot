@@ -254,7 +254,9 @@ export class ExecutionContextService {
   ): Promise<ExecutionContext> {
     // Support both legacy (string) and new (options object) calling conventions
     const options =
-      typeof operationOrOptions === 'string' ? { operation: operationOrOptions } : operationOrOptions
+      typeof operationOrOptions === 'string'
+        ? { operation: operationOrOptions }
+        : operationOrOptions
     const operation = options.operation ?? 'unknown'
     const targetBranch = options.targetBranch
 

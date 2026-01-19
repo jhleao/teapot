@@ -52,12 +52,12 @@ const setPreferredEditorHandler: IpcHandlerOf<'setPreferredEditor'> = (_event, {
   configStore.setPreferredEditor(editor)
 }
 
-const getDebugLoggingHandler: IpcHandlerOf<'getDebugLogging'> = () => {
-  return configStore.getDebugLoggingEnabled()
+const getFileLogLevelHandler: IpcHandlerOf<'getFileLogLevel'> = () => {
+  return configStore.getFileLogLevel()
 }
 
-const setDebugLoggingHandler: IpcHandlerOf<'setDebugLogging'> = (_event, { enabled }) => {
-  configStore.setDebugLoggingEnabled(enabled)
+const setFileLogLevelHandler: IpcHandlerOf<'setFileLogLevel'> = (_event, { level }) => {
+  configStore.setFileLogLevel(level)
 }
 
 const showDebugLogFileHandler: IpcHandlerOf<'showDebugLogFile'> = () => {
@@ -129,8 +129,8 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.setGithubPat, setGithubPatHandler)
   ipcMain.handle(IPC_CHANNELS.getPreferredEditor, getPreferredEditorHandler)
   ipcMain.handle(IPC_CHANNELS.setPreferredEditor, setPreferredEditorHandler)
-  ipcMain.handle(IPC_CHANNELS.getDebugLogging, getDebugLoggingHandler)
-  ipcMain.handle(IPC_CHANNELS.setDebugLogging, setDebugLoggingHandler)
+  ipcMain.handle(IPC_CHANNELS.getFileLogLevel, getFileLogLevelHandler)
+  ipcMain.handle(IPC_CHANNELS.setFileLogLevel, setFileLogLevelHandler)
   ipcMain.handle(IPC_CHANNELS.showDebugLogFile, showDebugLogFileHandler)
   ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)

@@ -5,6 +5,12 @@ import type { BranchChoice, SquashPreview, SquashResult } from './squash'
 import type { LocalRepo, UiState } from './ui'
 
 /**
+ * File logging level options for the settings UI.
+ * Controls what gets written to the debug log file.
+ */
+export type FileLogLevel = 'off' | 'standard' | 'verbose' | 'everything'
+
+/**
  * Response type for rebase operations (continue, abort, skip)
  */
 export type RebaseOperationResponse = {
@@ -130,8 +136,8 @@ export const IPC_CHANNELS = {
   // Settings
   getPreferredEditor: 'getPreferredEditor',
   setPreferredEditor: 'setPreferredEditor',
-  getDebugLogging: 'getDebugLogging',
-  setDebugLogging: 'setDebugLogging',
+  getFileLogLevel: 'getFileLogLevel',
+  setFileLogLevel: 'setFileLogLevel',
   showDebugLogFile: 'showDebugLogFile',
   // Worktree
   getActiveWorktree: 'getActiveWorktree',
@@ -287,12 +293,12 @@ export interface IpcContract {
     request: { editor: string }
     response: void
   }
-  [IPC_CHANNELS.getDebugLogging]: {
+  [IPC_CHANNELS.getFileLogLevel]: {
     request: void
-    response: boolean
+    response: FileLogLevel
   }
-  [IPC_CHANNELS.setDebugLogging]: {
-    request: { enabled: boolean }
+  [IPC_CHANNELS.setFileLogLevel]: {
+    request: { level: FileLogLevel }
     response: void
   }
   [IPC_CHANNELS.showDebugLogFile]: {

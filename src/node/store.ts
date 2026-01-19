@@ -1,4 +1,10 @@
-import type { DetachedWorktree, LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
+import type {
+  DetachedWorktree,
+  FileLogLevel,
+  LocalRepo,
+  RebaseIntent,
+  RebaseState
+} from '@shared/types'
 import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
@@ -27,6 +33,8 @@ interface StoreSchema {
   preferredEditor?: string
   mergeStrategy?: MergeStrategy
   lastClonePath?: string
+  fileLogLevel?: FileLogLevel
+  // Legacy field - migrated to fileLogLevel on first read
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
   forgeStateCache: Record<string, CachedForgeState>
@@ -87,14 +95,34 @@ export class ConfigStore {
     this.store.set('lastClonePath', path)
   }
 
-  // Debug logging methods
+  // File logging methods
 
-  getDebugLoggingEnabled(): boolean {
-    return this.store.get('debugLoggingEnabled', false)
+  getFileLogLevel(): FileLogLevel {
+    // Check for new setting first
+    const level = this.store.get('fileLogLevel')
+    if (level !== undefined) {
+      return level
+    }
+
+    // Migrate from legacy debugLoggingEnabled
+    const legacyEnabled = this.store.get('debugLoggingEnabled')
+    if (legacyEnabled === true) {
+      // Migrate: old "enabled" -> new "verbose" (same behavior as before, minus trace)
+      this.store.set('fileLogLevel', 'verbose')
+      this.store.delete('debugLoggingEnabled')
+      return 'verbose'
+    }
+
+    // Default: off
+    return 'off'
   }
 
-  setDebugLoggingEnabled(enabled: boolean): void {
-    this.store.set('debugLoggingEnabled', enabled)
+  setFileLogLevel(level: FileLogLevel): void {
+    this.store.set('fileLogLevel', level)
+    // Clean up legacy field if it exists
+    if (this.store.get('debugLoggingEnabled') !== undefined) {
+      this.store.delete('debugLoggingEnabled')
+    }
   }
 
   /**

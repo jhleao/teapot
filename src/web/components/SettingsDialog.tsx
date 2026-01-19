@@ -1,8 +1,21 @@
 import { log } from '@shared/logger'
+import type { FileLogLevel } from '@shared/types'
 import type { MergeStrategy } from '@shared/types/git-forge'
+import { ExternalLink } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { useTheme } from '../contexts/ThemeContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './Dialog'
+
+const FILE_LOG_LEVEL_OPTIONS: ReadonlyArray<{
+  value: FileLogLevel
+  label: string
+  description: string
+}> = [
+  { value: 'off', label: 'Off', description: 'No logs will be written to disk' },
+  { value: 'standard', label: 'Standard', description: 'Info, warnings, and errors' },
+  { value: 'verbose', label: 'Verbose', description: 'Standard + debug messages' },
+  { value: 'everything', label: 'All', description: 'All logs including performance traces' }
+]
 
 interface SettingsDialogProps {
   open: boolean
@@ -14,7 +27,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const [pat, setPat] = useState('')
   const [editor, setEditor] = useState('')
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
-  const [debugLogging, setDebugLogging] = useState(false)
+  const [fileLogLevel, setFileLogLevel] = useState<FileLogLevel>('off')
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -26,16 +39,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor, storedStrategy, storedDebugLogging] = await Promise.all([
+      const [storedPat, storedEditor, storedStrategy, storedFileLogLevel] = await Promise.all([
         window.api.getGithubPat(),
         window.api.getPreferredEditor(),
         window.api.getMergeStrategy(),
-        window.api.getDebugLogging()
+        window.api.getFileLogLevel()
       ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
       setMergeStrategy(storedStrategy)
-      setDebugLogging(storedDebugLogging)
+      setFileLogLevel(storedFileLogLevel)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -73,13 +86,12 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
     }
   }
 
-  const handleDebugLoggingChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const enabled = e.target.checked
-    setDebugLogging(enabled)
+  const handleFileLogLevelChange = async (level: FileLogLevel) => {
+    setFileLogLevel(level)
     try {
-      await window.api.setDebugLogging({ enabled })
+      await window.api.setFileLogLevel({ level })
     } catch (error) {
-      log.error('Failed to save debug logging setting:', error)
+      log.error('Failed to save file log level setting:', error)
     }
   }
 
@@ -165,36 +177,54 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
             </select>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             <h4 className="text-sm leading-none font-medium">Debug Logging</h4>
-            <p className="text-muted-foreground text-sm">
-              Capture detailed logs for troubleshooting. Each repository has its own log file at{' '}
-              <code className="bg-muted rounded px-1 py-0.5 text-xs">.git/teapot-debug.log</code>,
-              cleared when Teapot starts.
-            </p>
-            <div className="flex items-center justify-between">
-              <label className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={debugLogging}
-                  onChange={handleDebugLoggingChange}
-                  disabled={isLoading}
-                  className="accent-accent h-4 w-4 rounded border-gray-300"
-                />
-                <span className="text-sm">Enable debug logging</span>
-              </label>
-              <button
-                type="button"
-                onClick={async () => {
-                  const result = await window.api.showDebugLogFile()
-                  if (!result.success && result.error) {
-                    log.warn('Could not show debug log file:', result.error)
-                  }
-                }}
-                className="text-accent text-sm hover:underline"
+            <div className="text-muted-foreground text-sm">
+              <p>Capture logs for troubleshooting</p>
+              <p className="mt-1">
+                Saved per repository in{' '}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const result = await window.api.showDebugLogFile()
+                    if (!result.success && result.error) {
+                      log.warn('Could not show debug log file:', result.error)
+                    }
+                  }}
+                  className="bg-muted inline-flex items-center gap-1 rounded px-1 py-0.5 font-mono hover:underline"
+                >
+                  .git/teapot-debug.log
+                  <ExternalLink className="h-3 w-3" />
+                </button>
+              </p>
+            </div>
+            <div className="space-y-2">
+              <div
+                className="bg-muted/30 flex w-full rounded-lg p-1"
+                role="radiogroup"
+                aria-label="Log level"
               >
-                Show log file
-              </button>
+                {FILE_LOG_LEVEL_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={fileLogLevel === option.value}
+                    disabled={isLoading}
+                    onClick={() => handleFileLogLevelChange(option.value)}
+                    className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      fileLogLevel === option.value
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-muted-foreground min-h-[1.25rem] text-xs">
+                {FILE_LOG_LEVEL_OPTIONS.find((o) => o.value === fileLogLevel)?.description}
+              </p>
             </div>
           </div>
         </div>

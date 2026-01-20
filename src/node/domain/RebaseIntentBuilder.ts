@@ -124,14 +124,14 @@ export class RebaseIntentBuilder {
 
     visited.add(visitedKey)
 
-    // Find the base SHA by walking backwards through commits
-    const baseSha = RebaseIntentBuilder.calculateBranchBase(
+    // Calculate ownership - this gives us both baseSha and all owned commit SHAs
+    const { baseSha, ownedShas } = calculateCommitOwnership({
       headSha,
-      branchName,
+      branchRef: branchName,
       commitMap,
       branchHeadIndex,
       trunkShas
-    )
+    })
 
     // Find child branches - branches that depend on this branch's lineage
     const childBranches = RebaseIntentBuilder.findChildBranchesWithForkPoint(
@@ -165,6 +165,7 @@ export class RebaseIntentBuilder {
       branch: branchName,
       headSha,
       baseSha,
+      ownedShas,
       children
     }
   }

@@ -839,7 +839,7 @@ export class UiStateBuilder {
     const idleShas = new Set<string>()
 
     for (const target of intent.targets) {
-      promptingShas.add(target.node.headSha)
+      target.node.ownedShas.forEach((sha) => promptingShas.add(sha))
       UiStateBuilder.collectChildShas(target.node.children, idleShas)
     }
 
@@ -848,7 +848,7 @@ export class UiStateBuilder {
 
   private static collectChildShas(children: StackNodeState[], result: Set<string>): void {
     for (const child of children) {
-      result.add(child.headSha)
+      child.ownedShas.forEach((sha) => result.add(sha))
       UiStateBuilder.collectChildShas(child.children, result)
     }
   }

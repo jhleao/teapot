@@ -29,7 +29,6 @@ import {
   UiStateBuilder
 } from '../domain'
 import { ExecutionContextService, RepoModelService, SessionService } from '../services'
-import { gitForgeService } from '../services/ForgeService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { RebaseExecutor, type RebaseErrorCode } from './RebaseExecutor'
@@ -120,9 +119,10 @@ export class RebaseOperation {
 
     const config: Configuration = { repoPath }
     const gitAdapter = getGitAdapter()
-    const [repo, forgeState, currentBranch] = await Promise.all([
+    // Don't fetch forge state here - it blocks on network and is only used for PR enrichment.
+    // Frontend will enrich the preview with cached PR data from ForgeStateContext.
+    const [repo, currentBranch] = await Promise.all([
       RepoModelService.buildRepoModel(config),
-      gitForgeService.getStateWithStatus(repoPath).then((r) => r.state),
       gitAdapter.currentBranch(repoPath)
     ])
 
@@ -193,7 +193,7 @@ export class RebaseOperation {
 
     const fullUiState = UiStateBuilder.buildFullUiState(repo, {
       rebaseIntent,
-      gitForgeState: forgeState
+      gitForgeState: { pullRequests: [] }
     })
 
     const stack = fullUiState.projectedStack ?? fullUiState.stack

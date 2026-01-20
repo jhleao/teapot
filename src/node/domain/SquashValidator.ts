@@ -1,5 +1,4 @@
 import type { Commit, Repo, Worktree } from '@shared/types'
-import type { GitForgeState } from '@shared/types/git-forge'
 import type { WorktreeConflict } from '@shared/types/rebase'
 import type { SquashBlocker } from '@shared/types/squash'
 import { StackAnalyzer } from './StackAnalyzer'
@@ -22,11 +21,11 @@ export type SquashValidationResult = {
 }
 
 export class SquashValidator {
-  static validate(
-    repo: Repo,
-    branchToSquash: string,
-    _forgeState: GitForgeState
-  ): SquashValidationResult {
+  /**
+   * Validates whether a branch can be squashed into its parent.
+   * This is a pure local validation - no network calls required.
+   */
+  static validate(repo: Repo, branchToSquash: string): SquashValidationResult {
     const branchMap = new Map(repo.branches.map((branch) => [branch.ref, branch]))
     const targetBranch = branchMap.get(branchToSquash)
 

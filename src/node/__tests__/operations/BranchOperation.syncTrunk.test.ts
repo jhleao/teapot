@@ -122,15 +122,19 @@ describe('syncTrunk', () => {
       execSync('git add file2.txt', { cwd: repoPath })
 
       // Sync trunk - should NOT block (dirty tree is on feature, not trunk)
-      // Note: Due to a separate bug, this may leave us in detached HEAD, but
-      // the key thing we're testing is that the dirty-tree-on-trunk block doesn't
-      // incorrectly trigger when we're on a different branch.
       const result = await BranchOperation.syncTrunk(repoPath)
 
       // Should succeed, not return an error about uncommitted changes
       expect(result.status).toBe('success')
       expect(result.trunkName).toBe('main')
       expect(result.message).not.toContain('uncommitted changes')
+
+      // Verify feature branch is still checked out (no detached HEAD)
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(currentBranch).toBe('feature')
     })
 
     it('should NOT block when user is in detached HEAD state with dirty tree', async () => {
@@ -214,6 +218,279 @@ describe('syncTrunk', () => {
 
       expect(result.status).toBe('success')
       expect(result.trunkName).toBe('main')
+    })
+  })
+
+  describe('strategy selection', () => {
+    it('should use direct ref update when trunk is not checked out anywhere', async () => {
+      // Switch to feature branch so main is not checked out
+      execSync('git checkout -b feature', { cwd: repoPath })
+
+      // Add a commit to remote
+      const tempClone = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-clone-'))
+      try {
+        execSync(`git clone "${remoteRepoPath}" .`, { cwd: tempClone })
+        execSync('git config user.name "Remote User"', { cwd: tempClone })
+        execSync('git config user.email "remote@example.com"', { cwd: tempClone })
+        await fs.promises.writeFile(path.join(tempClone, 'remote-file.txt'), 'new content')
+        execSync('git add remote-file.txt', { cwd: tempClone })
+        execSync('git commit -m "remote commit"', { cwd: tempClone })
+        execSync('git push origin main', { cwd: tempClone })
+      } finally {
+        await fs.promises.rm(tempClone, { recursive: true, force: true })
+      }
+
+      // Sync should succeed using direct ref update (git fetch origin main:main)
+      const result = await BranchOperation.syncTrunk(repoPath)
+
+      expect(result.status).toBe('success')
+      expect(result.trunkName).toBe('main')
+
+      // Verify main was updated
+      const mainSha = execSync('git rev-parse main', { cwd: repoPath, encoding: 'utf-8' }).trim()
+      const remoteSha = execSync('git rev-parse origin/main', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(mainSha).toBe(remoteSha)
+
+      // Verify feature branch is still checked out (not affected)
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(currentBranch).toBe('feature')
+    })
+
+    it('should use merge when trunk is checked out and clean', async () => {
+      // User is on main (trunk checked out and clean)
+      // Add a commit to remote
+      const tempClone = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-clone-'))
+      try {
+        execSync(`git clone "${remoteRepoPath}" .`, { cwd: tempClone })
+        execSync('git config user.name "Remote User"', { cwd: tempClone })
+        execSync('git config user.email "remote@example.com"', { cwd: tempClone })
+        await fs.promises.writeFile(path.join(tempClone, 'remote-file.txt'), 'new content')
+        execSync('git add remote-file.txt', { cwd: tempClone })
+        execSync('git commit -m "remote commit"', { cwd: tempClone })
+        execSync('git push origin main', { cwd: tempClone })
+      } finally {
+        await fs.promises.rm(tempClone, { recursive: true, force: true })
+      }
+
+      // Sync should succeed using merge --ff-only in the worktree
+      const result = await BranchOperation.syncTrunk(repoPath)
+
+      expect(result.status).toBe('success')
+      expect(result.trunkName).toBe('main')
+
+      // Verify main was updated and we're still on main (not detached HEAD)
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(currentBranch).toBe('main')
+
+      // Verify the remote file exists locally
+      const hasRemoteFile = fs.existsSync(path.join(repoPath, 'remote-file.txt'))
+      expect(hasRemoteFile).toBe(true)
+    })
+
+    it('should not leave user in detached HEAD after sync on trunk', async () => {
+      // User is on main (trunk)
+      // Add a commit to remote
+      const tempClone = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-clone-'))
+      try {
+        execSync(`git clone "${remoteRepoPath}" .`, { cwd: tempClone })
+        execSync('git config user.name "Remote User"', { cwd: tempClone })
+        execSync('git config user.email "remote@example.com"', { cwd: tempClone })
+        await fs.promises.writeFile(path.join(tempClone, 'remote-file.txt'), 'new content')
+        execSync('git add remote-file.txt', { cwd: tempClone })
+        execSync('git commit -m "remote commit"', { cwd: tempClone })
+        execSync('git push origin main', { cwd: tempClone })
+      } finally {
+        await fs.promises.rm(tempClone, { recursive: true, force: true })
+      }
+
+      // Sync trunk
+      const result = await BranchOperation.syncTrunk(repoPath)
+      expect(result.status).toBe('success')
+
+      // CRITICAL: Verify we're still on main, not in detached HEAD
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(currentBranch).toBe('main')
+      expect(currentBranch).not.toBe('HEAD') // HEAD means detached
+    })
+
+    it('should block when trunk is checked out with uncommitted changes in different worktree', async () => {
+      // Create a linked worktree on a feature branch
+      const linkedWorktreePath = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), 'teapot-test-linked-')
+      )
+
+      try {
+        // Create linked worktree on feature branch
+        execSync(`git worktree add "${linkedWorktreePath}" -b feature`, { cwd: repoPath })
+
+        // Now main is checked out in the main repo (repoPath)
+        // Make it dirty
+        const dirtyFile = path.join(repoPath, 'dirty.txt')
+        await fs.promises.writeFile(dirtyFile, 'dirty content')
+
+        // Try to sync from the linked worktree - should be blocked because main is dirty
+        const result = await BranchOperation.syncTrunk(linkedWorktreePath)
+
+        expect(result.status).toBe('error')
+        expect(result.message).toContain('Cannot sync main')
+        expect(result.message).toContain('uncommitted changes')
+      } finally {
+        // Cleanup
+        execSync(`git worktree remove "${linkedWorktreePath}" --force`, { cwd: repoPath })
+        await fs.promises.rm(linkedWorktreePath, { recursive: true, force: true }).catch(() => {})
+      }
+    })
+
+    it('should sync when trunk is checked out clean in different worktree', async () => {
+      // Create a linked worktree on a feature branch
+      const linkedWorktreePath = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), 'teapot-test-linked-')
+      )
+
+      try {
+        // Create linked worktree on feature branch
+        execSync(`git worktree add "${linkedWorktreePath}" -b feature`, { cwd: repoPath })
+
+        // Now main is checked out (clean) in the main repo (repoPath)
+        // Add a commit to remote
+        const tempClone = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-clone-'))
+        try {
+          execSync(`git clone "${remoteRepoPath}" .`, { cwd: tempClone })
+          execSync('git config user.name "Remote User"', { cwd: tempClone })
+          execSync('git config user.email "remote@example.com"', { cwd: tempClone })
+          await fs.promises.writeFile(path.join(tempClone, 'remote-file.txt'), 'new content')
+          execSync('git add remote-file.txt', { cwd: tempClone })
+          execSync('git commit -m "remote commit"', { cwd: tempClone })
+          execSync('git push origin main', { cwd: tempClone })
+        } finally {
+          await fs.promises.rm(tempClone, { recursive: true, force: true })
+        }
+
+        // Sync from the linked worktree - should succeed and merge in main repo
+        const result = await BranchOperation.syncTrunk(linkedWorktreePath)
+
+        expect(result.status).toBe('success')
+        expect(result.trunkName).toBe('main')
+
+        // Verify main was updated in the main repo worktree
+        const hasRemoteFile = fs.existsSync(path.join(repoPath, 'remote-file.txt'))
+        expect(hasRemoteFile).toBe(true)
+
+        // Verify the linked worktree is still on feature (not affected)
+        const linkedBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+          cwd: linkedWorktreePath,
+          encoding: 'utf-8'
+        }).trim()
+        expect(linkedBranch).toBe('feature')
+      } finally {
+        // Cleanup
+        execSync(`git worktree remove "${linkedWorktreePath}" --force`, { cwd: repoPath })
+        await fs.promises.rm(linkedWorktreePath, { recursive: true, force: true }).catch(() => {})
+      }
+    })
+  })
+
+  describe('stale worktree handling', () => {
+    it('should skip stale worktrees when analyzing trunk state', async () => {
+      // Create a linked worktree for main
+      const linkedWorktreePath = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), 'teapot-test-stale-')
+      )
+
+      try {
+        // Switch main repo to feature branch so we can create a worktree for main
+        execSync('git checkout -b feature', { cwd: repoPath })
+
+        // Create linked worktree on main
+        execSync(`git worktree add "${linkedWorktreePath}" main`, { cwd: repoPath })
+
+        // Manually delete the worktree directory (simulating stale state)
+        await fs.promises.rm(linkedWorktreePath, { recursive: true, force: true })
+
+        // Add a commit to remote
+        const tempClone = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-clone-'))
+        try {
+          execSync(`git clone "${remoteRepoPath}" .`, { cwd: tempClone })
+          execSync('git config user.name "Remote User"', { cwd: tempClone })
+          execSync('git config user.email "remote@example.com"', { cwd: tempClone })
+          await fs.promises.writeFile(path.join(tempClone, 'remote-file.txt'), 'new content')
+          execSync('git add remote-file.txt', { cwd: tempClone })
+          execSync('git commit -m "remote commit"', { cwd: tempClone })
+          execSync('git push origin main', { cwd: tempClone })
+        } finally {
+          await fs.promises.rm(tempClone, { recursive: true, force: true })
+        }
+
+        // Sync should succeed - the stale worktree should be skipped
+        // Since main is only "checked out" in a stale worktree, it should use direct ref update
+        const result = await BranchOperation.syncTrunk(repoPath)
+
+        expect(result.status).toBe('success')
+        expect(result.trunkName).toBe('main')
+
+        // Verify main was updated
+        const mainSha = execSync('git rev-parse main', { cwd: repoPath, encoding: 'utf-8' }).trim()
+        const remoteSha = execSync('git rev-parse origin/main', {
+          cwd: repoPath,
+          encoding: 'utf-8'
+        }).trim()
+        expect(mainSha).toBe(remoteSha)
+      } finally {
+        // Cleanup - prune the stale worktree reference
+        execSync('git worktree prune', { cwd: repoPath })
+        await fs.promises.rm(linkedWorktreePath, { recursive: true, force: true }).catch(() => {})
+      }
+    })
+  })
+
+  describe('error handling', () => {
+    it('should return error when remote ref does not exist', async () => {
+      // Create a repo without pushing main to remote (remote has no refs)
+      const isolatedRepo = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), 'teapot-test-isolated-')
+      )
+      const isolatedRemote = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), 'teapot-test-isolated-remote-')
+      )
+
+      try {
+        // Create bare remote with no refs
+        execSync('git init --bare', { cwd: isolatedRemote })
+
+        // Create local repo with main branch
+        execSync('git init -b main', { cwd: isolatedRepo })
+        execSync('git config user.name "Test User"', { cwd: isolatedRepo })
+        execSync('git config user.email "test@example.com"', { cwd: isolatedRepo })
+        await fs.promises.writeFile(path.join(isolatedRepo, 'file.txt'), 'content')
+        execSync('git add file.txt', { cwd: isolatedRepo })
+        execSync('git commit -m "initial"', { cwd: isolatedRepo })
+
+        // Add remote but don't push
+        execSync(`git remote add origin "${isolatedRemote}"`, { cwd: isolatedRepo })
+
+        // Try to sync - should fail because origin/main doesn't exist
+        const result = await BranchOperation.syncTrunk(isolatedRepo)
+
+        expect(result.status).toBe('error')
+        expect(result.message).toContain('origin/main')
+        expect(result.message).toContain('not found')
+        expect(result.trunkName).toBe('main')
+      } finally {
+        await fs.promises.rm(isolatedRepo, { recursive: true, force: true })
+        await fs.promises.rm(isolatedRemote, { recursive: true, force: true })
+      }
     })
   })
 

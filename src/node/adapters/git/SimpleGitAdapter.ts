@@ -419,7 +419,8 @@ export class SimpleGitAdapter implements GitAdapter {
           } else if (line.startsWith('branch ')) {
             // Strip refs/heads/ prefix
             branch = line.slice('branch '.length).replace('refs/heads/', '')
-          } else if (line === 'prunable') {
+          } else if (line.startsWith('prunable')) {
+            // Git outputs "prunable" followed by a reason (e.g., "gitdir file points to non-existent location")
             isStale = true
           }
         }

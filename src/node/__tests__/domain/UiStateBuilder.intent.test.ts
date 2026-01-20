@@ -415,7 +415,7 @@ describe('buildUiState (branchless ancestors projection)', () => {
       createdAtMs: Date.now(),
       targets: [
         {
-          node: createStackNodeState('C', 'trunk-sha', 'feature', []),
+          node: createStackNodeState('C', 'trunk-sha', 'feature', [], ['C', 'B', 'A']),
           targetBaseSha: 'target-sha'
         }
       ]
@@ -442,6 +442,11 @@ describe('buildUiState (branchless ancestors projection)', () => {
     expect(commitA).toBeDefined()
     expect(commitB).toBeDefined()
     expect(commitC).toBeDefined()
+
+    // Verify all owned commits have rebaseStatus: 'prompting' (not just head)
+    expect(commitA!.rebaseStatus).toBe('prompting')
+    expect(commitB!.rebaseStatus).toBe('prompting')
+    expect(commitC!.rebaseStatus).toBe('prompting')
 
     // The chain should be intact: A -> B -> C
     // And A should now be based on target-sha
@@ -515,12 +520,14 @@ function createStackNodeState(
   headSha: string,
   baseSha: string,
   branch: string,
-  children: StackNodeState[]
+  children: StackNodeState[],
+  ownedShas?: string[]
 ): StackNodeState {
   return {
     branch,
     headSha,
     baseSha,
+    ownedShas: ownedShas ?? [headSha],
     children
   }
 }

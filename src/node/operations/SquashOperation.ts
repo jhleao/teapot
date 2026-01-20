@@ -161,12 +161,11 @@ export class SquashOperation {
   static async preview(repoPath: string, branchName: string): Promise<SquashPreview> {
     const git = getGitAdapter()
 
-    const [repo, forgeStateResult] = await Promise.all([
-      RepoModelService.buildRepoModel({ repoPath }),
-      gitForgeService.getStateWithStatus(repoPath)
-    ])
+    // Don't block preview on network - forge state is only used for optional PR info.
+    // Frontend's ForgeStateContext has cached PR data for display enrichment.
+    const repo = await RepoModelService.buildRepoModel({ repoPath })
 
-    const validation = SquashValidator.validate(repo, branchName, forgeStateResult.state)
+    const validation = SquashValidator.validate(repo, branchName)
     if (!validation.canSquash) {
       return {
         canSquash: false,
@@ -209,7 +208,10 @@ export class SquashOperation {
 
     const parentCommit = await git.readCommit(repoPath, parentHeadSha)
     const targetCommit = await git.readCommit(repoPath, targetHeadSha)
-    const pr = findOpenPr(branchName, forgeStateResult.state.pullRequests)
+
+    // PR info is not fetched here to avoid blocking preview on network.
+    // Frontend's ForgeStateContext has cached PR data and can enrich the preview.
+    // The execute phase will fetch forge state for PR cleanup if needed.
 
     // After squash, both branches will point to the same commit - this is a collision
     // The child branch (branchName) is being squashed into parent, so user must choose
@@ -224,8 +226,8 @@ export class SquashOperation {
       parentBranch,
       descendantBranches: validation.descendantBranches,
       isEmpty,
-      hasPr: Boolean(pr),
-      prNumber: pr?.number,
+      hasPr: false, // Frontend enriches from ForgeStateContext
+      prNumber: undefined,
       parentCommitMessage: parentCommit.message,
       commitMessage: targetCommit.message,
       commitAuthor: targetCommit.author.name,
@@ -246,12 +248,9 @@ export class SquashOperation {
     // Phase: validating
     options.onPhaseStart?.('validating')
 
-    const [repo, forgeStateResult] = await Promise.all([
-      RepoModelService.buildRepoModel({ repoPath }),
-      gitForgeService.getStateWithStatus(repoPath)
-    ])
-
-    const validation = SquashValidator.validate(repo, branchName, forgeStateResult.state)
+    // Validation uses only local git data - no network calls.
+    const repo = await RepoModelService.buildRepoModel({ repoPath })
+    const validation = SquashValidator.validate(repo, branchName)
     if (!validation.canSquash) {
       return {
         success: false,
@@ -268,6 +267,14 @@ export class SquashOperation {
         errorDetail: 'Rebase is already in progress'
       }
     }
+
+    // Fetch forge state for optional PR cleanup after squash completes.
+    // Done after validation so invalid squash attempts return instantly.
+    const forgeStateResult = await gitForgeService.getStateWithStatus(repoPath)
+    if (forgeStateResult.status === 'error') {
+      log.warn('[SquashOperation.execute] Forge state unavailable, PR cleanup may be skipped:', forgeStateResult.error)
+    }
+    const forgeState = forgeStateResult.state
 
     // Note: We don't block dirty trees here anymore. The SquashValidator already
     // checks if the current branch has uncommitted changes (which would be lost).
@@ -345,7 +352,7 @@ export class SquashOperation {
         parentBranch,
         branchName,
         options.branchChoice,
-        forgeStateResult.state,
+        forgeState,
         git
       )
 
@@ -496,7 +503,7 @@ export class SquashOperation {
         parentBranch,
         branchName,
         options.branchChoice,
-        forgeStateResult.state,
+        forgeState,
         git
       )
 

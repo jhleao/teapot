@@ -1,6 +1,5 @@
 import type { Branch, Commit, Repo, WorkingTreeStatus, Worktree } from '@shared/types'
 import { describe, expect, it } from 'vitest'
-import type { GitForgeState } from '../../../shared/types/git-forge'
 import { SquashValidator } from '../SquashValidator'
 
 describe('SquashValidator', () => {
@@ -19,9 +18,8 @@ describe('SquashValidator', () => {
       createBranch('child', 'D')
     ]
     const repo = createRepo({ commits, branches })
-    const forgeState = createForgeState()
 
-    const result = SquashValidator.validate(repo, 'target', forgeState)
+    const result = SquashValidator.validate(repo, 'target')
 
     expect(result.canSquash).toBe(true)
     expect(result.parentBranch).toBe('parent')
@@ -36,7 +34,7 @@ describe('SquashValidator', () => {
     const branches = [createBranch('main', 'A', { isTrunk: true })]
     const repo = createRepo({ commits, branches })
 
-    const result = SquashValidator.validate(repo, 'main', createForgeState())
+    const result = SquashValidator.validate(repo, 'main')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('is_trunk')
@@ -55,7 +53,7 @@ describe('SquashValidator', () => {
       workingTreeStatus: createWorkingTreeStatus(['file.txt'], 'feature')
     })
 
-    const result = SquashValidator.validate(repo, 'feature', createForgeState())
+    const result = SquashValidator.validate(repo, 'feature')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('dirty_tree')
@@ -86,7 +84,7 @@ describe('SquashValidator', () => {
       workingTreeStatus: createWorkingTreeStatus(['file.txt'], 'child')
     })
 
-    const result = SquashValidator.validate(repo, 'target', createForgeState())
+    const result = SquashValidator.validate(repo, 'target')
 
     expect(result.canSquash).toBe(true)
     expect(result.isCurrentBranch).toBe(false)
@@ -107,7 +105,7 @@ describe('SquashValidator', () => {
       workingTreeStatus: { ...createWorkingTreeStatus([], 'feature'), isRebasing: true }
     })
 
-    const result = SquashValidator.validate(repo, 'feature', createForgeState())
+    const result = SquashValidator.validate(repo, 'feature')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('rebase_in_progress')
@@ -131,7 +129,7 @@ describe('SquashValidator', () => {
     ]
     const repo = createRepo({ commits, branches })
 
-    const result = SquashValidator.validate(repo, 'sibling-1', createForgeState())
+    const result = SquashValidator.validate(repo, 'sibling-1')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('not_linear')
@@ -154,7 +152,7 @@ describe('SquashValidator', () => {
     ]
     const repo = createRepo({ commits, branches })
 
-    const result = SquashValidator.validate(repo, 'feature', createForgeState())
+    const result = SquashValidator.validate(repo, 'feature')
 
     expect(result.canSquash).toBe(true)
     expect(result.parentBranch).toBe('parent')
@@ -179,9 +177,8 @@ describe('SquashValidator', () => {
       createBranch('child', 'E')
     ]
     const repo = createRepo({ commits, branches })
-    const forgeState = createForgeState([{ number: 1, headRefName: 'child', state: 'open' }])
 
-    const result = SquashValidator.validate(repo, 'target', forgeState)
+    const result = SquashValidator.validate(repo, 'target')
 
     expect(result.canSquash).toBe(true)
     expect(result.descendantBranches).toEqual(['child'])
@@ -192,7 +189,7 @@ describe('SquashValidator', () => {
     const branches = [createBranch('lonely', 'A')]
     const repo = createRepo({ commits, branches })
 
-    const result = SquashValidator.validate(repo, 'lonely', createForgeState())
+    const result = SquashValidator.validate(repo, 'lonely')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('no_parent')
@@ -203,7 +200,7 @@ describe('SquashValidator', () => {
     const branches = [createBranch('main', 'A', { isTrunk: true }), createBranch('feature', 'B')]
     const repo = createRepo({ commits, branches })
 
-    const result = SquashValidator.validate(repo, 'feature', createForgeState())
+    const result = SquashValidator.validate(repo, 'feature')
 
     expect(result.canSquash).toBe(false)
     expect(result.error).toBe('parent_is_trunk')
@@ -511,24 +508,6 @@ function createWorkingTreeStatus(
     not_added: [],
     conflicted: [],
     allChangedFiles
-  }
-}
-
-function createForgeState(
-  prs: Array<Partial<GitForgeState['pullRequests'][number]>> = []
-): GitForgeState {
-  return {
-    pullRequests: prs.map((pr, index) => ({
-      number: pr.number ?? index,
-      title: pr.title ?? `PR ${index}`,
-      url: pr.url ?? '',
-      state: pr.state ?? 'open',
-      headRefName: pr.headRefName ?? '',
-      headSha: pr.headSha ?? '',
-      baseRefName: pr.baseRefName ?? '',
-      createdAt: pr.createdAt ?? new Date().toISOString(),
-      isMergeable: pr.isMergeable ?? false
-    }))
   }
 }
 

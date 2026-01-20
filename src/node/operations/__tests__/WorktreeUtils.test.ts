@@ -381,7 +381,8 @@ describe('WorktreeUtils', () => {
 
       const result = await isWorktreeStale(repoPath, worktreePath)
       expect(result.isStale).toBe(true)
-      expect(result.reason).toBe('directory_missing')
+      // Git marks worktrees with missing directories as "prunable"
+      expect(result.reason).toBe('marked_prunable')
 
       // Clean up
       execSync('git worktree prune', { cwd: repoPath })
@@ -426,7 +427,8 @@ describe('WorktreeUtils', () => {
       const result = await pruneIfStale(repoPath, worktreePath)
       expect(result.wasStale).toBe(true)
       expect(result.pruned).toBe(true)
-      expect(result.reason).toBe('directory_missing')
+      // Git marks worktrees with missing directories as "prunable"
+      expect(result.reason).toBe('marked_prunable')
 
       // Worktree should be gone from git's list
       const list = execSync('git worktree list --porcelain', {

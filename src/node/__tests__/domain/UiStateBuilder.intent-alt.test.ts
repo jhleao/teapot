@@ -348,12 +348,14 @@ function createStackNodeState(
   headSha: string,
   baseSha: string,
   branch: string,
-  children: StackNodeState[]
+  children: StackNodeState[],
+  ownedShas?: string[]
 ): StackNodeState {
   return {
     branch,
     headSha,
     baseSha,
+    ownedShas: ownedShas ?? [headSha],
     children
   }
 }

@@ -92,6 +92,8 @@ export type StackNodeState = {
   branch: string
   headSha: string
   baseSha: string
+  /** All commit SHAs owned by this branch (head first, oldest last). */
+  ownedShas: string[]
   children: StackNodeState[]
 }
 

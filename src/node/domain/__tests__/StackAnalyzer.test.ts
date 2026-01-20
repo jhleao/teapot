@@ -374,10 +374,12 @@ describe('StackAnalyzer', () => {
 // ============================================================================
 
 function createStackNode(branch: string, children: StackNodeState[]): StackNodeState {
+  const headSha = `sha-${branch}`
   return {
     branch,
-    headSha: `sha-${branch}`,
+    headSha,
     baseSha: `base-${branch}`,
+    ownedShas: [headSha],
     children
   }
 }

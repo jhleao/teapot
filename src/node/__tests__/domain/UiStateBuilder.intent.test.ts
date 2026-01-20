@@ -378,6 +378,139 @@ function createDemoRebaseIntent(): RebaseIntent {
   }
 }
 
+describe('buildUiState (branchless ancestors projection)', () => {
+  it('projects branchless ancestor commits moving with the branch', () => {
+    // Create a repo where a branch owns multiple commits (branchless ancestors)
+    // Graph: trunk -> A (branchless) -> B (branchless) -> C (branch head)
+    // When rebasing onto target, ALL of A, B, C should move together
+    const commits: Commit[] = [
+      createCommit('trunk-sha', '', ['target-sha', 'A'], 'trunk commit', '2025-01-01T00:00:00.000Z'),
+      createCommit('target-sha', 'trunk-sha', [], 'target commit', '2025-01-01T01:00:00.000Z'),
+      createCommit('A', 'trunk-sha', ['B'], 'branchless A', '2025-01-01T02:00:00.000Z'),
+      createCommit('B', 'A', ['C'], 'branchless B', '2025-01-01T03:00:00.000Z'),
+      createCommit('C', 'B', [], 'branch head C', '2025-01-01T04:00:00.000Z')
+    ]
+
+    const branches: Branch[] = [
+      createBranch('main', 'trunk-sha', { isTrunk: true }),
+      createBranch('feature', 'C') // Branch only at head, not at A or B
+    ]
+
+    const repo: Repo = {
+      path: '/tmp/test',
+      activeWorktreePath: null,
+      commits,
+      branches,
+      workingTreeStatus: createWorkingTreeStatus({
+        currentBranch: 'feature',
+        currentCommitSha: 'C'
+      }),
+      worktrees: []
+    }
+
+    // Create intent to rebase feature (at C) onto target-sha
+    // The branch owns commits A, B, C (baseSha is trunk-sha, headSha is C)
+    const intent: RebaseIntent = {
+      id: 'test-rebase',
+      createdAtMs: Date.now(),
+      targets: [
+        {
+          node: createStackNodeState('C', 'trunk-sha', 'feature', []),
+          targetBaseSha: 'target-sha'
+        }
+      ]
+    }
+
+    const uiState = buildFullUiState(repo, { rebaseIntent: intent })
+    expect(uiState.projectedStack).not.toBeNull()
+    const projectedStack = uiState.projectedStack!
+
+    // Find the spinoff that contains our rebased branch
+    const trunkTip = projectedStack.commits.at(-1)
+    expect(trunkTip).toBeDefined()
+
+    // After rebase, the stack should have target-sha as first spinoff, then A -> B -> C
+    const targetSpinoff = trunkTip!.spinoffs.find((s) => s.commits.some((c) => c.sha === 'A'))
+    expect(targetSpinoff).toBeDefined()
+
+    // Verify A's parent is now target-sha (not trunk-sha)
+    // This proves the oldest owned commit was moved, keeping the chain intact
+    const commitA = targetSpinoff!.commits.find((c) => c.sha === 'A')
+    const commitB = targetSpinoff!.commits.find((c) => c.sha === 'B')
+    const commitC = targetSpinoff!.commits.find((c) => c.sha === 'C')
+
+    expect(commitA).toBeDefined()
+    expect(commitB).toBeDefined()
+    expect(commitC).toBeDefined()
+
+    // The chain should be intact: A -> B -> C
+    // And A should now be based on target-sha
+    const spinoffCommitShas = targetSpinoff!.commits.map((c) => c.sha)
+    expect(spinoffCommitShas).toContain('target-sha')
+    expect(spinoffCommitShas).toContain('A')
+    expect(spinoffCommitShas).toContain('B')
+    expect(spinoffCommitShas).toContain('C')
+
+    // Verify the order: target-sha comes before A, B, C
+    const targetIdx = spinoffCommitShas.indexOf('target-sha')
+    const aIdx = spinoffCommitShas.indexOf('A')
+    expect(targetIdx).toBeLessThan(aIdx)
+  })
+
+  it('handles single-commit branches correctly (head equals oldest owned)', () => {
+    // Edge case: branch owns only one commit (no branchless ancestors)
+    // Graph: trunk -> target, trunk -> X (branch head, single commit)
+    const commits: Commit[] = [
+      createCommit('trunk-sha', '', ['target-sha', 'X'], 'trunk commit', '2025-01-01T00:00:00.000Z'),
+      createCommit('target-sha', 'trunk-sha', [], 'target commit', '2025-01-01T01:00:00.000Z'),
+      createCommit('X', 'trunk-sha', [], 'single commit branch', '2025-01-01T02:00:00.000Z')
+    ]
+
+    const branches: Branch[] = [
+      createBranch('main', 'trunk-sha', { isTrunk: true }),
+      createBranch('single-commit', 'X')
+    ]
+
+    const repo: Repo = {
+      path: '/tmp/test',
+      activeWorktreePath: null,
+      commits,
+      branches,
+      workingTreeStatus: createWorkingTreeStatus({
+        currentBranch: 'single-commit',
+        currentCommitSha: 'X'
+      }),
+      worktrees: []
+    }
+
+    // Rebase single-commit branch onto target
+    // baseSha == trunk-sha, headSha == X (single commit, head equals oldest)
+    const intent: RebaseIntent = {
+      id: 'test-rebase',
+      createdAtMs: Date.now(),
+      targets: [
+        {
+          node: createStackNodeState('X', 'trunk-sha', 'single-commit', []),
+          targetBaseSha: 'target-sha'
+        }
+      ]
+    }
+
+    const uiState = buildFullUiState(repo, { rebaseIntent: intent })
+    expect(uiState.projectedStack).not.toBeNull()
+    const projectedStack = uiState.projectedStack!
+
+    const trunkTip = projectedStack.commits.at(-1)
+    expect(trunkTip).toBeDefined()
+
+    // X should now be a child of target-sha
+    const targetSpinoff = trunkTip!.spinoffs.find((s) => s.commits.some((c) => c.sha === 'X'))
+    expect(targetSpinoff).toBeDefined()
+    expect(targetSpinoff!.commits.map((c) => c.sha)).toContain('target-sha')
+    expect(targetSpinoff!.commits.map((c) => c.sha)).toContain('X')
+  })
+})
+
 function createStackNodeState(
   headSha: string,
   baseSha: string,

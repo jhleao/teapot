@@ -317,6 +317,60 @@ describe('RebaseIntentBuilder', () => {
       expect(childBranches).toEqual(['branch-2', 'branch-3'])
     })
   })
+
+  describe('remote branch handling', () => {
+    it('ignores remote branches when calculating ownership (includes branchless ancestors)', () => {
+      // Graph: A (trunk) → B → C → D → E (feature)
+      // where origin/feature is at B (local is ahead of remote)
+      // Expected: all commits D, C, B should be owned by feature, NOT stopped at B due to remote branch
+      const commits = [
+        createCommit('A', ''),
+        createCommit('B', 'A'),
+        createCommit('C', 'B'),
+        createCommit('D', 'C'),
+        createCommit('E', 'D')
+      ]
+      const branches = [
+        createBranch('main', 'A', { isTrunk: true }),
+        createBranch('feature', 'E'),
+        createBranch('origin/feature', 'B', { isRemote: true }) // Remote tracking branch at older commit
+      ]
+      const repo = createRepo({ commits, branches })
+
+      const intent = RebaseIntentBuilder.build(repo, 'E', 'A')
+
+      expect(intent).not.toBeNull()
+      expect(intent?.targets[0]?.node.branch).toBe('feature')
+      expect(intent?.targets[0]?.node.headSha).toBe('E')
+      // baseSha should be A (trunk), NOT B (where remote branch is)
+      // This ensures all branchless ancestors (B, C, D) are included in the rebase
+      expect(intent?.targets[0]?.node.baseSha).toBe('A')
+    })
+
+    it('still stops at local branch heads (not affected by remote branch fix)', () => {
+      // Graph: A (trunk) → B (local-base) → C → D (feature)
+      // Expected: feature owns C and D, stops at B (local branch head)
+      const commits = [
+        createCommit('A', ''),
+        createCommit('B', 'A'),
+        createCommit('C', 'B'),
+        createCommit('D', 'C')
+      ]
+      const branches = [
+        createBranch('main', 'A', { isTrunk: true }),
+        createBranch('local-base', 'B'),
+        createBranch('feature', 'D')
+      ]
+      const repo = createRepo({ commits, branches })
+
+      const intent = RebaseIntentBuilder.build(repo, 'D', 'A')
+
+      expect(intent).not.toBeNull()
+      expect(intent?.targets[0]?.node.branch).toBe('feature')
+      // baseSha should be B (where local-base branch is), as expected
+      expect(intent?.targets[0]?.node.baseSha).toBe('B')
+    })
+  })
 })
 
 // ============================================================================

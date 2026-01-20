@@ -531,6 +531,11 @@ export class UiStateBuilder {
    * Collects the SHAs of commits "owned" by a branch.
    * Delegates to the shared CommitOwnership utility for consistent behavior
    * with RebaseIntentBuilder.
+   *
+   * IMPORTANT: The branchHeadIndex used here excludes remote branches (see buildUiStack).
+   * RebaseIntentBuilder must also exclude remote branches when building its branchHeadIndex
+   * to ensure the same ownership calculation. This is critical for the rebase preview
+   * to correctly show branchless ancestor commits moving with their branch.
    */
   private static collectOwnedCommitShas(
     branchHeadSha: string,
@@ -900,30 +905,73 @@ export class UiStateBuilder {
     targetBaseSha: string,
     allocateSyntheticTime: () => number
   ): void {
-    const commit = commits.get(node.headSha)
-    if (!commit) {
+    // Find the oldest owned commit (the one whose parent is node.baseSha)
+    // We need to move this commit's parent to targetBaseSha, keeping the chain intact
+    // This ensures all owned commits (branchless ancestors) move together with the branch
+    let oldestOwnedSha = node.headSha
+    let currentSha: string | null = node.headSha
+    while (currentSha) {
+      const c = commits.get(currentSha)
+      if (!c) break
+      if (c.parentSha === node.baseSha) {
+        oldestOwnedSha = currentSha
+        break
+      }
+      currentSha = c.parentSha ?? null
+    }
+
+    const oldestCommit = commits.get(oldestOwnedSha)
+    if (!oldestCommit) {
       return
     }
 
-    if (commit.parentSha) {
-      const previousParent = commits.get(commit.parentSha)
+    // Remove oldest commit from old parent's children
+    if (oldestCommit.parentSha) {
+      const previousParent = commits.get(oldestCommit.parentSha)
       if (previousParent) {
-        previousParent.childrenSha = previousParent.childrenSha.filter((sha) => sha !== commit.sha)
+        previousParent.childrenSha = previousParent.childrenSha.filter(
+          (sha) => sha !== oldestOwnedSha
+        )
       }
     }
 
-    commit.parentSha = targetBaseSha
+    // Update parent of oldest owned commit to new target
+    oldestCommit.parentSha = targetBaseSha
     const newParent = commits.get(targetBaseSha)
-    if (newParent && !newParent.childrenSha.includes(commit.sha)) {
-      newParent.childrenSha = [...newParent.childrenSha, commit.sha]
+    if (newParent && !newParent.childrenSha.includes(oldestOwnedSha)) {
+      newParent.childrenSha = [...newParent.childrenSha, oldestOwnedSha]
     }
 
+    // Update timestamps for all commits in the owned chain (from oldest to head)
     const parentTime = newParent?.timeMs ?? 0
-    const syntheticTime = Math.max(allocateSyntheticTime(), parentTime + 1, commit.timeMs ?? 0)
-    commit.timeMs = syntheticTime
+    let chainSha: string | null = oldestOwnedSha
+    let lastTime = parentTime
+    while (chainSha) {
+      const chainCommit = commits.get(chainSha)
+      if (!chainCommit) break
+      const syntheticTime = Math.max(allocateSyntheticTime(), lastTime + 1, chainCommit.timeMs ?? 0)
+      chainCommit.timeMs = syntheticTime
+      lastTime = syntheticTime
+      // Stop when we reach the head
+      if (chainSha === node.headSha) break
+      // Find the child in this chain (the one that eventually leads to head)
+      const nextSha = chainCommit.childrenSha.find((childSha) => {
+        let sha: string | null = node.headSha
+        while (sha) {
+          if (sha === childSha) return true
+          const cc = commits.get(sha)
+          if (!cc) break
+          sha = cc.parentSha ?? null
+        }
+        return false
+      })
+      chainSha = nextSha ?? null
+    }
 
+    // Process children recursively - they're based on the head commit
+    const headCommit = commits.get(node.headSha)
     node.children.forEach((child) =>
-      UiStateBuilder.applyIntentTarget(commits, child, commit.sha, allocateSyntheticTime)
+      UiStateBuilder.applyIntentTarget(commits, child, headCommit?.sha ?? node.headSha, allocateSyntheticTime)
     )
   }
 }

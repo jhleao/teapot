@@ -46,7 +46,10 @@ export class RebaseIntentBuilder {
       return null
     }
 
-    const branchHeadIndex = StackAnalyzer.buildBranchHeadIndex(repo.branches)
+    // Only include local branches in the index - remote branches don't affect local ownership
+    // This matches the behavior in UiStateBuilder for consistent ownership calculation
+    const localBranches = repo.branches.filter((b) => !b.isRemote)
+    const branchHeadIndex = StackAnalyzer.buildBranchHeadIndex(localBranches)
 
     // Build trunk SHA set once - reused for all ownership calculations
     const trunkBranch = repo.branches.find((b) => b.isTrunk && !b.isRemote)

@@ -22,7 +22,7 @@ import type {
   Worktree
 } from '@shared/types'
 import type { GitForgeState } from '../../shared/types/git-forge'
-import { calculateCommitOwnership } from './CommitOwnership'
+import { calculateCommitOwnership, isForkPoint } from './CommitOwnership'
 import { RebaseStateMachine } from './RebaseStateMachine'
 import { TrunkResolver } from './TrunkResolver'
 
@@ -695,6 +695,12 @@ export class UiStateBuilder {
       return null
     }
 
+    // Check if this commit is a fork point (multiple non-trunk children)
+    // Fork points are "independent" commits that no single branch owns.
+    // This is computed here so the UI can visually distinguish them.
+    // Uses shared isForkPoint utility to ensure consistency with CommitOwnership.
+    const isIndependent = isForkPoint(commit, state.trunkShas)
+
     const uiCommit: UiCommit = {
       sha: commit.sha,
       name: UiStateBuilder.formatCommitName(commit),
@@ -702,7 +708,8 @@ export class UiStateBuilder {
       isCurrent: commit.sha === state.currentCommitSha,
       rebaseStatus: null,
       spinoffs: [],
-      branches: []
+      branches: [],
+      isIndependent: isIndependent || undefined
     }
     state.commitNodes.set(sha, uiCommit)
 

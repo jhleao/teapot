@@ -48,7 +48,13 @@ export interface CommitOwnershipParams {
  * Walks backwards from the branch head until hitting:
  * 1. A trunk commit (parent is in trunkShas)
  * 2. Another branch head (parent has branches other than current)
- * 3. Root commit (no parent)
+ * 3. A fork point (parent has multiple non-trunk children - multiple spinoffs)
+ * 4. Root commit (no parent)
+ *
+ * Fork point handling: When a branchless commit has multiple spinoffs (branches
+ * forking from it), no single branch owns that commit. It becomes "independent"
+ * and acts as a stable waypoint. This prevents surprising cascading moves when
+ * rebasing one of several sibling branches.
  *
  * @returns The base SHA and array of owned commit SHAs
  */
@@ -107,6 +113,20 @@ export function calculateCommitOwnership(params: CommitOwnershipParams): CommitO
       break
     }
 
+    // Check if parent is a fork point (has multiple non-trunk children)
+    // Fork points are independent commits that no single branch owns.
+    // This prevents surprising cascading moves when rebasing sibling branches.
+    const parentCommit = commitMap.get(parentSha)
+    if (parentCommit && isForkPoint(parentCommit, trunkShas)) {
+      log.debug('[CommitOwnership] Stopped at fork point', {
+        forkPointSha: parentSha.slice(0, 8),
+        branchRef,
+        ownedCount: ownedShas.length
+      })
+      baseSha = parentSha
+      break
+    }
+
     currentSha = parentSha
   }
 
@@ -123,6 +143,19 @@ export function calculateCommitOwnership(params: CommitOwnershipParams): CommitO
   }
 
   return { baseSha, ownedShas }
+}
+
+/**
+ * Determines if a commit is a fork point (has multiple non-trunk children).
+ * Fork points are independent commits that no single branch owns.
+ *
+ * This is a shared utility used by both:
+ * - calculateCommitOwnership (to stop ownership walk)
+ * - UiStateBuilder (to mark commits as isIndependent for UI styling)
+ */
+export function isForkPoint(commit: Commit, trunkShas: Set<string>): boolean {
+  const nonTrunkChildren = commit.childrenSha.filter((sha) => !trunkShas.has(sha))
+  return nonTrunkChildren.length > 1
 }
 
 /**

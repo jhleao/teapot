@@ -56,6 +56,11 @@ This directory contains individual idea documents extracted from the `/docs` fol
 | 19 | [Consistent Error Handling Philosophy](./19-consistent-error-handling-philosophy.md) | Medium | architecture-issues-rebase-worktree-lifecycle.md |
 | 20 | [Branch Ownership Tracking for Worktrees](./20-branch-ownership-tracking.md) | Medium | architecture-issues-rebase-worktree-lifecycle.md |
 
+### Commit Ownership & UI
+| # | Idea | Priority | Source |
+|---|------|----------|--------|
+| 21 | [Fork Point Independent Commits](./21-fork-point-independent-commits.md) | Medium | UX analysis of commit ownership ambiguity |
+
 ## Priority Summary
 
 ### High Priority (implement soon)
@@ -79,6 +84,7 @@ This directory contains individual idea documents extracted from the `/docs` fol
 - Decouple Execution Context - Cleaner lifecycle management
 - Consistent Error Handling - Predictable behavior
 - Branch Ownership Tracking - Explicit branch management
+- Fork Point Independent Commits - Prevents surprising sibling branch rebases (core implemented)
 
 ### Low Priority (nice to have)
 - GitHub Webhooks - Requires infrastructure
@@ -148,3 +154,9 @@ These ideas work together to create a coherent error handling strategy. Start wi
 - #20 Branch Ownership Tracking
 
 Both ideas address lifecycle management of temporary worktrees. #18 focuses on phase separation, while #20 focuses on branch references. They complement each other.
+
+### Ownership Concepts Bundle
+- #20 Branch Ownership Tracking (worktree-branch ownership)
+- #21 Fork Point Independent Commits (commit-branch ownership)
+
+Both deal with "ownership" but at different levels. #20 tracks which worktree owns a branch reference, while #21 tracks which branch owns which commits. The fork point feature (#21 core) is implemented; the drag feature extends rebase operations.

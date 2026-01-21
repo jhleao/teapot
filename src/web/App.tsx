@@ -12,6 +12,7 @@ import { Topbar } from './components/Topbar'
 import { ScrollArea, ScrollBar } from './components/ui/scroll-area'
 import { useForgeStateContext } from './contexts/ForgeStateContext'
 import { useLocalStateContext } from './contexts/LocalStateContext'
+import { useScrollViewport } from './contexts/ScrollViewportContext'
 import { useUiStateContext } from './contexts/UiStateContext'
 import { useUpdateNotifications } from './hooks/use-update-notifications'
 import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
@@ -20,6 +21,7 @@ function App(): React.JSX.Element {
   const { uiState, repoError, isRebasingWithConflicts, queuedBranches } = useUiStateContext()
   const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
+  const { setViewportRef } = useScrollViewport()
   useUpdateNotifications()
 
   // Merge forge state (PR data) into the UI stack at render time
@@ -41,7 +43,7 @@ function App(): React.JSX.Element {
     <TooltipProvider>
       <div className="flex h-screen flex-col">
         <TitleBar />
-        <ScrollArea className="flex-1">
+        <ScrollArea className="flex-1" viewportRef={setViewportRef}>
           <div className="px-6 pt-2 pb-32">
             <Topbar />
 

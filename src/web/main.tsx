@@ -8,6 +8,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { DragProvider } from './contexts/DragContext'
 import { ForgeStateProvider } from './contexts/ForgeStateContext'
 import { LocalStateProvider, useLocalStateContext } from './contexts/LocalStateContext'
+import { ScrollViewportProvider } from './contexts/ScrollViewportContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { UiStateProvider } from './contexts/UiStateContext'
 import { UtilityModalsProvider } from './contexts/UtilityModalsContext'
@@ -21,12 +22,14 @@ function AppWithProviders(): React.JSX.Element {
     <ForgeStateProvider repoPath={repoPath}>
       <UiStateProvider selectedRepoPath={repoPath}>
         <UtilityModalsProvider>
-          <DragProvider>
-            <ErrorBoundary>
-              <App />
-            </ErrorBoundary>
-            <DragCursor />
-          </DragProvider>
+          <ScrollViewportProvider>
+            <DragProvider>
+              <ErrorBoundary>
+                <App />
+              </ErrorBoundary>
+              <DragCursor />
+            </DragProvider>
+          </ScrollViewportProvider>
         </UtilityModalsProvider>
       </UiStateProvider>
     </ForgeStateProvider>

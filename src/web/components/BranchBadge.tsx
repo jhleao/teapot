@@ -19,7 +19,8 @@ export const BranchBadge = memo(function BranchBadge({
     createWorktree,
     getSquashPreview,
     squashIntoParent,
-    repoPath
+    repoPath,
+    createPullRequest
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
@@ -27,6 +28,7 @@ export const BranchBadge = memo(function BranchBadge({
   const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
   const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
   const [isSquashing, setIsSquashing] = useState(false)
+  const [isRecreatingPr, setIsRecreatingPr] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -93,6 +95,21 @@ export const BranchBadge = memo(function BranchBadge({
       toast.error('Failed to copy path', { description: result.error })
     }
   }, [openablePath])
+
+  const handleRecreatePr = useCallback(async () => {
+    if (isRecreatingPr) return
+    setIsRecreatingPr(true)
+    try {
+      await createPullRequest({ headBranch: data.name })
+      toast.success('PR created')
+    } catch (error) {
+      toast.error('Failed to create PR', {
+        description: error instanceof Error ? error.message : String(error)
+      })
+    } finally {
+      setIsRecreatingPr(false)
+    }
+  }, [createPullRequest, data.name, isRecreatingPr])
 
   const handleOpenSquashDialog = useCallback(async () => {
     // Only block dirty worktree if this is the current branch
@@ -194,6 +211,14 @@ export const BranchBadge = memo(function BranchBadge({
                   disabled={hasWorktree || isCreatingWorktree}
                 >
                   {isCreatingWorktree ? 'Creating...' : 'New worktree here'}
+                </ContextMenuItem>
+              </>
+            )}
+            {data.canRecreatePr && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={handleRecreatePr} disabled={isRecreatingPr}>
+                  {isRecreatingPr ? 'Creating...' : 'Recreate PR'}
                 </ContextMenuItem>
               </>
             )}

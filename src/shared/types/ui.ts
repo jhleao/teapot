@@ -100,6 +100,8 @@ export type UiBranch = {
   squashDisabledReason?: string
   /** True if a new worktree can be created for this branch. False for remote and trunk branches. */
   canCreateWorktree: boolean
+  /** True if this branch can recreate a PR (has only closed/merged PRs, no active ones). */
+  canRecreatePr?: boolean
 }
 
 /**
@@ -140,6 +142,11 @@ export type UiPullRequest = {
    * Only populated for open PRs.
    */
   mergeReadiness?: MergeReadiness
+  /**
+   * True if multiple open PRs exist for this branch.
+   * This is a warning condition - normally a branch should have at most one open PR.
+   */
+  hasMultipleOpenPrs?: boolean
 }
 
 export type UiWorkingTreeFile = {

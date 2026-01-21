@@ -1,5 +1,6 @@
 import type { UiCommit, UiPullRequest, UiStack } from '@shared/types'
 import type { ForgePullRequest, GitForgeState } from '@shared/types/git-forge'
+import { countOpenPrs, findBestPr } from '@shared/types/git-forge'
 
 /**
  * Enriches a UI stack with forge state (PR data) at render time.
@@ -14,27 +15,27 @@ export function enrichStackWithForge(
   if (!stack) return null
   if (!forgeState || forgeState.pullRequests.length === 0) return stack
 
-  // Build lookup maps for efficient access
-  const prByBranch = new Map(forgeState.pullRequests.map((pr) => [pr.headRefName, pr]))
+  // Pass the full pullRequests array for findBestPr lookup (handles multiple PRs per branch)
+  const pullRequests = forgeState.pullRequests
   const mergedBranchNames = new Set(forgeState.mergedBranchNames ?? [])
 
-  return enrichStackRecursive(stack, prByBranch, mergedBranchNames)
+  return enrichStackRecursive(stack, pullRequests, mergedBranchNames)
 }
 
 function enrichStackRecursive(
   stack: UiStack,
-  prByBranch: Map<string, ForgePullRequest>,
+  pullRequests: ForgePullRequest[],
   mergedBranchNames: Set<string>
 ): UiStack {
   return {
     ...stack,
-    commits: stack.commits.map((commit) => enrichCommit(commit, prByBranch, mergedBranchNames))
+    commits: stack.commits.map((commit) => enrichCommit(commit, pullRequests, mergedBranchNames))
   }
 }
 
 function enrichCommit(
   commit: UiCommit,
-  prByBranch: Map<string, ForgePullRequest>,
+  pullRequests: ForgePullRequest[],
   mergedBranchNames: Set<string>
 ): UiCommit {
   // Enrich branches with PR data
@@ -45,7 +46,8 @@ function enrichCommit(
     // Normalize branch name for remote branches (origin/foo -> foo)
     const normalizedName = branch.isRemote ? branch.name.replace(/^[^/]+\//, '') : branch.name
 
-    const pr = prByBranch.get(normalizedName)
+    // Use findBestPr to select the best PR when multiple exist (prefers open > draft > merged > closed)
+    const pr = findBestPr(normalizedName, pullRequests)
     if (!pr) {
       // No PR, but check if branch is merged locally
       const isMerged = mergedBranchNames.has(branch.name) || branch.isMerged
@@ -54,6 +56,9 @@ function enrichCommit(
       }
       return branch
     }
+
+    // Check if multiple open PRs exist (warning condition)
+    const hasMultipleOpenPrs = countOpenPrs(normalizedName, pullRequests) > 1
 
     // Build UI pull request data
     // Use commit SHA to determine if in sync (branch head is the commit this branch is on)
@@ -64,7 +69,8 @@ function enrichCommit(
       state: pr.state,
       isInSync: pr.headSha === commit.sha,
       isMergeable: pr.isMergeable,
-      mergeReadiness: pr.mergeReadiness
+      mergeReadiness: pr.mergeReadiness,
+      hasMultipleOpenPrs: hasMultipleOpenPrs || undefined
     }
 
     // Determine merged status
@@ -90,7 +96,7 @@ function enrichCommit(
 
   // Enrich spinoffs recursively
   const enrichedSpinoffs = commit.spinoffs.map((spinoff) =>
-    enrichStackRecursive(spinoff, prByBranch, mergedBranchNames)
+    enrichStackRecursive(spinoff, pullRequests, mergedBranchNames)
   )
 
   return {

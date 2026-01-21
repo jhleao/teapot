@@ -261,9 +261,36 @@ export class GitForgeClient {
     baseBranch: string,
     draft?: boolean
   ): Promise<ForgeStateResult> {
-    await this.adapter.createPullRequest(title, headBranch, baseBranch, draft)
-    // Immediately refresh state to include the new PR
-    return this.refreshWithStatus()
+    const newPr = await this.adapter.createPullRequest(title, headBranch, baseBranch, draft)
+
+    // Optimistically add the new PR to state immediately.
+    // GitHub's API has eventual consistency - the PR may not appear in list queries
+    // for a few seconds after creation. Using the returned PR data ensures the UI
+    // shows the new PR immediately.
+    this.state = {
+      ...this.state,
+      pullRequests: [newPr, ...this.state.pullRequests]
+    }
+
+    // Refresh to get full state, but ensure the new PR is preserved
+    // even if GitHub's API hasn't synced yet (eventual consistency)
+    const result = await this.refreshWithStatus()
+
+    // Ensure the new PR exists in the returned state
+    // GitHub's eventual consistency might cause it to be missing from the refresh
+    const hasPr = result.state.pullRequests.some((pr) => pr.number === newPr.number)
+    if (!hasPr) {
+      log.debug(
+        `[GitForgeClient] New PR #${newPr.number} not in GitHub response yet, adding optimistically`
+      )
+      result.state = {
+        ...result.state,
+        pullRequests: [newPr, ...result.state.pullRequests]
+      }
+      this.state = result.state
+    }
+
+    return result
   }
 
   async closePullRequest(number: number): Promise<ForgeStateResult> {

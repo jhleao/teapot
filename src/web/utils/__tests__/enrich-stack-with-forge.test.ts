@@ -250,4 +250,109 @@ describe('enrichStackWithForge', () => {
 
     expect(result?.commits[0].branches[0].isMerged).toBe(true)
   })
+
+  it('should prefer open PR over closed PR when multiple PRs exist for same branch', () => {
+    const stack = createStack()
+    // Simulate GitHub API returning PRs in UPDATED_AT DESC order
+    // where the closed PR was updated more recently (appears first in array)
+    const forgeState = createForgeState({
+      pullRequests: [
+        createPR({
+          number: 100,
+          title: 'Open PR',
+          url: 'https://github.com/owner/repo/pull/100',
+          state: 'open',
+          createdAt: '2024-01-02T00:00:00Z'
+        }),
+        createPR({
+          number: 99,
+          title: 'Closed PR',
+          url: 'https://github.com/owner/repo/pull/99',
+          state: 'closed',
+          createdAt: '2024-01-01T00:00:00Z'
+        })
+      ]
+    })
+
+    const result = enrichStackWithForge(stack, forgeState)
+
+    // Should select the open PR (#100), not the closed one (#99)
+    expect(result?.commits[0].branches[0].pullRequest?.number).toBe(100)
+    expect(result?.commits[0].branches[0].pullRequest?.state).toBe('open')
+  })
+
+  it('should prefer open PR over closed PR regardless of array order', () => {
+    const stack = createStack()
+    // Simulate the bug case: closed PR appears AFTER open PR in array (overwrites in Map)
+    const forgeState = createForgeState({
+      pullRequests: [
+        createPR({
+          number: 100,
+          title: 'Open PR',
+          url: 'https://github.com/owner/repo/pull/100',
+          state: 'open',
+          createdAt: '2024-01-02T00:00:00Z'
+        }),
+        createPR({
+          number: 99,
+          title: 'Closed PR',
+          url: 'https://github.com/owner/repo/pull/99',
+          state: 'closed',
+          createdAt: '2024-01-01T00:00:00Z'
+        })
+      ]
+    })
+
+    const result = enrichStackWithForge(stack, forgeState)
+
+    // Should still select the open PR, not the closed one
+    expect(result?.commits[0].branches[0].pullRequest?.number).toBe(100)
+    expect(result?.commits[0].branches[0].pullRequest?.state).toBe('open')
+  })
+
+  it('should set hasMultipleOpenPrs when multiple open PRs exist', () => {
+    const stack = createStack()
+    const forgeState = createForgeState({
+      pullRequests: [
+        createPR({
+          number: 100,
+          title: 'Open PR 1',
+          state: 'open',
+          createdAt: '2024-01-02T00:00:00Z'
+        }),
+        createPR({
+          number: 101,
+          title: 'Open PR 2',
+          state: 'open',
+          createdAt: '2024-01-01T00:00:00Z'
+        })
+      ]
+    })
+
+    const result = enrichStackWithForge(stack, forgeState)
+
+    expect(result?.commits[0].branches[0].pullRequest?.hasMultipleOpenPrs).toBe(true)
+  })
+
+  it('should not set hasMultipleOpenPrs when only one open and one closed PR exist', () => {
+    const stack = createStack()
+    const forgeState = createForgeState({
+      pullRequests: [
+        createPR({
+          number: 100,
+          title: 'Open PR',
+          state: 'open'
+        }),
+        createPR({
+          number: 99,
+          title: 'Closed PR',
+          state: 'closed'
+        })
+      ]
+    })
+
+    const result = enrichStackWithForge(stack, forgeState)
+
+    expect(result?.commits[0].branches[0].pullRequest?.hasMultipleOpenPrs).toBeUndefined()
+  })
 })

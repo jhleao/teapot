@@ -10,7 +10,7 @@
 import { log } from '@shared/logger'
 import type { Branch, Repo } from '@shared/types'
 import { extractLocalBranchName } from '@shared/types'
-import { findOpenPr, type MergeStrategy } from '@shared/types/git-forge'
+import { findBestPr, findOpenPr, type MergeStrategy } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
 import { PrTargetResolver, ShipItNavigator } from '../domain'
@@ -230,7 +230,7 @@ export class PullRequestOperation {
   ): Promise<void> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const { state } = await gitForgeService.refreshWithStatus(repoPath)
-      const pr = state.pullRequests.find((p) => p.headRefName === branchName)
+      const pr = findBestPr(branchName, state.pullRequests)
 
       if (pr?.headSha === expectedSha) {
         log.debug(`[PullRequestOperation] PR synced after ${attempt} attempt(s)`)

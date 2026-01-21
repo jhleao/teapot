@@ -2,7 +2,6 @@ import { log } from '@shared/logger'
 import type {
   BranchChoice,
   SquashPreview,
-  UiBranch,
   UiCommit,
   UiStack,
   UiWorkingTreeFile,
@@ -18,6 +17,7 @@ import { cn } from '../utils/cn'
 import { getEditMessageState } from '../utils/edit-message-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { getSquashState } from '../utils/squash-state'
+import { computeCollapsibleBranches, computeHiddenCommitShas } from '../utils/collapse-commits'
 import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
@@ -100,14 +100,22 @@ export function StackView({
     })
   }, [])
 
+  // Build a map from SHA to commit for quick lookups (used for spinoff checks)
+  const commitBySha = useMemo(() => {
+    const map = new Map<string, UiCommit>()
+    for (const commit of data.commits) {
+      map.set(commit.sha, commit)
+    }
+    return map
+  }, [data.commits])
+
   // Build a map of branches that have multiple owned commits (for collapse/expand UI)
   // This only depends on data.commits, not on expandedBranches state
+  // Only counts commits that can actually be hidden (no spinoffs)
   const collapsibleBranches = useMemo(() => {
-    const collapsible = new Map<string, { branch: UiBranch; ownedCount: number }>()
-
+    // Validation logging for local non-trunk branches
     for (const commit of data.commits) {
       for (const branch of commit.branches) {
-        // Validation: local non-trunk branches should always have ownedCommitShas with at least 1 entry
         if (!branch.isRemote && !branch.isTrunk) {
           if (!branch.ownedCommitShas) {
             log.warn('[StackView] Branch is missing ownedCommitShas', {
@@ -121,37 +129,19 @@ export function StackView({
             })
           }
         }
-
-        const ownedShas = branch.ownedCommitShas
-        if (ownedShas && ownedShas.length > 1) {
-          // This branch owns multiple commits (head + parents)
-          collapsible.set(branch.name, { branch, ownedCount: ownedShas.length - 1 })
-        }
       }
     }
 
-    return collapsible
-  }, [data.commits])
+    return computeCollapsibleBranches(data.commits, commitBySha)
+  }, [data.commits, commitBySha])
 
   // Compute which commits should be hidden based on expansion state
   // This depends on both collapsibleBranches and expandedBranches
-  const hiddenCommitShas = useMemo(() => {
-    const hidden = new Set<string>()
-
-    for (const [branchName, info] of collapsibleBranches) {
-      // If not expanded, hide all owned commits except the head
-      if (!expandedBranches.has(branchName)) {
-        const ownedShas = info.branch.ownedCommitShas
-        if (ownedShas) {
-          for (let i = 1; i < ownedShas.length; i++) {
-            hidden.add(ownedShas[i])
-          }
-        }
-      }
-    }
-
-    return hidden
-  }, [collapsibleBranches, expandedBranches])
+  // Never hide commits that have spinoffs (they're fork points for other stacks)
+  const hiddenCommitShas = useMemo(
+    () => computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha),
+    [collapsibleBranches, expandedBranches, commitBySha]
+  )
 
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
@@ -191,7 +181,7 @@ export function StackView({
                 <div className="pl-2">
                   <div className="border-border flex border-l-2">
                     <CollapsedCommits
-                      count={collapsibleInfo.ownedCount}
+                      count={collapsibleInfo.hideableCount}
                       isExpanded={expandedBranches.has(collapsibleInfo.branch.name)}
                       onToggle={() => toggleBranchExpanded(collapsibleInfo.branch.name)}
                       className="ml-2"

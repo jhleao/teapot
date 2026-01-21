@@ -16,12 +16,18 @@ import {
   findClosestCommitBelowMouse,
   type CommitBoundingBox
 } from '../utils/dragging'
+import { useScrollViewport } from './ScrollViewportContext'
 import { useUiStateContext } from './UiStateContext'
+
+// Auto-scroll configuration
+const AUTO_SCROLL_EDGE_THRESHOLD = 60 // pixels from edge to trigger scroll
+const AUTO_SCROLL_MAX_SPEED = 15 // max pixels per frame
 
 interface DragState {
   potentialDragSha: string | null
   originalParentSha: string | null
   frozenBoundingBoxes: CommitBoundingBox[]
+  initialScrollTop: number
   forbiddenDropTargets: Set<string>
 }
 
@@ -49,6 +55,7 @@ const DragContext = createContext<DragContextValue | undefined>(undefined)
 
 export function DragProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const { uiState, submitRebaseIntent } = useUiStateContext()
+  const { viewportRef } = useScrollViewport()
 
   const [draggingCommitSha, setDraggingCommitSha] = useState<string | null>(null)
   const [commitBelowMouse, setCommitBelowMouse] = useState<string | null>(null)
@@ -59,8 +66,13 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     potentialDragSha: null,
     originalParentSha: null,
     frozenBoundingBoxes: [],
+    initialScrollTop: 0,
     forbiddenDropTargets: new Set()
   })
+
+  // Auto-scroll state
+  const autoScrollRAF = useRef<number | null>(null)
+  const lastMouseY = useRef<number>(0)
 
   const commitRefsMap = useRef<Map<string, RefObject<HTMLDivElement>>>(new Map())
 
@@ -89,6 +101,51 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     [isRebaseLoading, uiState?.stack]
   )
 
+  // Auto-scroll function for edge detection
+  const performAutoScroll = useCallback((): void => {
+    const viewport = viewportRef.current
+    if (!viewport || !draggingCommitSha) {
+      autoScrollRAF.current = null
+      return
+    }
+
+    const viewportRect = viewport.getBoundingClientRect()
+    const mouseY = lastMouseY.current
+
+    // Calculate distance from edges
+    const distanceFromTop = mouseY - viewportRect.top
+    const distanceFromBottom = viewportRect.bottom - mouseY
+
+    let scrollAmount = 0
+
+    if (distanceFromTop < AUTO_SCROLL_EDGE_THRESHOLD) {
+      // Near or past top edge - scroll up (negative)
+      // Use max speed if past the edge, proportional speed if within threshold
+      const proximity = distanceFromTop <= 0 ? 1 : 1 - distanceFromTop / AUTO_SCROLL_EDGE_THRESHOLD
+      scrollAmount = -AUTO_SCROLL_MAX_SPEED * proximity
+    } else if (distanceFromBottom < AUTO_SCROLL_EDGE_THRESHOLD) {
+      // Near or past bottom edge - scroll down (positive)
+      const proximity = distanceFromBottom <= 0 ? 1 : 1 - distanceFromBottom / AUTO_SCROLL_EDGE_THRESHOLD
+      scrollAmount = AUTO_SCROLL_MAX_SPEED * proximity
+    }
+
+    if (scrollAmount !== 0) {
+      viewport.scrollBy(0, scrollAmount)
+      // Continue auto-scroll loop
+      autoScrollRAF.current = requestAnimationFrame(performAutoScroll)
+    } else {
+      autoScrollRAF.current = null
+    }
+  }, [draggingCommitSha, viewportRef])
+
+  // Stop auto-scroll when drag ends
+  useEffect(() => {
+    if (!draggingCommitSha && autoScrollRAF.current !== null) {
+      cancelAnimationFrame(autoScrollRAF.current)
+      autoScrollRAF.current = null
+    }
+  }, [draggingCommitSha])
+
   // Mouse event handlers for drag operation
   useEffect(() => {
     const stack = uiState?.stack
@@ -98,7 +155,18 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       const state = dragState.current
       if (!state.potentialDragSha || draggingCommitSha) return
 
-      state.frozenBoundingBoxes = captureCommitBoundingBoxes(commitRefsMap.current, stack)
+      const captured = captureCommitBoundingBoxes(
+        commitRefsMap.current,
+        stack,
+        viewportRef.current
+      )
+      state.frozenBoundingBoxes = captured.boundingBoxes
+      state.initialScrollTop = captured.initialScrollTop
+      log.debug('[DragContext.maybeStartDrag] Captured drag state', {
+        sha: state.potentialDragSha?.slice(0, 8),
+        boundingBoxCount: captured.boundingBoxes.length,
+        initialScrollTop: captured.initialScrollTop
+      })
       state.originalParentSha = findParentCommitSha(state.potentialDragSha, stack)
       state.forbiddenDropTargets = collectDescendantShas(state.potentialDragSha, stack)
       setDraggingCommitSha(state.potentialDragSha)
@@ -107,10 +175,17 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     const updateDropTarget = (e: MouseEvent): void => {
       if (!draggingCommitSha) return
 
-      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets } = dragState.current
+      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets, initialScrollTop } =
+        dragState.current
+      const currentScrollTop = viewportRef.current?.scrollTop ?? 0
 
       if (frozenBoundingBoxes.length > 0) {
-        const candidate = findClosestCommitBelowMouse(e.clientY, frozenBoundingBoxes)
+        const candidate = findClosestCommitBelowMouse(
+          e.clientY,
+          frozenBoundingBoxes,
+          initialScrollTop,
+          currentScrollTop
+        )
         // Exclude: dragged commit itself, original parent, and any descendants (can't rebase onto a child)
         if (
           candidate &&
@@ -161,6 +236,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       state.potentialDragSha = null
       state.originalParentSha = null
       state.frozenBoundingBoxes = []
+      state.initialScrollTop = 0
       state.forbiddenDropTargets = new Set()
 
       setDraggingCommitSha(null)
@@ -170,16 +246,37 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
     const handleMouseMove = (e: MouseEvent): void => {
       maybeStartDrag()
       updateDropTarget(e)
+
+      // Update last mouse position for auto-scroll
+      lastMouseY.current = e.clientY
+
+      // Start auto-scroll if not already running and we're dragging
+      if (draggingCommitSha && autoScrollRAF.current === null) {
+        autoScrollRAF.current = requestAnimationFrame(performAutoScroll)
+      }
     }
 
     const handleMouseUp = (e: MouseEvent): void => {
+      // Stop auto-scroll
+      if (autoScrollRAF.current !== null) {
+        cancelAnimationFrame(autoScrollRAF.current)
+        autoScrollRAF.current = null
+      }
+
       if (!draggingCommitSha) {
         dragState.current.potentialDragSha = null
         return
       }
 
-      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets } = dragState.current
-      const candidate = findClosestCommitBelowMouse(e.clientY, frozenBoundingBoxes)
+      const { frozenBoundingBoxes, originalParentSha, forbiddenDropTargets, initialScrollTop } =
+        dragState.current
+      const currentScrollTop = viewportRef.current?.scrollTop ?? 0
+      const candidate = findClosestCommitBelowMouse(
+        e.clientY,
+        frozenBoundingBoxes,
+        initialScrollTop,
+        currentScrollTop
+      )
       // Only commit if dropping on a valid target (not self, not original parent, not a descendant)
       if (
         candidate &&
@@ -211,8 +308,11 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       window.removeEventListener('mousemove', rafMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
       if (rafId !== null) cancelAnimationFrame(rafId)
+      // Note: Don't cancel autoScrollRAF here. Let it continue until handleMouseUp
+      // or cursor moves away from edge. Cancelling on effect re-runs (e.g., when
+      // uiState?.stack updates) causes freezes since no mouse move restarts it.
     }
-  }, [uiState?.stack, submitRebaseIntent, draggingCommitSha])
+  }, [uiState?.stack, submitRebaseIntent, draggingCommitSha, viewportRef, performAutoScroll])
 
   // Hide cursor during drag or loading
   useEffect(() => {
@@ -298,7 +398,9 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
 // eslint-disable-next-line react-refresh/only-export-components
 export function useDragContext(): DragContextValue {
   const context = useContext(DragContext)
-  if (!context) throw new Error('useDragContext must be used within a DragProvider')
+  if (context === undefined) {
+    throw new Error('useDragContext must be used within a DragProvider')
+  }
   return context
 }
 

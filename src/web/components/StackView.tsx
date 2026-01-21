@@ -435,7 +435,7 @@ export const CommitView = memo(function CommitView({
           <CommitDot
             top={showTopLine}
             bottom={showBottomLine}
-            variant={isHead ? 'current' : 'default'}
+            variant={isHead ? 'current' : data.isIndependent ? 'independent' : 'default'}
             accentLines={showWorkingTree ? 'top' : 'none'}
           />
           {data.branches.length > 0 && <MultiBranchBadge branches={data.branches} />}

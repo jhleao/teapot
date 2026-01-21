@@ -35,6 +35,13 @@ export type UiCommit = {
   isCurrent: boolean
   /** Which branches is this commit a tip of. */
   branches: UiBranch[]
+  /**
+   * True if this commit has multiple spinoffs (branches forking from it).
+   * Independent commits are not owned by any single branch and act as stable
+   * waypoints. When rebasing a branch, independent ancestors don't move with it.
+   * To move an independent commit, drag it directly - all its spinoffs will move together.
+   */
+  isIndependent?: boolean
 }
 
 export type UiBranch = {

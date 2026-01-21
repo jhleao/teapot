@@ -29,7 +29,7 @@ export function CommitDot({
 }: {
   top?: boolean
   bottom?: boolean
-  variant?: 'default' | 'accent' | 'current'
+  variant?: 'default' | 'accent' | 'current' | 'independent'
   accentLines?: 'none' | 'top' | 'bottom' | 'both'
   onMouseDown?: () => void
   className?: string
@@ -45,8 +45,14 @@ export function CommitDot({
     accentLines === 'bottom' || accentLines === 'both' ? 'stroke-accent' : 'stroke-border'
 
   // Determine circle styling
+  // Independent commits use muted styling to show they're not owned by any branch
   const isCurrent = variant === 'current'
-  const circleStrokeClass = variant === 'default' ? 'stroke-border' : 'stroke-accent'
+  const isIndependent = variant === 'independent'
+  const circleStrokeClass = isIndependent
+    ? 'stroke-muted-foreground/50'
+    : variant === 'default'
+      ? 'stroke-border'
+      : 'stroke-accent'
   const circleRadius = isCurrent ? 6 : 4
   const circleStrokeWidth = isCurrent ? 3 : 2
 

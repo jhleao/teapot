@@ -5,6 +5,7 @@
  * All functions are pure and synchronous.
  */
 
+import { log } from '@shared/logger'
 import type {
   Branch,
   Commit as DomainCommit,
@@ -22,6 +23,7 @@ import type {
   Worktree
 } from '@shared/types'
 import type { GitForgeState } from '../../shared/types/git-forge'
+import { findBestPr, countOpenPrs, canRecreatePr } from '../../shared/types/git-forge'
 import { calculateCommitOwnership, isForkPoint } from './CommitOwnership'
 import { RebaseStateMachine } from './RebaseStateMachine'
 import { TrunkResolver } from './TrunkResolver'
@@ -576,10 +578,34 @@ export class UiStateBuilder {
       let pullRequest: UiPullRequest | undefined
       let isMerged: boolean | undefined
       let hasStaleTarget = false
+      let branchCanRecreatePr: boolean | undefined
 
       if (gitForgeState) {
         const normalizedRef = UiStateBuilder.normalizeBranchRef(branch)
-        const pr = gitForgeState.pullRequests.find((pr) => pr.headRefName === normalizedRef)
+        const matchingPrs = gitForgeState.pullRequests.filter((p) => p.headRefName === normalizedRef)
+        const pr = findBestPr(normalizedRef, gitForgeState.pullRequests)
+        const hasMultipleOpenPrs = countOpenPrs(normalizedRef, gitForgeState.pullRequests) > 1
+        branchCanRecreatePr = canRecreatePr(normalizedRef, gitForgeState.pullRequests) || undefined
+
+        // Log when multiple PRs exist - this helps diagnose selection issues
+        if (matchingPrs.length > 1) {
+          log.info('[UiStateBuilder] Multiple PRs found for branch', {
+            branch: normalizedRef,
+            prs: matchingPrs.map((p) => ({ number: p.number, state: p.state, createdAt: p.createdAt })),
+            selected: pr ? { number: pr.number, state: pr.state } : null
+          })
+        }
+
+        // Log when selected PR is not open - helps diagnose why a closed/merged PR is shown
+        if (pr && pr.state !== 'open') {
+          log.debug('[UiStateBuilder] Selected non-open PR for branch', {
+            branch: normalizedRef,
+            prNumber: pr.number,
+            prState: pr.state,
+            totalPrs: matchingPrs.length
+          })
+        }
+
         if (pr) {
           pullRequest = {
             number: pr.number,
@@ -587,7 +613,8 @@ export class UiStateBuilder {
             url: pr.url,
             state: pr.state,
             isInSync: pr.headSha === branch.headSha,
-            isMergeable: pr.isMergeable
+            isMergeable: pr.isMergeable,
+            hasMultipleOpenPrs: hasMultipleOpenPrs || undefined
           }
           if (pr.state === 'merged') {
             isMerged = true
@@ -676,7 +703,8 @@ export class UiStateBuilder {
         canDelete,
         canSquash,
         squashDisabledReason,
-        canCreateWorktree
+        canCreateWorktree,
+        canRecreatePr: branchCanRecreatePr
       })
     })
   }

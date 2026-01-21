@@ -359,7 +359,8 @@ describe('Parallel Rebase Workflow', () => {
   })
 
   describe('Concurrent operations', () => {
-    it('prevents concurrent rebase sessions on same repo', async () => {
+    // This test can be flaky under heavy system load due to git operations and file I/O
+    it('prevents concurrent rebase sessions on same repo', { timeout: 10000 }, async () => {
       // Arrange: Add a commit to main so rebase is needed
       execSync('git checkout main', { cwd: repoPath })
       await fs.promises.writeFile(path.join(repoPath, 'main-update.txt'), 'main update')

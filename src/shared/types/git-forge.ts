@@ -200,6 +200,81 @@ export function hasMergedPr(
   return pullRequests.some((p) => p.headRefName === branchName && p.state === 'merged')
 }
 
+/** PR state priority for selection (lower = higher priority) */
+const PR_STATE_PRIORITY: Record<PrState, number> = {
+  open: 0,
+  draft: 1,
+  merged: 2,
+  closed: 3
+}
+
+/**
+ * Finds the best PR for a branch using priority-based selection.
+ * Priority order: open > draft > merged > closed
+ * Within the same state, prefers most recently created (by createdAt).
+ *
+ * Use this when you need to find the most relevant PR for display or sync operations,
+ * especially when multiple PRs may exist for the same branch (e.g., after closing
+ * and reopening).
+ *
+ * @param branchName - The branch to find a PR for
+ * @param pullRequests - All known PRs
+ * @returns The best matching PR, or undefined if none exists
+ */
+export function findBestPr<T extends { headRefName: string; state: string; createdAt?: string }>(
+  branchName: string,
+  pullRequests: T[]
+): T | undefined {
+  const matchingPrs = pullRequests.filter((p) => p.headRefName === branchName)
+  if (matchingPrs.length === 0) return undefined
+  if (matchingPrs.length === 1) return matchingPrs[0]
+
+  // Sort by state priority (ascending), then by createdAt (descending - newer first)
+  return [...matchingPrs].sort((a, b) => {
+    const priorityA = PR_STATE_PRIORITY[a.state as PrState] ?? 999
+    const priorityB = PR_STATE_PRIORITY[b.state as PrState] ?? 999
+    if (priorityA !== priorityB) return priorityA - priorityB
+
+    // Same state - prefer more recently created
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0
+    return dateB - dateA // Descending (newer first)
+  })[0]
+}
+
+/**
+ * Counts the number of open PRs for a branch.
+ * Used to detect the warning condition where multiple open PRs exist.
+ *
+ * @param branchName - The branch to check
+ * @param pullRequests - All known PRs
+ * @returns Count of open PRs for the branch
+ */
+export function countOpenPrs(
+  branchName: string,
+  pullRequests: Array<{ headRefName: string; state: string }>
+): number {
+  return pullRequests.filter((p) => p.headRefName === branchName && p.state === 'open').length
+}
+
+/**
+ * Checks if a branch can recreate a PR.
+ * Returns true if the branch has PRs but none are active (open or draft).
+ * This indicates the user may want to create a new PR after closing the previous one.
+ *
+ * @param branchName - The branch to check
+ * @param pullRequests - All known PRs
+ * @returns True if the branch has only closed/merged PRs (no active ones)
+ */
+export function canRecreatePr(
+  branchName: string,
+  pullRequests: Array<{ headRefName: string; state: string }>
+): boolean {
+  const matching = pullRequests.filter((p) => p.headRefName === branchName)
+  if (matching.length === 0) return false // No PR exists - use "Create PR" instead
+  return !matching.some((p) => isActivePrState(p.state))
+}
+
 export interface GitForgeAdapter {
   /**
    * Fetches the current state of the forge (e.g. open PRs).

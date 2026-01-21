@@ -8,6 +8,7 @@
 
 import type { Commit, Repo } from '@shared/types'
 import type { ForgePullRequest } from '@shared/types/git-forge'
+import { findBestPr } from '@shared/types/git-forge'
 import { extractLocalBranchName, isTrunk } from '@shared/types/repo'
 import { buildTrunkShaSet } from './CommitOwnership'
 import { TrunkResolver } from './TrunkResolver'
@@ -207,7 +208,7 @@ export class PrTargetResolver {
       visited.add(current)
 
       // Find the PR for this branch to get its target
-      const pr = pullRequests.find((p) => p.headRefName === current)
+      const pr = findBestPr(current, pullRequests)
 
       if (!pr) {
         // Can't trace further - fall back to trunk if provided, otherwise error

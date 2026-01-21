@@ -7,7 +7,9 @@ import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
+import { getPrStateStyles } from '../utils/pr-state-styles'
 import { StatusChecksDisplay } from './StatusChecksDisplay'
+import { Tooltip } from './Tooltip'
 
 interface GitForgeSectionProps {
   branches: UiBranch[]
@@ -134,8 +136,8 @@ export const GitForgeSection = memo(function GitForgeSection({
   )
 
   const handleCreatePr = useCallback(
-    async (e: React.MouseEvent): Promise<void> => {
-      e.stopPropagation()
+    async (e?: React.MouseEvent): Promise<void> => {
+      e?.stopPropagation()
       if (isLoading) return
 
       // Pick the first available branch on the commit as requested.
@@ -189,6 +191,10 @@ export const GitForgeSection = memo(function GitForgeSection({
     const checksFailed = blockers.includes('checks_failed')
     const hasConflicts = blockers.includes('conflicts')
     const reviewsRequired = blockers.includes('reviews_required')
+
+    // PR link styling
+    const prStyles = getPrStateStyles(pr.state)
+    const showOutOfSync = prIsActive && !pr.isInSync
 
     // Ship It should be visible when PR is open, in sync and at bottom of stack (even if disabled)
     // Don't show for merged or closed PRs
@@ -295,27 +301,41 @@ export const GitForgeSection = memo(function GitForgeSection({
             Rebase
           </button>
         )}
+        {/* PR link with state-based coloring */}
         <a
           href={pr.url}
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
             'cursor-pointer text-sm hover:underline',
-            prIsMerged || prIsClosed
-              ? 'text-muted-foreground'
-              : pr.isInSync
-                ? 'text-accent'
-                : 'text-warning'
+            showOutOfSync ? 'text-warning' : prStyles.textClass
           )}
           onClick={(e) => e.stopPropagation()}
         >
           #{pr.number}
-          {prIsMerged && ' (Merged)'}
-          {prIsClosed && ' (Closed)'}
-          {prIsActive && !pr.isInSync && ' (Out of sync)'}
+          {prStyles.label}
+          {showOutOfSync && ' (Out of sync)'}
         </a>
-        {/* Status checks display - show next to PR number for active PRs */}
-        {prIsActive && mergeReadiness && <StatusChecksDisplay mergeReadiness={mergeReadiness} />}
+        {/* Warning badge when multiple open PRs exist for same branch */}
+        {pr.hasMultipleOpenPrs && (
+          <Tooltip
+            content={
+              <span>
+                Multiple open PRs exist for this branch.
+                <br />
+                Using most recently created.
+              </span>
+            }
+          >
+            <span className="border-warning/50 bg-warning/20 text-warning inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium">
+              Multiple PRs
+            </span>
+          </Tooltip>
+        )}
+        {/* Status checks display - hide when there are conflicts (irrelevant noise) */}
+        {prIsActive && mergeReadiness && !hasConflicts && (
+          <StatusChecksDisplay mergeReadiness={mergeReadiness} />
+        )}
         {/* Update PR button - only show for active PRs that are out of sync */}
         {prIsActive && !pr.isInSync && (
           <button
@@ -329,19 +349,32 @@ export const GitForgeSection = memo(function GitForgeSection({
         )}
         {/* Ship It button with enhanced states */}
         {shipItConfig && (
-          <button
-            type="button"
-            onClick={handleShipIt}
-            disabled={shipItConfig.disabled || isLoading}
-            className={cn(
-              'flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed',
-              shipItConfig.style
-            )}
-            title={shipItError || undefined}
+          <Tooltip
+            content={
+              hasConflicts ? (
+                <span>
+                  PR has conflicts with the target branch.
+                  <br />
+                  Resolve on GitHub or rebase locally.
+                </span>
+              ) : undefined
+            }
+            disabled={!hasConflicts}
           >
-            {checksRunning && <Loader2Icon className="h-3 w-3 animate-spin" />}
-            {shipItConfig.label}
-          </button>
+            <button
+              type="button"
+              onClick={handleShipIt}
+              disabled={shipItConfig.disabled || isLoading}
+              className={cn(
+                'flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed',
+                shipItConfig.style
+              )}
+              title={shipItError || undefined}
+            >
+              {checksRunning && <Loader2Icon className="h-3 w-3 animate-spin" />}
+              {shipItConfig.label}
+            </button>
+          </Tooltip>
         )}
         {shipItError && (
           <span
@@ -368,6 +401,17 @@ export const GitForgeSection = memo(function GitForgeSection({
             className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
           >
             {isLoading ? 'Cleaning...' : 'Clean up'}
+          </button>
+        )}
+        {/* Show "Create PR" button for closed PRs (not merged) - more discoverable than context menu */}
+        {prIsClosed && !prIsMerged && (
+          <button
+            type="button"
+            onClick={handleCreatePr}
+            disabled={isLoading}
+            className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+          >
+            {isLoading ? 'Creating...' : 'Create PR'}
           </button>
         )}
       </div>

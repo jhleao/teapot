@@ -48,7 +48,7 @@ describe('canHideCommit', () => {
 
   it('returns false for a commit with spinoffs (fork point)', () => {
     const spinoffCommit = createCommit('spinoff1')
-    const forkPointCommit = createCommit('fork123', [], [{ commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false }])
+    const forkPointCommit = createCommit('fork123', [], [{ commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }])
     const commitBySha = new Map([['fork123', forkPointCommit]])
 
     expect(canHideCommit('fork123', commitBySha)).toBe(false)
@@ -106,7 +106,7 @@ describe('computeCollapsibleBranches', () => {
     const spinoffCommit = createCommit('spinoff1')
     const commit1 = createCommit('commit1')
     const forkPoint = createCommit('forkPoint', [], [
-      { commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false }
+      { commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
     ])
     const headCommit = createCommit('head', [
       createBranch('feature', ['head', 'forkPoint', 'commit1'])
@@ -128,8 +128,8 @@ describe('computeCollapsibleBranches', () => {
     // Stack where ALL owned commits (except head) have spinoffs
     const spinoff1 = createCommit('spinoff1')
     const spinoff2 = createCommit('spinoff2')
-    const fork1 = createCommit('fork1', [], [{ commits: [spinoff1], isTrunk: false, canRebaseToTrunk: false }])
-    const fork2 = createCommit('fork2', [], [{ commits: [spinoff2], isTrunk: false, canRebaseToTrunk: false }])
+    const fork1 = createCommit('fork1', [], [{ commits: [spinoff1], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }])
+    const fork2 = createCommit('fork2', [], [{ commits: [spinoff2], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }])
     const headCommit = createCommit('head', [createBranch('feature', ['head', 'fork1', 'fork2'])])
 
     const commitBySha = new Map([
@@ -218,7 +218,7 @@ describe('computeHiddenCommitShas', () => {
     const spinoffCommit = createCommit('spinoff1')
     const commit1 = createCommit('commit1')
     const forkPoint = createCommit('forkPoint', [], [
-      { commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false }
+      { commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
     ])
     const branch = createBranch('feature', ['head', 'forkPoint', 'commit1'])
 
@@ -274,7 +274,7 @@ describe('integration: collapse with complex stack structures', () => {
     const commitX = createCommit('X')
     const commit1 = createCommit('commit1')
     const forkPoint = createCommit('forkPoint', [], [
-      { commits: [commitY, commitX], isTrunk: false, canRebaseToTrunk: false }
+      { commits: [commitY, commitX], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
     ])
     const head = createCommit('head', [
       createBranch('feature', ['head', 'forkPoint', 'commit1'])
@@ -329,10 +329,10 @@ describe('integration: collapse with complex stack structures', () => {
     const commit1 = createCommit('commit1')
     const commit2 = createCommit('commit2')
     const fork1 = createCommit('fork1', [], [
-      { commits: [spinoff1], isTrunk: false, canRebaseToTrunk: false }
+      { commits: [spinoff1], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
     ])
     const fork2 = createCommit('fork2', [], [
-      { commits: [spinoff2], isTrunk: false, canRebaseToTrunk: false }
+      { commits: [spinoff2], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
     ])
     const head = createCommit('head', [
       createBranch('feature', ['head', 'fork1', 'commit1', 'fork2', 'commit2'])

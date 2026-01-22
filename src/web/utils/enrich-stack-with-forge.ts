@@ -1,10 +1,24 @@
 import type { UiCommit, UiPullRequest, UiStack } from '@shared/types'
 import type { ForgePullRequest, GitForgeState } from '@shared/types/git-forge'
 import { countOpenPrs, findBestPr } from '@shared/types/git-forge'
+import { isTrunk } from '@shared/types/repo'
 
 /**
- * Enriches a UI stack with forge state (PR data) at render time.
- * This allows the UI to display local data immediately while forge state loads asynchronously.
+ * Enriches a UI stack with GitHub forge state (PR data) at render time.
+ *
+ * This layer computes all GitHub-derived state, complementing the backend which computes
+ * git-derived state. This separation allows:
+ * - Backend: Fast, synchronous computation of local git state (commits, branches, `isDirectlyOffTrunk`)
+ * - Enrichment: Asynchronous addition of GitHub API data (PRs, merge status, `canShip`)
+ *
+ * The UI renders immediately with git data, then re-renders when GitHub data arrives.
+ *
+ * Computed properties:
+ * - `pullRequest`: PR details (number, state, mergeable, etc.)
+ * - `isInSync`: Whether local branch matches PR head
+ * - `isMerged`: Whether branch/PR has been merged
+ * - `hasStaleTarget`: Whether PR targets a merged branch
+ * - `canShip`: Whether branch can be shipped (directly off trunk + PR targets trunk)
  *
  * The function creates a new stack with PR data merged in - it does not mutate the original.
  */
@@ -19,24 +33,28 @@ export function enrichStackWithForge(
   const pullRequests = forgeState.pullRequests
   const mergedBranchNames = new Set(forgeState.mergedBranchNames ?? [])
 
-  return enrichStackRecursive(stack, pullRequests, mergedBranchNames)
+  return enrichStackRecursive(stack, pullRequests, mergedBranchNames, stack.isDirectlyOffTrunk)
 }
 
 function enrichStackRecursive(
   stack: UiStack,
   pullRequests: ForgePullRequest[],
-  mergedBranchNames: Set<string>
+  mergedBranchNames: Set<string>,
+  isDirectlyOffTrunk: boolean
 ): UiStack {
   return {
     ...stack,
-    commits: stack.commits.map((commit) => enrichCommit(commit, pullRequests, mergedBranchNames))
+    commits: stack.commits.map((commit) =>
+      enrichCommit(commit, pullRequests, mergedBranchNames, isDirectlyOffTrunk)
+    )
   }
 }
 
 function enrichCommit(
   commit: UiCommit,
   pullRequests: ForgePullRequest[],
-  mergedBranchNames: Set<string>
+  mergedBranchNames: Set<string>,
+  isDirectlyOffTrunk: boolean
 ): UiCommit {
   // Enrich branches with PR data
   const enrichedBranches = commit.branches.map((branch) => {
@@ -86,17 +104,26 @@ function enrichCommit(
     // Check if PR targets a merged branch (stale target)
     const hasStaleTarget = mergedBranchNames.has(pr.baseRefName) || undefined
 
+    // Compute canShip: requires directly off trunk AND PR targets trunk
+    // Only computed for active PRs (open or draft)
+    let canShip: boolean | undefined
+    if (pr.state === 'open' || pr.state === 'draft') {
+      const prTargetsTrunk = isTrunk(pr.baseRefName)
+      canShip = isDirectlyOffTrunk && prTargetsTrunk
+    }
+
     return {
       ...branch,
       pullRequest,
       isMerged,
-      hasStaleTarget
+      hasStaleTarget,
+      canShip
     }
   })
 
-  // Enrich spinoffs recursively
+  // Enrich spinoffs recursively - each spinoff has its own isDirectlyOffTrunk
   const enrichedSpinoffs = commit.spinoffs.map((spinoff) =>
-    enrichStackRecursive(spinoff, pullRequests, mergedBranchNames)
+    enrichStackRecursive(spinoff, pullRequests, mergedBranchNames, spinoff.isDirectlyOffTrunk)
   )
 
   return {

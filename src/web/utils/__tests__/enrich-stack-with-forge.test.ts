@@ -26,6 +26,7 @@ describe('enrichStackWithForge', () => {
   const createStack = (overrides: Partial<UiStack> = {}): UiStack => ({
     isTrunk: false,
     canRebaseToTrunk: false,
+    isDirectlyOffTrunk: false,
     commits: [
       {
         sha: 'commit-1',
@@ -164,6 +165,7 @@ describe('enrichStackWithForge', () => {
             {
               isTrunk: false,
               canRebaseToTrunk: false,
+              isDirectlyOffTrunk: false,
               commits: [
                 {
                   sha: 'child-commit',
@@ -354,5 +356,202 @@ describe('enrichStackWithForge', () => {
     const result = enrichStackWithForge(stack, forgeState)
 
     expect(result?.commits[0].branches[0].pullRequest?.hasMultipleOpenPrs).toBeUndefined()
+  })
+
+  describe('canShip computation', () => {
+    it('should set canShip=true when isDirectlyOffTrunk=true and PR targets trunk', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'main', state: 'open' })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBe(true)
+    })
+
+    it('should set canShip=false when isDirectlyOffTrunk=false and PR targets trunk', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: false,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'main', state: 'open' })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBe(false)
+    })
+
+    it('should set canShip=false when isDirectlyOffTrunk=true but PR targets non-trunk', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'other-branch', state: 'open' })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBe(false)
+    })
+
+    it('should not set canShip for merged PRs', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'main', state: 'merged', isMergeable: false })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBeUndefined()
+    })
+
+    it('should not set canShip for closed PRs', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'main', state: 'closed', isMergeable: false })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBeUndefined()
+    })
+
+    it('should set canShip=true for draft PRs when conditions met', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true,
+        commits: [
+          {
+            sha: 'commit-1',
+            name: 'Test commit',
+            timestampMs: Date.now(),
+            isCurrent: true,
+            rebaseStatus: null,
+            spinoffs: [],
+            branches: [createBranch({ isCurrent: true })]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [createPR({ baseRefName: 'main', state: 'draft' })]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      expect(result?.commits[0].branches[0].canShip).toBe(true)
+    })
+
+    it('should use spinoff isDirectlyOffTrunk for branches in spinoffs', () => {
+      const stack = createStack({
+        isDirectlyOffTrunk: true, // parent stack is directly off trunk
+        commits: [
+          {
+            sha: 'parent-commit',
+            name: 'Parent',
+            timestampMs: Date.now(),
+            isCurrent: false,
+            rebaseStatus: null,
+            branches: [],
+            spinoffs: [
+              {
+                isTrunk: false,
+                canRebaseToTrunk: false,
+                isDirectlyOffTrunk: false, // spinoff is NOT directly off trunk
+                commits: [
+                  {
+                    sha: 'child-commit',
+                    name: 'Child',
+                    timestampMs: Date.now(),
+                    isCurrent: true,
+                    rebaseStatus: null,
+                    spinoffs: [],
+                    branches: [createBranch({ name: 'child-branch', isCurrent: true })]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })
+      const forgeState = createForgeState({
+        pullRequests: [
+          createPR({
+            number: 99,
+            headRefName: 'child-branch',
+            baseRefName: 'main',
+            headSha: 'child-commit',
+            state: 'open'
+          })
+        ]
+      })
+
+      const result = enrichStackWithForge(stack, forgeState)
+
+      // Child branch should NOT be shippable because its stack isDirectlyOffTrunk=false
+      const spinoff = result?.commits[0].spinoffs[0]
+      expect(spinoff?.commits[0].branches[0].canShip).toBe(false)
+    })
   })
 })

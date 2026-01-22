@@ -23,6 +23,11 @@ export type UiStack = {
    * Frontend only needs to additionally check if working tree is dirty.
    */
   canRebaseToTrunk: boolean
+  /**
+   * True if this stack's base commit is directly on trunk (not stacked on another branch).
+   * Used for computing canShip on branches.
+   */
+  isDirectlyOffTrunk: boolean
 }
 
 export type UiCommit = {
@@ -102,6 +107,11 @@ export type UiBranch = {
   canCreateWorktree: boolean
   /** True if this branch can recreate a PR (has only closed/merged PRs, no active ones). */
   canRecreatePr?: boolean
+  /**
+   * True if this branch can be shipped via Ship It.
+   * Requires: branch is directly off trunk AND PR targets trunk.
+   */
+  canShip?: boolean
 }
 
 /**

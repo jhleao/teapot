@@ -348,6 +348,8 @@ export interface IpcContract {
     request: {
       repoPath: string
       branchName: string
+      /** Pre-computed canShip from UiBranch (directly off trunk && PR targets trunk) */
+      canShip?: boolean
     }
     response: ShipItResponse
   }

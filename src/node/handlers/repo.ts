@@ -441,11 +441,11 @@ const updatePullRequest: IpcHandlerOf<'updatePullRequest'> = async (
 
 const shipIt: IpcHandlerOf<'shipIt'> = async (
   _event,
-  { repoPath, branchName }
+  { repoPath, branchName, canShip }
 ): Promise<ShipItResponse> => {
   try {
     const mergeStrategy = configStore.getMergeStrategy()
-    const result = await PullRequestOperation.shipIt(repoPath, branchName, mergeStrategy)
+    const result = await PullRequestOperation.shipIt(repoPath, branchName, mergeStrategy, canShip)
 
     if (!result.success) {
       throw new Error(result.error)

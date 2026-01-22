@@ -382,8 +382,8 @@ export class UiStateBuilder {
       return null
     }
 
-    // Trunk stack itself cannot be rebased to trunk
-    const stack: UiStack = { commits, isTrunk: true, canRebaseToTrunk: false }
+    // Trunk stack itself cannot be rebased to trunk, and is trivially "directly off trunk"
+    const stack: UiStack = { commits, isTrunk: true, canRebaseToTrunk: false, isDirectlyOffTrunk: true }
     return { UiStack: stack, trunkSet: new Set(lineage) }
   }
 
@@ -451,7 +451,7 @@ export class UiStateBuilder {
     const canRebaseToTrunk =
       isDirectlyOffTrunk && baseSha !== state.trunkHeadSha && state.trunkHeadSha !== ''
 
-    const stack: UiStack = { commits: [], isTrunk: false, canRebaseToTrunk }
+    const stack: UiStack = { commits: [], isTrunk: false, canRebaseToTrunk, isDirectlyOffTrunk }
     let currentSha: string | null = startSha
     const visited = new Set<string>()
 
@@ -579,6 +579,8 @@ export class UiStateBuilder {
       let isMerged: boolean | undefined
       let hasStaleTarget = false
       let branchCanRecreatePr: boolean | undefined
+      // Note: canShip is computed by the frontend enrichment layer (enrichStackWithForge)
+      // because it requires PR data which is fetched asynchronously from GitHub.
 
       if (gitForgeState) {
         const normalizedRef = UiStateBuilder.normalizeBranchRef(branch)
@@ -705,6 +707,7 @@ export class UiStateBuilder {
         squashDisabledReason,
         canCreateWorktree,
         canRecreatePr: branchCanRecreatePr
+        // canShip is computed by frontend enrichment (enrichStackWithForge)
       })
     })
   }

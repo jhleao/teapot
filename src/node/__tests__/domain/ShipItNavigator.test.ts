@@ -5,7 +5,7 @@
  * 1. PR must exist and be open
  * 2. PR must be mergeable
  * 3. Target branch must not be stale (merged)
- * 4. Branch must not have child PRs
+ * 4. branchCanShip must not be false (computed by frontend enrichment)
  *
  * Post-merge navigation (determineNavigation):
  * 1. If user is on shipped branch → go to parent or main
@@ -126,83 +126,49 @@ describe('validateCanShip', () => {
     })
   })
 
-  describe('child PR checks', () => {
-    it('rejects when branch has child PRs targeting it', () => {
-      const prs = [
-        makePr({ headRefName: 'feature-1', baseRefName: 'main' }),
-        makePr({ headRefName: 'feature-2', baseRefName: 'feature-1' }) // child
-      ]
+  // Note: "child PR checks" were removed - canShip is now computed by frontend enrichment
+  // (enrichStackWithForge) based on isDirectlyOffTrunk && isTrunk(pr.baseRefName).
+  // The backend trusts the frontend's computation and no longer checks hasChildPrs.
 
-      const result = validateCanShip('feature-1', prs)
+  describe('branchCanShip parameter', () => {
+    it('rejects when branchCanShip=false and PR targets non-trunk', () => {
+      const prs = [makePr({ headRefName: 'feature', baseRefName: 'other-branch' })]
+
+      const result = validateCanShip('feature', prs, false)
 
       expect(result.canShip).toBe(false)
       if (!result.canShip) {
-        expect(result.reason).toContain('child PRs')
+        expect(result.reason).toContain('PR targets')
+        expect(result.reason).toContain('other-branch')
       }
     })
 
-    it('accepts when branch has no child PRs', () => {
-      const prs = [makePr({ headRefName: 'feature-1', baseRefName: 'main' })]
+    it('rejects when branchCanShip=false and PR targets trunk (stacked branch)', () => {
+      const prs = [makePr({ headRefName: 'feature', baseRefName: 'main' })]
 
-      const result = validateCanShip('feature-1', prs)
+      const result = validateCanShip('feature', prs, false)
+
+      expect(result.canShip).toBe(false)
+      if (!result.canShip) {
+        expect(result.reason).toContain('stacked on another branch')
+      }
+    })
+
+    it('accepts when branchCanShip=true', () => {
+      const prs = [makePr({ headRefName: 'feature', baseRefName: 'main' })]
+
+      const result = validateCanShip('feature', prs, true)
 
       expect(result.canShip).toBe(true)
     })
 
-    it('ignores closed/merged child PRs', () => {
-      const prs = [
-        makePr({ headRefName: 'feature-1', baseRefName: 'main' }),
-        makePr({ headRefName: 'feature-2', baseRefName: 'feature-1', state: 'closed' })
-      ]
+    it('accepts when branchCanShip is undefined (trusts frontend will provide value)', () => {
+      const prs = [makePr({ headRefName: 'feature', baseRefName: 'main' })]
 
-      const result = validateCanShip('feature-1', prs)
+      // branchCanShip not passed - backend accepts (frontend is source of truth)
+      const result = validateCanShip('feature', prs, undefined)
 
-      expect(result.canShip).toBe(true) // closed child doesn't block
-    })
-
-    it('blocks shipping when child PR is a draft', () => {
-      const prs = [
-        makePr({ headRefName: 'feature-1', baseRefName: 'main' }),
-        makePr({ headRefName: 'feature-2', baseRefName: 'feature-1', state: 'draft' })
-      ]
-
-      const result = validateCanShip('feature-1', prs)
-
-      expect(result.canShip).toBe(false) // draft child blocks
-      if (!result.canShip) {
-        expect(result.reason).toContain('child PRs')
-      }
-    })
-  })
-
-  describe('complex stack scenarios', () => {
-    it('allows shipping bottom of stack (leaf node)', () => {
-      // Stack: main <- feature-1 <- feature-2 <- feature-3
-      const prs = [
-        makePr({ headRefName: 'feature-1', baseRefName: 'main' }),
-        makePr({ headRefName: 'feature-2', baseRefName: 'feature-1' }),
-        makePr({ headRefName: 'feature-3', baseRefName: 'feature-2' })
-      ]
-
-      // Can ship feature-3 (leaf)
-      expect(validateCanShip('feature-3', prs).canShip).toBe(true)
-
-      // Cannot ship feature-2 (has child)
-      expect(validateCanShip('feature-2', prs).canShip).toBe(false)
-
-      // Cannot ship feature-1 (has child)
-      expect(validateCanShip('feature-1', prs).canShip).toBe(false)
-    })
-
-    it('handles multiple independent stacks', () => {
-      const prs = [
-        makePr({ headRefName: 'feature-a', baseRefName: 'main' }),
-        makePr({ headRefName: 'feature-b', baseRefName: 'main' })
-      ]
-
-      // Both can ship (neither has children)
-      expect(validateCanShip('feature-a', prs).canShip).toBe(true)
-      expect(validateCanShip('feature-b', prs).canShip).toBe(true)
+      expect(result.canShip).toBe(true)
     })
   })
 })

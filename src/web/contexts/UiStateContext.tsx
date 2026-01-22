@@ -57,7 +57,7 @@ interface UiStateContextValue {
     branchChoice?: import('@shared/types').BranchChoice
   }) => Promise<SquashResult | undefined>
   uncommit: (params: { commitSha: string }) => Promise<void>
-  shipIt: (params: { branchName: string }) => Promise<void>
+  shipIt: (params: { branchName: string; canShip?: boolean }) => Promise<void>
   syncTrunk: () => Promise<void>
   switchWorktree: (params: { worktreePath: string }) => Promise<void>
   createWorktree: (params: {

@@ -9,7 +9,7 @@
  */
 
 import type { ShipItNavigationContext, ShipItNavigationResult } from '@shared/types'
-import { findActivePr, findOpenPr, hasChildPrs, hasMergedPr } from '@shared/types/git-forge'
+import { findActivePr, findOpenPr, hasMergedPr } from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
 
 /** Minimal PR shape for validation functions */
@@ -38,11 +38,17 @@ export class ShipItNavigator {
    * 1. PR exists and is open
    * 2. PR is mergeable (no conflicts, checks pass)
    * 3. Target branch hasn't been merged (stale target)
-   * 4. Branch has no child PRs (must ship children first)
+   * 4. Branch is shippable (directly off trunk AND PR targets trunk)
+   *
+   * @param branchName - The branch to validate
+   * @param pullRequests - All known PRs
+   * @param branchCanShip - Pre-computed canShip from UiBranch (computed by enrichStackWithForge).
+   *                        When false, provides specific error message. When undefined, this check is skipped.
    */
   public static validateCanShip(
     branchName: string,
-    pullRequests: PrForValidation[]
+    pullRequests: PrForValidation[],
+    branchCanShip?: boolean
   ): ShipItValidationResult {
     // Find the open (shippable) PR for this branch
     const pr = findOpenPr(branchName, pullRequests)
@@ -68,11 +74,19 @@ export class ShipItNavigator {
       }
     }
 
-    // Check if this branch has children (other PRs targeting it)
-    if (hasChildPrs(branchName, pullRequests)) {
+    // Check if branch is shippable (directly off trunk AND PR targets trunk)
+    // branchCanShip is computed by frontend enrichment layer (enrichStackWithForge)
+    if (branchCanShip === false) {
+      const prTargetsTrunk = isTrunk(pr.baseRefName)
+      if (!prTargetsTrunk) {
+        return {
+          canShip: false,
+          reason: `Cannot ship: PR targets "${pr.baseRefName}" instead of trunk.`
+        }
+      }
       return {
         canShip: false,
-        reason: 'Cannot ship a branch that has child PRs. Ship the child branches first.'
+        reason: 'Cannot ship: branch is stacked on another branch.'
       }
     }
 

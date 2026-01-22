@@ -116,11 +116,14 @@ export class PullRequestOperation {
    * Ships a PR by merging it via GitHub API and handling post-merge navigation.
    * If the user was on the shipped branch, switches to the target branch.
    * If the active worktree is dirty, skips navigation to preserve uncommitted changes.
+   *
+   * @param canShip - Pre-computed canShip from UiBranch (directly off trunk && PR targets trunk)
    */
   static async shipIt(
     repoPath: string,
     branchName: string,
-    mergeStrategy: MergeStrategy
+    mergeStrategy: MergeStrategy,
+    canShip?: boolean
   ): Promise<ShipItResult> {
     const git = getGitAdapter()
 
@@ -128,7 +131,7 @@ export class PullRequestOperation {
     const { state: forgeState } = await gitForgeService.getStateWithStatus(repoPath)
 
     // Validate using pure domain logic (defense in depth - UI should also validate)
-    const validation = ShipItNavigator.validateCanShip(branchName, forgeState.pullRequests)
+    const validation = ShipItNavigator.validateCanShip(branchName, forgeState.pullRequests, canShip)
     if (!validation.canShip) {
       return { success: false, error: validation.reason }
     }

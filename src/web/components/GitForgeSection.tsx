@@ -1,9 +1,7 @@
 import { log } from '@shared/logger'
 import type { UiBranch } from '@shared/types'
-import { hasChildPrs } from '@shared/types/git-forge'
 import { Loader2Icon } from 'lucide-react'
 import React, { memo, useCallback, useMemo, useState } from 'react'
-import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
@@ -40,7 +38,6 @@ export const GitForgeSection = memo(function GitForgeSection({
     shipIt,
     isWorkingTreeDirty
   } = useUiStateContext()
-  const { forgeState } = useForgeStateContext()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [shipItError, setShipItError] = useState<string | null>(null)
@@ -53,16 +50,8 @@ export const GitForgeSection = memo(function GitForgeSection({
   // Backend computes canRebaseToTrunk - parallel mode allows rebasing with dirty worktree
   const showRebaseButton = canRebaseToTrunk
 
-  /**
-   * Determines if this branch is at the bottom of a PR stack.
-   * A branch is at the bottom if no other open/draft PRs target it as their base.
-   * Ship It should only be available for bottom-of-stack branches to prevent
-   * shipping a branch that would leave orphaned child PRs or branches.
-   */
-  const isBottomOfStack = useMemo(() => {
-    if (!branchWithPr || !forgeState?.pullRequests) return false
-    return !hasChildPrs(branchWithPr.name, forgeState.pullRequests)
-  }, [branchWithPr, forgeState?.pullRequests])
+  // Whether this branch can be shipped (directly off trunk + PR targets trunk)
+  const branchCanShip = branchWithPr?.canShip ?? false
 
   const handleCleanup = useCallback(
     async (e: React.MouseEvent): Promise<void> => {
@@ -123,7 +112,7 @@ export const GitForgeSection = memo(function GitForgeSection({
       setIsLoading(true)
       setShipItError(null)
       try {
-        await shipIt({ branchName: branchWithPr.name })
+        await shipIt({ branchName: branchWithPr.name, canShip: branchWithPr.canShip })
       } catch (error) {
         log.error('Failed to ship it:', error)
         const errorMessage = error instanceof Error ? error.message : String(error)
@@ -196,15 +185,14 @@ export const GitForgeSection = memo(function GitForgeSection({
     const prStyles = getPrStateStyles(pr.state)
     const showOutOfSync = prIsActive && !pr.isInSync
 
-    // Ship It should be visible when PR is open, in sync and at bottom of stack (even if disabled)
-    // Don't show for merged or closed PRs
+    // Ship It area visible when: active PR, in sync, no stale target, and branch can ship
     const showShipItArea =
       prIsActive &&
       !prIsMerged &&
       !prIsClosed &&
       pr.isInSync &&
       !branchWithPr?.hasStaleTarget &&
-      isBottomOfStack
+      branchCanShip
 
     // Determine button label and style
     const getShipItConfig = (): { label: string; style: string; disabled: boolean } => {

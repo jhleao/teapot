@@ -89,6 +89,8 @@
   --color-accent-border: var(--accent-border);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-warning-hover: var(--warning-hover);

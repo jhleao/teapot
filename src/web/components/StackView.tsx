@@ -1,30 +1,20 @@
 import { log } from '@shared/logger'
-import type {
-  BranchChoice,
-  SquashPreview,
-  UiCommit,
-  UiStack,
-  UiWorkingTreeFile,
-  UiWorktreeBadge
-} from '@shared/types'
+import type { UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
 import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import { useDragContext } from '../contexts/DragContext'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { getEditMessageState } from '../utils/edit-message-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
-import { getSquashState } from '../utils/squash-state'
 import { computeCollapsibleBranches, computeHiddenCommitShas } from '../utils/collapse-commits'
 import { CollapsedCommits } from './CollapsedCommits'
-import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
+import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
 import { EditCommitMessageDialog } from './EditCommitMessageDialog'
 import { GitForgeSection } from './GitForgeSection'
 import { MultiBranchBadge } from './MultiBranchBadge'
-import { SquashConfirmDialog } from './SquashConfirmDialog'
 import { CommitDot, SineCurve } from './SvgPaths'
 import { WorkingTreeView } from './WorkingTreeView'
 import { WorktreeBadge } from './WorktreeBadge'
@@ -212,10 +202,7 @@ export const CommitView = memo(function CommitView({
     uncommit,
     uiState,
     isRebasingWithConflicts,
-    switchWorktree,
-    getSquashPreview,
-    squashIntoParent,
-    isWorkingTreeDirty
+    switchWorktree
   } = useUiStateContext()
   const { refreshRepos } = useLocalStateContext()
 
@@ -247,10 +234,6 @@ export const CommitView = memo(function CommitView({
   const [isConfirming, setIsConfirming] = useState(false)
   const [isUncommitting, setIsUncommitting] = useState(false)
   const [isEditMessageDialogOpen, setIsEditMessageDialogOpen] = useState(false)
-  const [isSquashDialogOpen, setIsSquashDialogOpen] = useState(false)
-  const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
-  const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
-  const [isSquashing, setIsSquashing] = useState(false)
 
   const handleConfirmRebase = useCallback(async (): Promise<void> => {
     setIsConfirming(true)
@@ -302,68 +285,6 @@ export const CommitView = memo(function CommitView({
   const handleCopyCommitSha = useCallback(() => {
     navigator.clipboard.writeText(data.sha)
   }, [data.sha])
-
-  // Get the branch that this commit belongs to (for squash)
-  const commitBranch = data.branches.find((b) => !b.isRemote)
-
-  // Determine if parent commit is on trunk (first commit in stack has trunk as parent)
-  const isFirstInStack = stack.commits.length > 0 && stack.commits[0].sha === data.sha
-  const parentIsTrunk = isFirstInStack
-
-  // Compute squash state for menu item
-  const squashState = getSquashState({
-    isTrunk: stack.isTrunk,
-    hasBranch: commitBranch != null,
-    parentIsTrunk
-  })
-
-  const handleOpenSquashDialog = useCallback(async () => {
-    if (!commitBranch) return
-
-    // Only block if this is the current branch and worktree is dirty
-    if (commitBranch.isCurrent && isWorkingTreeDirty) {
-      toast.error('Cannot squash: you have uncommitted changes on this branch')
-      return
-    }
-
-    setIsLoadingSquashPreview(true)
-    try {
-      const preview = await getSquashPreview({ branchName: commitBranch.name })
-      if (!preview.canSquash) {
-        toast.error(preview.errorDetail || 'Cannot squash this commit')
-        return
-      }
-      setSquashPreviewData(preview)
-      setIsSquashDialogOpen(true)
-    } catch (error) {
-      toast.error('Failed to load squash preview', {
-        description: error instanceof Error ? error.message : String(error)
-      })
-    } finally {
-      setIsLoadingSquashPreview(false)
-    }
-  }, [commitBranch, getSquashPreview, isWorkingTreeDirty])
-
-  const handleConfirmSquash = useCallback(
-    async (commitMessage: string, branchChoice?: BranchChoice) => {
-      if (!squashPreviewData || !commitBranch) return
-      setIsSquashing(true)
-      try {
-        const result = await squashIntoParent({
-          branchName: commitBranch.name,
-          commitMessage,
-          branchChoice
-        })
-        if (result?.success || result?.localSuccess) {
-          setIsSquashDialogOpen(false)
-          setSquashPreviewData(null)
-        }
-      } finally {
-        setIsSquashing(false)
-      }
-    },
-    [commitBranch, squashIntoParent, squashPreviewData]
-  )
 
   return (
     <div className={cn('w-full pl-2 whitespace-nowrap')}>
@@ -443,16 +364,6 @@ export const CommitView = memo(function CommitView({
               >
                 Amend message
               </ContextMenuItem>
-              {commitBranch != null && !stack.isTrunk && (
-                <ContextMenuItem
-                  onClick={handleOpenSquashDialog}
-                  disabled={!squashState.canSquash || isLoadingSquashPreview}
-                  disabledReason={squashState.disabledReason}
-                >
-                  {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
-                </ContextMenuItem>
-              )}
-              <ContextMenuSeparator />
               <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
             </>
           }
@@ -524,15 +435,6 @@ export const CommitView = memo(function CommitView({
         onOpenChange={setIsEditMessageDialogOpen}
         commitSha={data.sha}
       />
-      {squashPreviewData && (
-        <SquashConfirmDialog
-          open={isSquashDialogOpen}
-          onOpenChange={setIsSquashDialogOpen}
-          preview={squashPreviewData}
-          onConfirm={handleConfirmSquash}
-          isSubmitting={isSquashing}
-        />
-      )}
     </div>
   )
 })

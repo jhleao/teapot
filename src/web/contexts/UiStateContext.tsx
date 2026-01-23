@@ -338,6 +338,7 @@ export function UiStateProvider({
   const confirmRebaseIntent = useCallback(async () => {
     if (!repoPath) return
     log.debug('[UiStateContext.confirmRebaseIntent] Starting', { repoPath })
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.confirmRebaseIntent({ repoPath })
       log.debug('[UiStateContext.confirmRebaseIntent] Result received', {
@@ -360,6 +361,7 @@ export function UiStateProvider({
 
   const cancelRebaseIntent = useCallback(async () => {
     if (!repoPath) return
+    skipWatcherUpdatesRef.current = true
     try {
       await callApi(window.api.cancelRebaseIntent({ repoPath }))
     } finally {
@@ -369,6 +371,7 @@ export function UiStateProvider({
 
   const continueRebase = useCallback(async () => {
     if (!repoPath) return
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.continueRebase({ repoPath })
       if (result.uiState) setUiState(result.uiState)
@@ -379,11 +382,14 @@ export function UiStateProvider({
     } catch (error) {
       log.error('[UiStateContext.continueRebase] Failed:', error)
       handleRebaseError(error, 'Continue rebase')
+    } finally {
+      skipWatcherUpdatesRef.current = false
     }
   }, [repoPath])
 
   const abortRebase = useCallback(async () => {
     if (!repoPath) return
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.abortRebase({ repoPath })
       if (result.uiState) setUiState(result.uiState)
@@ -394,11 +400,14 @@ export function UiStateProvider({
     } catch (error) {
       log.error('[UiStateContext.abortRebase] Failed:', error)
       handleRebaseError(error, 'Abort rebase')
+    } finally {
+      skipWatcherUpdatesRef.current = false
     }
   }, [repoPath])
 
   const skipRebaseCommit = useCallback(async () => {
     if (!repoPath) return
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.skipRebaseCommit({ repoPath })
       if (result.uiState) setUiState(result.uiState)
@@ -409,6 +418,8 @@ export function UiStateProvider({
     } catch (error) {
       log.error('[UiStateContext.skipRebaseCommit] Failed:', error)
       handleRebaseError(error, 'Skip commit')
+    } finally {
+      skipWatcherUpdatesRef.current = false
     }
   }, [repoPath])
 
@@ -416,6 +427,7 @@ export function UiStateProvider({
     if (!repoPath) return
     // Capture queued branches before the operation (they'll be pushed)
     const branchesToPush = uiState?.stack ? findQueuedBranches(uiState.stack) : []
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.resumeRebaseQueue({ repoPath })
       if (result.uiState) setUiState(result.uiState)
@@ -429,17 +441,22 @@ export function UiStateProvider({
     } catch (error) {
       log.error('[UiStateContext.resumeRebaseQueue] Failed:', error)
       handleRebaseError(error, 'Resume rebase queue')
+    } finally {
+      skipWatcherUpdatesRef.current = false
     }
   }, [repoPath, uiState?.stack, markPrChecksPending])
 
   const dismissRebaseQueue = useCallback(async () => {
     if (!repoPath) return
+    skipWatcherUpdatesRef.current = true
     try {
       const result = await window.api.dismissRebaseQueue({ repoPath })
       if (result) setUiState(result)
     } catch (error) {
       log.error('[UiStateContext.dismissRebaseQueue] Failed:', error)
       handleRebaseError(error, 'Dismiss rebase queue')
+    } finally {
+      skipWatcherUpdatesRef.current = false
     }
   }, [repoPath])
 

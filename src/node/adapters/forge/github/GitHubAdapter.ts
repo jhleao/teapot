@@ -224,7 +224,25 @@ export class GitHubAdapter implements GitForgeAdapter {
   ): MergeReadiness {
     const canMerge = pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN'
     const blockers = this.deriveGraphQLBlockers(pr, checks)
-    const checksStatus = this.deriveChecksStatus(checks)
+    let checksStatus = this.deriveChecksStatus(checks)
+
+    // Account for expected checks: if the rollup state indicates pending/failure
+    // but individual checks all show success (or none exist), trust the rollup.
+    // This handles required checks that haven't started yet.
+    const rollupState = pr.commits.nodes[0]?.commit.statusCheckRollup?.state
+    if (
+      rollupState &&
+      (checksStatus === 'success' || checksStatus === 'none') &&
+      (rollupState === 'PENDING' || rollupState === 'EXPECTED')
+    ) {
+      checksStatus = 'pending'
+    } else if (
+      rollupState &&
+      checksStatus === 'success' &&
+      (rollupState === 'FAILURE' || rollupState === 'ERROR')
+    ) {
+      checksStatus = 'failure'
+    }
 
     return {
       canMerge,

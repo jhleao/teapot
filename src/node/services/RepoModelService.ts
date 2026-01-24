@@ -39,8 +39,8 @@ export type BuildRepoOptions = {
   loadRemotes?: boolean
   /**
    * Skip dirty checking for worktrees.
-   * Dirty status is only used for UI badges, so skipping it improves performance.
-   * Default: true (skip for performance)
+   * Dirty status is used for UI badges (yellow worktree indicator).
+   * Default: false
    */
   skipWorktreeDirtyCheck?: boolean
   /**
@@ -60,7 +60,7 @@ const DEFAULT_OPTIONS: BuildRepoOptions = {
   trunkDepth: 200,
   loadRemotes: false,
   maxCommitsPerBranch: 1000,
-  skipWorktreeDirtyCheck: true
+  skipWorktreeDirtyCheck: false
 }
 
 /**

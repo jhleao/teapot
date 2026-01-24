@@ -21,6 +21,8 @@ export class GitWatcher {
   private currentRepoPath: string | null = null
   private currentWebContents: WebContents | null = null
   private boundOnDestroyed: (() => void) | null = null
+  private paused = false
+  private pendingChange = false
   private static instance: GitWatcher
 
   static getInstance(): GitWatcher {
@@ -28,6 +30,31 @@ export class GitWatcher {
       GitWatcher.instance = new GitWatcher()
     }
     return GitWatcher.instance
+  }
+
+  /**
+   * Pause the watcher so file change events are suppressed.
+   * Use this during multi-step operations (like rebase queues) to avoid
+   * showing intermediate states in the UI.
+   */
+  pause(): void {
+    this.paused = true
+    this.pendingChange = false
+  }
+
+  /**
+   * Resume the watcher. If any file changes occurred while paused,
+   * immediately fires a single change notification.
+   */
+  resume(): void {
+    this.paused = false
+    if (this.pendingChange) {
+      this.pendingChange = false
+      if (this.currentRepoPath) {
+        CacheService.invalidateRepoCache(this.currentRepoPath)
+      }
+      this.sendSafe(IPC_EVENTS.repoChange)
+    }
   }
 
   watch(repoPath: string, webContents: WebContents): void {
@@ -95,6 +122,11 @@ export class GitWatcher {
   }
 
   private handleFileChange(): void {
+    if (this.paused) {
+      this.pendingChange = true
+      return
+    }
+
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer)
     }

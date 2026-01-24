@@ -40,6 +40,7 @@ import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { checkConflictResolution } from '../utils/conflict-markers'
+import { GitWatcher } from '../services/GitWatcherService'
 import { WorktreeOperation } from './WorktreeOperation'
 import { parseWorktreeConflictError } from './WorktreeUtils'
 
@@ -852,6 +853,26 @@ export class RebaseExecutor {
     })
     const generateJobId = options.generateJobId ?? createJobIdGenerator()
 
+    // Pause the file watcher during rebase execution to prevent the UI
+    // from showing intermediate (half-rebased) states
+    const watcher = GitWatcher.getInstance()
+    watcher.pause()
+
+    try {
+      return await this.executeJobsLoop(repoPath, executionPath, git, intent, options, generateJobId)
+    } finally {
+      watcher.resume()
+    }
+  }
+
+  private static async executeJobsLoop(
+    repoPath: string,
+    executionPath: string,
+    git: GitAdapter,
+    intent: RebaseIntent,
+    options: ExecutorOptions,
+    generateJobId: () => string
+  ): Promise<RebaseExecutionResult> {
     let loopIteration = 0
     while (true) {
       loopIteration++

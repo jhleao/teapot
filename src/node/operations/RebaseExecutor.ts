@@ -114,6 +114,7 @@ export type RebaseErrorCode =
   | 'SESSION_EXISTS'
   | 'BRANCH_NOT_FOUND'
   | 'CONTEXT_ACQUISITION_FAILED'
+  | 'DIRTY_WORKTREE'
   | 'GENERIC'
 
 export type RebaseExecutionResult =
@@ -945,6 +946,32 @@ export class RebaseExecutor {
         }
       }
       options.onJobStart?.(job)
+
+      // Check if execution worktree has become dirty (e.g., from external code generators).
+      // A dirty worktree will cause checkout/rebase to fail in confusing ways.
+      const preJobStatus = await git.getWorkingTreeStatus(executionPath)
+      if (
+        preJobStatus.modified.length > 0 ||
+        preJobStatus.created.length > 0 ||
+        preJobStatus.not_added.length > 0 ||
+        preJobStatus.deleted.length > 0
+      ) {
+        log.warn('[RebaseExecutor] Execution worktree is dirty before job, aborting', {
+          repoPath,
+          executionPath,
+          modified: preJobStatus.modified.length,
+          created: preJobStatus.created.length,
+          not_added: preJobStatus.not_added.length
+        })
+        return {
+          status: 'error',
+          errorCode: 'DIRTY_WORKTREE',
+          message:
+            'The working tree has uncommitted changes (possibly from a file watcher or code generator). ' +
+            'Please clean up the working tree and retry the rebase.',
+          state: stateWithActiveJob
+        }
+      }
 
       const result = await this.executeJob(executionPath, job, git)
       log.info('[RebaseExecutor] Job execution result', {

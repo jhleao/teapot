@@ -239,7 +239,10 @@ export class RebaseOperation {
           errorCode: result.errorCode,
           message: result.message
         })
-        await SessionService.clearSession(repoPath)
+        // For dirty worktree errors, keep the session so the user can clean up and retry
+        if (result.errorCode !== 'DIRTY_WORKTREE') {
+          await SessionService.clearSession(repoPath)
+        }
         throw new RebaseOperationError(result.message, result.errorCode)
       }
 
@@ -251,6 +254,13 @@ export class RebaseOperation {
 
       return { success: true, uiState }
     } catch (error) {
+      // Don't clear session for dirty worktree errors
+      if (
+        error instanceof RebaseOperationError &&
+        error.errorCode === 'DIRTY_WORKTREE'
+      ) {
+        throw error
+      }
       await SessionService.clearSession(repoPath)
       throw error
     }

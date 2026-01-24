@@ -24,6 +24,7 @@ export function CommitDot({
   bottom = false,
   variant = 'default',
   accentLines = 'none',
+  showCircle = true,
   onMouseDown,
   className
 }: {
@@ -31,6 +32,7 @@ export function CommitDot({
   bottom?: boolean
   variant?: 'default' | 'accent' | 'current' | 'independent'
   accentLines?: 'none' | 'top' | 'bottom' | 'both'
+  showCircle?: boolean
   onMouseDown?: () => void
   className?: string
 }): React.JSX.Element {
@@ -64,32 +66,45 @@ export function CommitDot({
       onMouseDown={onMouseDown}
       className={cn('text-border', onMouseDown && 'cursor-grab', className)}
     >
-      {showTopLine && (
-        <path
-          d="M12,0 L12,15"
-          strokeWidth="2px"
-          className={cn(topStrokeClass)}
-          fill="transparent"
-        ></path>
+      {showCircle ? (
+        <>
+          {showTopLine && (
+            <path
+              d="M12,0 L12,15"
+              strokeWidth="2px"
+              className={cn(topStrokeClass)}
+              fill="transparent"
+            ></path>
+          )}
+          {showBottomLine && (
+            <path
+              d="M12,22 L12,36"
+              strokeWidth="2px"
+              className={cn(bottomStrokeClass)}
+              strokeDasharray="0"
+              fill="transparent"
+            ></path>
+          )}
+          <circle
+            cx="12"
+            cy="18"
+            r={circleRadius.toString()}
+            strokeWidth={circleStrokeWidth.toString()}
+            stroke="currentColor"
+            strokeDasharray="0"
+            className={cn(circleStrokeClass)}
+          ></circle>
+        </>
+      ) : (
+        (showTopLine || showBottomLine) && (
+          <path
+            d="M12,0 L12,36"
+            strokeWidth="2px"
+            className={cn(topStrokeClass)}
+            fill="transparent"
+          ></path>
+        )
       )}
-      {showBottomLine && (
-        <path
-          d="M12,22 L12,36"
-          strokeWidth="2px"
-          className={cn(bottomStrokeClass)}
-          strokeDasharray="0"
-          fill="transparent"
-        ></path>
-      )}
-      <circle
-        cx="12"
-        cy="18"
-        r={circleRadius.toString()}
-        strokeWidth={circleStrokeWidth.toString()}
-        stroke="currentColor"
-        strokeDasharray="0"
-        className={cn(circleStrokeClass)}
-      ></circle>
     </svg>
   )
 }

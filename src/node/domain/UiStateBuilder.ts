@@ -765,22 +765,16 @@ export class UiStateBuilder {
       return
     }
 
-    let deepestUsefulIndex = trunkStack.commits.length - 1
-
-    for (let i = 0; i < trunkStack.commits.length; i++) {
-      const commit = trunkStack.commits[i]
-      if (!commit) continue
-
-      const hasSpinoffs = commit.spinoffs.length > 0
-      const hasBranches = commit.branches.length > 0
-
-      if (hasSpinoffs || hasBranches) {
-        deepestUsefulIndex = i
-        break
-      }
-    }
-
-    trunkStack.commits = trunkStack.commits.slice(deepestUsefulIndex)
+    // Keep only commits that are "useful" for the UI:
+    // - Commits with branches attached
+    // - Commits with spinoffs (child branch stacks)
+    // - The trunk tip (newest commit, always shown)
+    const lastIndex = trunkStack.commits.length - 1
+    trunkStack.commits = trunkStack.commits.filter((commit, index) => {
+      // Always keep the trunk tip
+      if (index === lastIndex) return true
+      return commit.spinoffs.length > 0 || commit.branches.length > 0
+    })
   }
 
   // ─────────────────────────────────────────────────────────────────────────

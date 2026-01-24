@@ -2,6 +2,7 @@ import type { MergeReadiness, StatusCheck } from '@shared/types/git-forge'
 import { CheckCircle2Icon, CircleDotIcon, CircleIcon, Loader2Icon, XCircleIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '../utils/cn'
+import { ScrollArea } from './ui/scroll-area'
 
 interface StatusChecksDisplayProps {
   mergeReadiness: MergeReadiness
@@ -181,11 +182,13 @@ export function StatusChecksDisplay({
           <div className="border-border text-muted-foreground mb-1.5 border-b pb-1.5 text-xs font-medium">
             Status Checks ({passedCount}/{checks.length})
           </div>
-          <div className="flex max-h-[200px] flex-col gap-1 overflow-y-auto">
-            {checks.map((check, index) => (
-              <CheckItem key={index} check={check} />
-            ))}
-          </div>
+          <ScrollArea className="max-h-[200px]">
+            <div className="flex flex-col gap-1">
+              {checks.map((check, index) => (
+                <CheckItem key={index} check={check} />
+              ))}
+            </div>
+          </ScrollArea>
         </div>
       )}
     </div>

@@ -6,9 +6,9 @@ import { useDragContext } from '../contexts/DragContext'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
+import { canHideCommit, computeCollapsibleBranches } from '../utils/collapse-commits'
 import { getEditMessageState } from '../utils/edit-message-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
-import { computeCollapsibleBranches, computeHiddenCommitShas } from '../utils/collapse-commits'
 import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
 import { CreateBranchButton } from './CreateBranchButton'
@@ -35,6 +35,8 @@ interface CommitProps {
   workingTree: UiWorkingTreeFile[]
   /** Pre-computed set of commit SHAs that are part of the current drag/rebase operation */
   draggedCommitSet: Set<string> | null
+  /** Whether this commit is a non-head owned commit of a collapsible branch */
+  isOwned?: boolean
 }
 
 export function StackView({
@@ -125,13 +127,38 @@ export function StackView({
     return computeCollapsibleBranches(data.commits, commitBySha)
   }, [data.commits, commitBySha])
 
-  // Compute which commits should be hidden based on expansion state
-  // This depends on both collapsibleBranches and expandedBranches
-  // Never hide commits that have spinoffs (they're fork points for other stacks)
-  const hiddenCommitShas = useMemo(
-    () => computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha),
-    [collapsibleBranches, expandedBranches, commitBySha]
-  )
+  // For each collapsible branch, compute the ordered list of hideable owned commits
+  // These are rendered inside CollapsedCommits when expanded, reversed for display order (children first)
+  const ownedCommitsByBranch = useMemo(() => {
+    const map = new Map<string, UiCommit[]>()
+    for (const [branchName, info] of collapsibleBranches) {
+      const shas = info.branch.ownedCommitShas
+      if (shas) {
+        const commits: UiCommit[] = []
+        for (let i = 1; i < shas.length; i++) {
+          if (canHideCommit(shas[i], commitBySha)) {
+            const commit = commitBySha.get(shas[i])
+            if (commit) commits.push(commit)
+          }
+        }
+        if (commits.length > 0) {
+          map.set(branchName, commits)
+        }
+      }
+    }
+    return map
+  }, [collapsibleBranches, commitBySha])
+
+  // All SHAs delegated to CollapsedCommits containers — skip them in the main loop
+  const delegatedCommitShas = useMemo(() => {
+    const shas = new Set<string>()
+    for (const commits of ownedCommitsByBranch.values()) {
+      for (const commit of commits) {
+        shas.add(commit.sha)
+      }
+    }
+    return shas
+  }, [ownedCommitsByBranch])
 
   // Display in reverse order: children first (higher index), parents last (lower index)
   const childrenFirst = [...data.commits].reverse()
@@ -146,8 +173,8 @@ export function StackView({
       )}
       <div className={cn('flex flex-col', className)}>
         {childrenFirst.map((commit) => {
-          // Skip hidden commits (owned by a collapsed branch)
-          if (hiddenCommitShas.has(commit.sha)) {
+          // Skip commits delegated to CollapsedCommits containers
+          if (delegatedCommitShas.has(commit.sha)) {
             return null
           }
 
@@ -168,15 +195,16 @@ export function StackView({
                 draggedCommitSet={draggedCommitSet}
               />
               {collapsibleInfo && (
-                <div className="pl-2">
-                  <div className="border-border flex border-l-2">
-                    <CollapsedCommits
-                      count={collapsibleInfo.hideableCount}
-                      isExpanded={expandedBranches.has(collapsibleInfo.branch.name)}
-                      onToggle={() => toggleBranchExpanded(collapsibleInfo.branch.name)}
-                      className="ml-2"
-                    />
-                  </div>
+                <div className="-mt-1 pl-2">
+                  <CollapsedCommits
+                    count={collapsibleInfo.hideableCount}
+                    isExpanded={expandedBranches.has(collapsibleInfo.branch.name)}
+                    onToggle={() => toggleBranchExpanded(collapsibleInfo.branch.name)}
+                    ownedCommits={ownedCommitsByBranch.get(collapsibleInfo.branch.name) ?? []}
+                    stack={data}
+                    workingTree={workingTree}
+                    draggedCommitSet={draggedCommitSet}
+                  />
                 </div>
               )}
             </React.Fragment>
@@ -191,7 +219,8 @@ export const CommitView = memo(function CommitView({
   data,
   stack,
   workingTree,
-  draggedCommitSet
+  draggedCommitSet,
+  isOwned
 }: CommitProps): React.JSX.Element {
   const isHead = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
   const editMessageState = getEditMessageState({ isHead, isTrunk: stack.isTrunk })
@@ -343,93 +372,98 @@ export const CommitView = memo(function CommitView({
       >
         {/* Drop indicator - shown/hidden via direct DOM manipulation in DragContext */}
         <div className="drop-indicator bg-accent absolute -top-px left-0 hidden h-[3px] w-full" />
-        <div className="flex items-center gap-2" onMouseDown={onCommitDotMouseDown}>
+        <div onMouseDown={onCommitDotMouseDown}>
           <CommitDot
-            top={showTopLine}
-            bottom={showBottomLine}
+            top={!isOwned && showTopLine}
+            bottom={!isOwned && showBottomLine}
             variant={isHead ? 'current' : data.isIndependent ? 'independent' : 'default'}
             accentLines={showWorkingTree ? 'top' : 'none'}
+            showCircle={!isOwned}
           />
+        </div>
+        <div className="flex items-center gap-2">
           {data.branches.length > 0 && <MultiBranchBadge branches={data.branches} />}
           {data.branches.length === 0 && !stack.isTrunk && (
             <CreateBranchButton commitSha={data.sha} />
           )}
-        </div>
-        <ContextMenu
-          content={
-            <>
-              <ContextMenuItem
-                onClick={() => setIsEditMessageDialogOpen(true)}
-                disabled={!editMessageState.canEdit}
-                disabledReason={editMessageState.disabledReason}
-              >
-                Amend message
-              </ContextMenuItem>
-              <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
-            </>
-          }
-        >
-          <div
-            className={cn(
-              'text-sm whitespace-nowrap',
-              isHead && 'font-semibold',
-              data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
-            )}
+          <ContextMenu
+            content={
+              <>
+                <ContextMenuItem
+                  onClick={() => setIsEditMessageDialogOpen(true)}
+                  disabled={!editMessageState.canEdit}
+                  disabledReason={editMessageState.disabledReason}
+                >
+                  Amend message
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleCopyCommitSha}>Copy commit SHA</ContextMenuItem>
+              </>
+            }
           >
-            {data.name}
+            <div
+              className={cn(
+                'text-sm whitespace-nowrap',
+                isHead && 'font-semibold',
+                data.branches.some((b) => b.isMerged) && 'text-muted-foreground line-through'
+              )}
+            >
+              {data.name}
+            </div>
+          </ContextMenu>
+          <div className="text-muted-foreground text-xs">
+            {formatRelativeTime(data.timestampMs)}
           </div>
-        </ContextMenu>
-        <div className="text-muted-foreground text-xs">{formatRelativeTime(data.timestampMs)}</div>
-        {data.rebaseStatus !== 'prompting' && data.rebaseStatus !== 'queued' && (
-          <>
-            <GitForgeSection
-              branches={data.branches}
-              isTrunk={stack.isTrunk}
-              commitSha={data.sha}
-              trunkHeadSha={trunkHeadSha}
-              canRebaseToTrunk={stack.canRebaseToTrunk && isTailOfStack}
-            />
-            {!stack.isTrunk && isHead && (
+          {data.rebaseStatus !== 'prompting' && data.rebaseStatus !== 'queued' && (
+            <>
+              <GitForgeSection
+                branches={data.branches}
+                isTrunk={stack.isTrunk}
+                commitSha={data.sha}
+                trunkHeadSha={trunkHeadSha}
+                canRebaseToTrunk={stack.canRebaseToTrunk}
+              />
+              {!stack.isTrunk && isHead && (
+                <button
+                  onClick={handleUncommit}
+                  disabled={isUncommitting}
+                  className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+                >
+                  {isUncommitting ? 'Uncommitting...' : 'Uncommit'}
+                </button>
+              )}
+              {/* Worktree badges - show for branches checked out in other worktrees */}
+              {data.branches
+                .filter((b): b is typeof b & { worktree: UiWorktreeBadge } => b.worktree != null)
+                .map((branch) => (
+                  <WorktreeBadge
+                    key={`wt-${branch.name}`}
+                    data={branch.worktree}
+                    onSwitch={handleSwitchWorktree}
+                  />
+                ))}
+            </>
+          )}
+          {data.rebaseStatus === 'prompting' && (
+            <div className="flex gap-2">
               <button
-                onClick={handleUncommit}
-                disabled={isUncommitting}
-                className="text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50"
+                onClick={handleCancelRebase}
+                disabled={isCanceling || isConfirming}
+                className="border-border bg-muted text-foreground hover:bg-muted/80 flex items-center gap-1 rounded border px-3 py-1 text-xs transition-colors disabled:opacity-50"
               >
-                {isUncommitting ? 'Uncommitting...' : 'Uncommit'}
+                {isCanceling && <Loader2 className="h-3 w-3 animate-spin" />}
+                Cancel
               </button>
-            )}
-            {/* Worktree badges - show for branches checked out in other worktrees */}
-            {data.branches
-              .filter((b): b is typeof b & { worktree: UiWorktreeBadge } => b.worktree != null)
-              .map((branch) => (
-                <WorktreeBadge
-                  key={`wt-${branch.name}`}
-                  data={branch.worktree}
-                  onSwitch={handleSwitchWorktree}
-                />
-              ))}
-          </>
-        )}
-        {data.rebaseStatus === 'prompting' && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleCancelRebase}
-              disabled={isCanceling || isConfirming}
-              className="border-border bg-muted text-foreground hover:bg-muted/80 flex items-center gap-1 rounded border px-3 py-1 text-xs transition-colors disabled:opacity-50"
-            >
-              {isCanceling && <Loader2 className="h-3 w-3 animate-spin" />}
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmRebase}
-              disabled={isCanceling || isConfirming}
-              className="bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
-            >
-              {isConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
-              Confirm
-            </button>
-          </div>
-        )}
+              <button
+                onClick={handleConfirmRebase}
+                disabled={isCanceling || isConfirming}
+                className="bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
+              >
+                {isConfirming && <Loader2 className="h-3 w-3 animate-spin" />}
+                Confirm
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <EditCommitMessageDialog
         open={isEditMessageDialogOpen}

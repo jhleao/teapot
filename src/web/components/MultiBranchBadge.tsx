@@ -147,7 +147,7 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
             onClick={handleToggleExpanded}
             onMouseDown={(e) => e.stopPropagation()}
             className={cn(
-              'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors',
+              'inline-flex items-center justify-center rounded-lg py-1 w-[1.625rem] text-xs font-medium transition-colors',
               'bg-muted/70 text-muted-foreground border-border/50 border',
               'hover:bg-muted hover:text-foreground',
               isExpanded && 'bg-muted text-foreground'

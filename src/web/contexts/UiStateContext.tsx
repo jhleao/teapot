@@ -7,6 +7,7 @@ import type {
   UiState,
   WorktreeConflict
 } from '@shared/types'
+import type { MergeStrategy } from '@shared/types/git-forge'
 import {
   createContext,
   useCallback,
@@ -68,12 +69,10 @@ interface UiStateContextValue {
     force?: boolean
   }) => Promise<{ success: boolean }>
   isWorkingTreeDirty: boolean
-  /** True when Git is mid-rebase (either conflicted or resolved, waiting for continue) */
   isRebasingWithConflicts: boolean
-  /** True when the current branch is a trunk branch (main/master). Amending on trunk is dangerous. */
   isOnTrunk: boolean
-  /** Branches that are pending in queue after external continue */
   queuedBranches: string[]
+  mergeStrategy: MergeStrategy
 }
 
 // Default context value for graceful degradation during error recovery.
@@ -117,7 +116,8 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   isWorkingTreeDirty: false,
   isRebasingWithConflicts: false,
   isOnTrunk: false,
-  queuedBranches: []
+  queuedBranches: [],
+  mergeStrategy: 'rebase'
 }
 
 const UiStateContext = createContext<UiStateContextValue>(DEFAULT_UI_STATE_CONTEXT)
@@ -134,6 +134,7 @@ export function UiStateProvider({
   const { refreshRepos } = useLocalStateContext()
   const [uiState, setUiState] = useState<UiState | null>(null)
   const [repoError, setRepoError] = useState<string | null>(null)
+  const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
   const skipWatcherUpdatesRef = useRef(false)
 
   // Worktree conflict state for blocking rebase operations
@@ -198,6 +199,13 @@ export function UiStateProvider({
     window.addEventListener('focus', refreshRepo)
     return () => window.removeEventListener('focus', refreshRepo)
   }, [refreshRepo])
+
+  useEffect(() => {
+    window.api
+      .getMergeStrategy()
+      .then(setMergeStrategy)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     const unsubscribe = window.api.onRebaseWarning((message) => {
@@ -806,7 +814,8 @@ export function UiStateProvider({
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,
-      queuedBranches
+      queuedBranches,
+      mergeStrategy
     }),
     [
       uiState,
@@ -845,7 +854,8 @@ export function UiStateProvider({
       isWorkingTreeDirty,
       isRebasingWithConflicts,
       isOnTrunk,
-      queuedBranches
+      queuedBranches,
+      mergeStrategy
     ]
   )
 

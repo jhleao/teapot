@@ -53,35 +53,3 @@ export function computeCollapsibleBranches(
   return collapsible
 }
 
-/**
- * Computes which commit SHAs should be hidden based on collapse state.
- * Never hides commits that have spinoffs (they're fork points).
- *
- * @param collapsibleBranches - Map of branches with collapsible info
- * @param expandedBranches - Set of branch names that are currently expanded
- * @param commitBySha - Map from SHA to commit for spinoff checks
- * @returns Set of commit SHAs that should be hidden
- */
-export function computeHiddenCommitShas(
-  collapsibleBranches: Map<string, CollapsibleBranchInfo>,
-  expandedBranches: Set<string>,
-  commitBySha: Map<string, UiCommit>
-): Set<string> {
-  const hidden = new Set<string>()
-
-  for (const [branchName, info] of collapsibleBranches) {
-    // If not expanded, hide all owned commits except the head (and commits with spinoffs)
-    if (!expandedBranches.has(branchName)) {
-      const ownedShas = info.branch.ownedCommitShas
-      if (ownedShas) {
-        for (let i = 1; i < ownedShas.length; i++) {
-          if (canHideCommit(ownedShas[i], commitBySha)) {
-            hidden.add(ownedShas[i])
-          }
-        }
-      }
-    }
-  }
-
-  return hidden
-}

@@ -2,8 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { UiBranch, UiCommit } from '@shared/types'
 import {
   canHideCommit,
-  computeCollapsibleBranches,
-  computeHiddenCommitShas
+  computeCollapsibleBranches
 } from '../collapse-commits.js'
 
 // Helper to create a minimal UiCommit for testing
@@ -165,110 +164,16 @@ describe('computeCollapsibleBranches', () => {
   })
 })
 
-describe('computeHiddenCommitShas', () => {
-  it('returns empty set when no branches are collapsible', () => {
-    const collapsibleBranches = new Map()
-    const expandedBranches = new Set<string>()
-    const commitBySha = new Map<string, UiCommit>()
-
-    const result = computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha)
-
-    expect(result.size).toBe(0)
-  })
-
-  it('hides owned commits when branch is collapsed', () => {
-    const commit1 = createCommit('commit1')
-    const commit2 = createCommit('commit2')
-    const branch = createBranch('feature', ['head', 'commit1', 'commit2'])
-
-    const commitBySha = new Map([
-      ['commit1', commit1],
-      ['commit2', commit2]
-    ])
-
-    const collapsibleBranches = new Map([
-      ['feature', { branch, hideableCount: 2 }]
-    ])
-    const expandedBranches = new Set<string>() // Not expanded
-
-    const result = computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha)
-
-    expect(result.has('commit1')).toBe(true)
-    expect(result.has('commit2')).toBe(true)
-    expect(result.has('head')).toBe(false) // Head is never hidden
-  })
-
-  it('does not hide commits when branch is expanded', () => {
-    const commit1 = createCommit('commit1')
-    const branch = createBranch('feature', ['head', 'commit1'])
-
-    const commitBySha = new Map([['commit1', commit1]])
-
-    const collapsibleBranches = new Map([
-      ['feature', { branch, hideableCount: 1 }]
-    ])
-    const expandedBranches = new Set(['feature']) // Expanded!
-
-    const result = computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha)
-
-    expect(result.size).toBe(0)
-  })
-
-  it('never hides fork points even when collapsed', () => {
-    const spinoffCommit = createCommit('spinoff1')
-    const commit1 = createCommit('commit1')
-    const forkPoint = createCommit('forkPoint', [], [
-      { commits: [spinoffCommit], isTrunk: false, canRebaseToTrunk: false, isDirectlyOffTrunk: false }
-    ])
-    const branch = createBranch('feature', ['head', 'forkPoint', 'commit1'])
-
-    const commitBySha = new Map([
-      ['forkPoint', forkPoint],
-      ['commit1', commit1]
-    ])
-
-    const collapsibleBranches = new Map([
-      ['feature', { branch, hideableCount: 1 }] // Only commit1 is hideable
-    ])
-    const expandedBranches = new Set<string>() // Not expanded
-
-    const result = computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha)
-
-    expect(result.has('commit1')).toBe(true) // Normal commit is hidden
-    expect(result.has('forkPoint')).toBe(false) // Fork point is NOT hidden
-  })
-
-  it('does not hide commits missing from the map (fail-safe)', () => {
-    const branch = createBranch('feature', ['head', 'missing', 'commit1'])
-    const commit1 = createCommit('commit1')
-
-    const commitBySha = new Map([
-      ['commit1', commit1]
-      // 'missing' is NOT in the map
-    ])
-
-    const collapsibleBranches = new Map([
-      ['feature', { branch, hideableCount: 1 }]
-    ])
-    const expandedBranches = new Set<string>()
-
-    const result = computeHiddenCommitShas(collapsibleBranches, expandedBranches, commitBySha)
-
-    expect(result.has('commit1')).toBe(true) // Found commit is hidden
-    expect(result.has('missing')).toBe(false) // Missing commit is NOT hidden
-  })
-})
-
 describe('integration: collapse with complex stack structures', () => {
   it('preserves visibility of fork points in a complex stack', () => {
-    // Stack structure from the bug report:
+    // Stack structure:
     //   head [feature]
     //     |
     //   forkPoint ─── X ─── Y [other-feature]
     //     |
     //   commit1
     //
-    // Expected: forkPoint should NOT be hidden because it has spinoffs
+    // Expected: forkPoint should NOT be hideable because it has spinoffs
 
     const commitY = createCommit('Y', [createBranch('other-feature', ['Y', 'X'])])
     const commitX = createCommit('X')
@@ -288,7 +193,6 @@ describe('integration: collapse with complex stack structures', () => {
       ['Y', commitY]
     ])
 
-    // Step 1: Compute collapsible branches
     const collapsibleBranches = computeCollapsibleBranches(
       [head, forkPoint, commit1],
       commitBySha
@@ -296,20 +200,6 @@ describe('integration: collapse with complex stack structures', () => {
 
     // Only commit1 should be hideable (forkPoint has spinoffs)
     expect(collapsibleBranches.get('feature')?.hideableCount).toBe(1)
-
-    // Step 2: Compute hidden commits when collapsed
-    const hiddenCommits = computeHiddenCommitShas(
-      collapsibleBranches,
-      new Set<string>(), // collapsed
-      commitBySha
-    )
-
-    // commit1 should be hidden
-    expect(hiddenCommits.has('commit1')).toBe(true)
-    // forkPoint should NOT be hidden (it's a fork point!)
-    expect(hiddenCommits.has('forkPoint')).toBe(false)
-    // head is never hidden
-    expect(hiddenCommits.has('head')).toBe(false)
   })
 
   it('handles multiple fork points in a single branch', () => {
@@ -353,18 +243,5 @@ describe('integration: collapse with complex stack structures', () => {
 
     // Only commit1 and commit2 are hideable
     expect(collapsibleBranches.get('feature')?.hideableCount).toBe(2)
-
-    const hiddenCommits = computeHiddenCommitShas(
-      collapsibleBranches,
-      new Set<string>(),
-      commitBySha
-    )
-
-    // Regular commits are hidden
-    expect(hiddenCommits.has('commit1')).toBe(true)
-    expect(hiddenCommits.has('commit2')).toBe(true)
-    // Fork points are NOT hidden
-    expect(hiddenCommits.has('fork1')).toBe(false)
-    expect(hiddenCommits.has('fork2')).toBe(false)
   })
 })

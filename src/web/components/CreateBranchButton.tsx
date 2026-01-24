@@ -27,8 +27,8 @@ export const CreateBranchButton = memo(function CreateBranchButton({
   return (
     <span
       onClick={handleClick}
-      className={`bg-warning text-warning-foreground border-warning-border inline-flex items-center rounded-lg border px-2 py-1 text-xs font-medium whitespace-nowrap transition-colors select-none ${
-        isLoading ? 'cursor-wait opacity-70' : 'hover:bg-warning-hover cursor-pointer'
+      className={`bg-muted/50 text-muted-foreground/70 border-border/50 inline-flex items-center rounded-md border border-dashed px-2 py-1 text-xs font-medium whitespace-nowrap transition-colors select-none ${
+        isLoading ? 'cursor-wait opacity-70' : 'hover:bg-muted cursor-pointer'
       }`}
     >
       {isLoading && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}

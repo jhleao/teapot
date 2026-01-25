@@ -21,6 +21,7 @@ import { canFastForward, getGitAdapter, supportsMerge, type GitAdapter } from '.
 import { PrTargetResolver, ShipItNavigator } from '../domain'
 import { RepoModelService } from '../services'
 import { ExecutionContextService } from '../services/ExecutionContextService'
+import { GitWatcher } from '../services/GitWatcherService'
 import { gitForgeService } from '../services/ForgeService'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
 import { configStore } from '../store'
@@ -64,8 +65,15 @@ export class PullRequestOperation {
 
     await this.getOriginRemote(repoPath, git)
 
-    const branchesToPush = this.determineBranchesToPush(repo, baseBranch, headBranch)
-    await this.pushBranches(repoPath, branchesToPush, git)
+    const baseBranchExistsOnRemote =
+      isTrunk(baseBranch) ||
+      repo.branches.some((b) => b.isRemote && b.ref === `origin/${baseBranch}`)
+
+    if (!baseBranchExistsOnRemote) {
+      throw new Error(`Parent branch "${baseBranch}" is not pushed to remote`)
+    }
+
+    await this.pushBranches(repoPath, [headBranch], git)
 
     await gitForgeService.createPullRequest(repoPath, title, headBranch, baseBranch, false)
   }
@@ -102,6 +110,14 @@ export class PullRequestOperation {
 
         // Update PR base if it has changed
         if (newBase !== pr.baseRefName) {
+          const newBaseExistsOnRemote =
+            isTrunk(newBase) ||
+            repo.branches.some((b) => b.isRemote && b.ref === `origin/${newBase}`)
+
+          if (!newBaseExistsOnRemote) {
+            throw new Error(`New base branch "${newBase}" is not pushed to remote`)
+          }
+
           log.debug(
             `[PullRequestOperation.update] PR base changed: ${pr.baseRefName} -> ${newBase}`
           )
@@ -284,48 +300,60 @@ export class PullRequestOperation {
   ): Promise<ShipItResult> {
     const targetBranch = pr.baseRefName
 
-    await git.fetch(repoPath)
-
-    const canFF = await canFastForward(repoPath, `origin/${targetBranch}`, `origin/${branchName}`)
-    if (!canFF) {
-      return {
-        success: false,
-        error: `Cannot fast-forward: ${targetBranch} has commits not in ${branchName}. Rebase and try again.`
-      }
-    }
-
-    const originalBranch = await git.currentBranch(repoPath)
+    // Pause the file watcher during fast-forward to prevent the UI
+    // from showing intermediate states
+    const watcher = GitWatcher.getInstance()
+    watcher.pause()
 
     try {
-      await git.checkout(repoPath, targetBranch)
+      await git.fetch(repoPath)
 
-      if (!supportsMerge(git)) {
-        throw new Error('Git adapter does not support merge')
-      }
-      await git.merge(repoPath, `origin/${branchName}`, { ffOnly: true })
-
-      await git.push(repoPath, { remote: 'origin', ref: targetBranch, force: false })
-
-      await this.retargetDependentPrs(repoPath, branchName, targetBranch)
-
-      await gitForgeService.closePullRequest(repoPath, pr.number)
-    } catch (error) {
-      if (originalBranch) {
-        try {
-          await git.checkout(repoPath, originalBranch)
-        } catch {
+      const canFF = await canFastForward(repoPath, `origin/${targetBranch}`, `origin/${branchName}`)
+      if (!canFF) {
+        return {
+          success: false,
+          error: `Cannot fast-forward: ${targetBranch} has commits not in ${branchName}. Rebase and try again.`
         }
       }
-      const msg = error instanceof Error ? error.message : String(error)
-      return { success: false, error: `Fast-forward failed: ${msg}` }
-    }
 
-    return {
-      success: true,
-      message: `Fast-forward merged ${branchName} into ${targetBranch}`,
-      needsRebase: false,
-      navigated: false,
-      navigationSkippedReason: 'no_navigation_needed'
+      const originalBranch = await git.currentBranch(repoPath)
+
+      try {
+        await git.checkout(repoPath, targetBranch)
+
+        if (!supportsMerge(git)) {
+          throw new Error('Git adapter does not support merge')
+        }
+        await git.merge(repoPath, `origin/${branchName}`, { ffOnly: true })
+
+        await git.push(repoPath, { remote: 'origin', ref: targetBranch, force: false })
+
+        await this.retargetDependentPrs(repoPath, branchName, targetBranch)
+
+        await gitForgeService.closePullRequest(repoPath, pr.number)
+      } catch (error) {
+        if (originalBranch) {
+          try {
+            await git.checkout(repoPath, originalBranch)
+          } catch {
+            log.warn(
+              `[PullRequestOperation.fastForwardMerge] Failed to checkout original branch: ${originalBranch}`
+            )
+          }
+        }
+        const msg = error instanceof Error ? error.message : String(error)
+        return { success: false, error: `Fast-forward failed: ${msg}` }
+      }
+
+      return {
+        success: true,
+        message: `Fast-forward merged ${branchName} into ${targetBranch}`,
+        needsRebase: false,
+        navigated: false,
+        navigationSkippedReason: 'no_navigation_needed'
+      }
+    } finally {
+      watcher.resume()
     }
   }
 
@@ -441,18 +469,6 @@ export class PullRequestOperation {
         )
       }
     }
-  }
-
-  private static determineBranchesToPush(
-    repo: Repo,
-    baseBranch: string,
-    headBranch: string
-  ): string[] {
-    const baseBranchExistsOnRemote =
-      isTrunk(baseBranch) ||
-      repo.branches.some((b) => b.isRemote && b.ref === `origin/${baseBranch}`)
-
-    return baseBranchExistsOnRemote ? [headBranch] : [baseBranch, headBranch]
   }
 
   private static async forcePushBranch(

@@ -70,6 +70,33 @@ export const GitForgeSection = memo(function GitForgeSection({
   const isMerged = useMemo(() => branches.some((b) => b.isMerged), [branches])
   const branchCanShip = branchWithPr?.canShip ?? false
 
+  const localBranch = useMemo(() => branches.find((b) => !b.isRemote && !b.isTrunk), [branches])
+  const { canCreatePr, createPrBlockedReason } = useMemo(() => {
+    const expectedPrBase = localBranch?.expectedPrBase
+    if (!expectedPrBase) {
+      return { canCreatePr: true, createPrBlockedReason: undefined }
+    }
+
+    const isTrunkBase = expectedPrBase === 'main' || expectedPrBase === 'master'
+    if (isTrunkBase) {
+      return { canCreatePr: true, createPrBlockedReason: undefined }
+    }
+
+    if (!forgeState) {
+      return { canCreatePr: true, createPrBlockedReason: undefined }
+    }
+
+    const baseHasPr = forgeState.pullRequests.some((pr) => pr.headRefName === expectedPrBase)
+    if (baseHasPr) {
+      return { canCreatePr: true, createPrBlockedReason: undefined }
+    }
+
+    return {
+      canCreatePr: false,
+      createPrBlockedReason: `Create a PR for "${expectedPrBase}" first`
+    }
+  }, [localBranch?.expectedPrBase, forgeState])
+
   const prIsActive = pr?.state === 'open' || pr?.state === 'draft'
   const mergeReadiness = pr?.mergeReadiness
   const checksStatus = mergeReadiness?.checksStatus ?? 'none'
@@ -206,7 +233,8 @@ export const GitForgeSection = memo(function GitForgeSection({
   if (pr) {
     const prIsMerged = pr.state === 'merged'
     const prIsClosed = pr.state === 'closed'
-    const hasChecks = ((checks.length > 0 || checksStatus === 'expected') && !hasConflicts) || !branchCanShip
+    const hasChecks =
+      ((checks.length > 0 || checksStatus === 'expected') && !hasConflicts) || !branchCanShip
 
     if (!prIsActive) {
       return (
@@ -274,6 +302,8 @@ export const GitForgeSection = memo(function GitForgeSection({
       canRebaseToTrunk={canRebaseToTrunk}
       isLoading={isLoading}
       error={error}
+      canCreatePr={canCreatePr}
+      createPrBlockedReason={createPrBlockedReason}
       onRebase={handleRebase}
       onCreatePr={handleCreatePr}
     />
@@ -549,15 +579,22 @@ function CreatePrSection({
   canRebaseToTrunk,
   isLoading,
   error,
+  canCreatePr,
+  createPrBlockedReason,
   onRebase,
   onCreatePr
 }: {
   canRebaseToTrunk: boolean
   isLoading: boolean
   error: string | null
+  canCreatePr?: boolean
+  createPrBlockedReason?: string
   onRebase: (e: React.MouseEvent) => void
   onCreatePr: (e?: React.MouseEvent) => void
 }): React.JSX.Element {
+  const isBlocked = canCreatePr === false
+  const isDisabled = isLoading || isBlocked
+
   return (
     <div className="animate-in fade-in flex items-center gap-2 duration-150">
       {canRebaseToTrunk && (
@@ -570,20 +607,25 @@ function CreatePrSection({
           Rebase
         </button>
       )}
-      <button
-        type="button"
-        onClick={onCreatePr}
-        disabled={isLoading}
-        className={cn(
-          'cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors',
-          error
-            ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
-            : 'text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30'
-        )}
-        title={error || undefined}
-      >
-        {isLoading ? 'Creating PR...' : error ? 'Failed - Retry' : 'Create PR'}
-      </button>
+      <Tooltip content={createPrBlockedReason} disabled={!isBlocked} delayDuration={300}>
+        <button
+          type="button"
+          onClick={onCreatePr}
+          disabled={isDisabled}
+          className={cn(
+            'cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors',
+            error
+              ? 'border-red-500 bg-red-500/10 text-red-500 hover:bg-red-500/20'
+              : isBlocked
+                ? 'text-muted-foreground/50 bg-muted/50 border-border cursor-not-allowed'
+                : 'text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30',
+            isDisabled && 'disabled:opacity-50'
+          )}
+          title={error || undefined}
+        >
+          {isLoading ? 'Creating PR...' : error ? 'Failed - Retry' : 'Create PR'}
+        </button>
+      </Tooltip>
       {error && (
         <span className="max-w-[200px] text-[10px] wrap-break-word text-red-500" title={error}>
           {error.length > 50 ? `${error.substring(0, 50)}...` : error}

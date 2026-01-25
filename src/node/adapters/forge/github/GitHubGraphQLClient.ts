@@ -334,6 +334,40 @@ query FetchPullRequests($owner: String!, $repo: String!, $first: Int!) {
         }
       }
     }
+    branchProtectionRules(first: 20) {
+      nodes {
+        pattern
+        requiredStatusChecks {
+          context
+        }
+        requiresApprovingReviews
+        requiredApprovingReviewCount
+      }
+    }
+    rulesets(first: 20, includeParents: true) {
+      nodes {
+        name
+        target
+        enforcement
+        conditions {
+          refName {
+            include
+          }
+        }
+        rules(first: 100) {
+          nodes {
+            type
+            parameters {
+              ... on RequiredStatusChecksParameters {
+                requiredStatusChecks {
+                  context
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }
 `
@@ -341,10 +375,44 @@ query FetchPullRequests($owner: String!, $repo: String!, $first: Int!) {
 /**
  * TypeScript types for the GraphQL response.
  */
+export type GraphQLBranchProtectionRule = {
+  pattern: string
+  requiredStatusChecks: Array<{ context: string }> | null
+  requiresApprovingReviews: boolean
+  requiredApprovingReviewCount: number
+}
+
+export type GraphQLRulesetRule = {
+  type: string
+  parameters: {
+    requiredStatusChecks?: Array<{ context: string }>
+  } | null
+}
+
+export type GraphQLRuleset = {
+  name: string
+  target: 'BRANCH' | 'TAG' | 'PUSH'
+  enforcement: 'ACTIVE' | 'DISABLED' | 'EVALUATE'
+  conditions: {
+    refName: {
+      include: string[]
+    } | null
+  } | null
+  rules: {
+    nodes: GraphQLRulesetRule[]
+  }
+}
+
 export type GraphQLPullRequestsResponse = {
   repository: {
     pullRequests: {
       nodes: GraphQLPullRequest[]
+    }
+    branchProtectionRules: {
+      nodes: GraphQLBranchProtectionRule[]
+    }
+    rulesets: {
+      nodes: GraphQLRuleset[]
     }
   } | null
 }

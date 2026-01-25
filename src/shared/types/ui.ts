@@ -88,6 +88,11 @@ export type UiBranch = {
    * Order: head commit first, oldest owned commit last.
    */
   ownedCommitShas?: string[]
+  /**
+   * The expected PR base branch computed from local commit graph.
+   * Used by frontend to detect base drift (when PR's target differs from expected).
+   */
+  expectedPrBase?: string
 
   // ─────────────────────────────────────────────────────────────────────────
   // Computed Permissions
@@ -157,6 +162,11 @@ export type UiPullRequest = {
    * This is a warning condition - normally a branch should have at most one open PR.
    */
   hasMultipleOpenPrs?: boolean
+  /**
+   * True if the computed local base branch differs from the PR's target branch.
+   * When true, clicking "Update PR" will also update the PR's base branch.
+   */
+  hasBaseDrift?: boolean
 }
 
 export type UiWorkingTreeFile = {

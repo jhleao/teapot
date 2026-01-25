@@ -22,7 +22,7 @@ export type RateLimitInfo = {
 /**
  * Status of an individual CI check.
  */
-export type CheckStatus = 'pending' | 'success' | 'failure' | 'neutral' | 'skipped'
+export type CheckStatus = 'pending' | 'success' | 'failure' | 'neutral' | 'skipped' | 'expected'
 
 /**
  * Represents a single CI status check (e.g., GitHub Actions workflow).
@@ -53,7 +53,15 @@ export type MergeBlocker =
 export type MergeReadiness = {
   canMerge: boolean
   blockers: MergeBlocker[]
-  checksStatus: 'pending' | 'success' | 'failure' | 'none'
+  /**
+   * Status of CI checks:
+   * - 'pending': Checks are running
+   * - 'expected': Required checks haven't started yet (waiting for CI to trigger)
+   * - 'success': All checks passed
+   * - 'failure': One or more checks failed
+   * - 'none': No checks configured
+   */
+  checksStatus: 'pending' | 'expected' | 'success' | 'failure' | 'none'
   checks: StatusCheck[]
 }
 

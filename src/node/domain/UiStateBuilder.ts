@@ -25,12 +25,14 @@ import type {
 import type { GitForgeState } from '../../shared/types/git-forge'
 import { findBestPr, countOpenPrs, canRecreatePr } from '../../shared/types/git-forge'
 import { calculateCommitOwnership, isForkPoint } from './CommitOwnership'
+import { PrTargetResolver } from './PrTargetResolver'
 import { RebaseStateMachine } from './RebaseStateMachine'
 import { TrunkResolver } from './TrunkResolver'
 
 type UiCommit = UiStack['commits'][number]
 
 type BuildState = {
+  repo: Repo
   commitMap: Map<string, DomainCommit>
   commitNodes: Map<string, UiCommit>
   currentBranch: string
@@ -127,6 +129,7 @@ export class UiStateBuilder {
     }
 
     const state: BuildState = {
+      repo,
       commitMap,
       commitNodes: new Map(),
       currentBranch: repo.workingTreeStatus.currentBranch,
@@ -665,6 +668,21 @@ export class UiStateBuilder {
         ownedCommitShas = UiStateBuilder.collectOwnedCommitShas(branch.headSha, branch.ref, state)
       }
 
+      // Compute expected PR base for local, non-trunk branches
+      // This is used by the frontend to detect base drift (PR target differs from expected)
+      let expectedPrBase: string | undefined
+      if (!branch.isRemote && !branch.isTrunk) {
+        try {
+          expectedPrBase = PrTargetResolver.findBaseBranch(
+            state.repo,
+            branch.headSha,
+            mergedBranchNames
+          )
+        } catch {
+          // Can't determine base (ambiguous branches) - leave undefined
+        }
+      }
+
       // Compute permissions based on branch state
       // This keeps all business logic in the backend, making the UI dumb
       const isCurrent = branch.ref === state.currentBranch
@@ -701,6 +719,7 @@ export class UiStateBuilder {
         hasStaleTarget: hasStaleTarget || undefined,
         worktree,
         ownedCommitShas,
+        expectedPrBase,
         canRename,
         canDelete,
         canSquash,

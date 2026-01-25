@@ -80,6 +80,12 @@ function enrichCommit(
 
     // Build UI pull request data
     // Use commit SHA to determine if in sync (branch head is the commit this branch is on)
+    // Compute base drift: PR target differs from expected local base
+    const hasBaseDrift =
+      branch.expectedPrBase &&
+      (pr.state === 'open' || pr.state === 'draft') &&
+      pr.baseRefName !== branch.expectedPrBase
+
     const pullRequest: UiPullRequest = {
       number: pr.number,
       title: pr.title,
@@ -88,7 +94,8 @@ function enrichCommit(
       isInSync: pr.headSha === commit.sha,
       isMergeable: pr.isMergeable,
       mergeReadiness: pr.mergeReadiness,
-      hasMultipleOpenPrs: hasMultipleOpenPrs || undefined
+      hasMultipleOpenPrs: hasMultipleOpenPrs || undefined,
+      hasBaseDrift: hasBaseDrift || undefined
     }
 
     // Determine merged status

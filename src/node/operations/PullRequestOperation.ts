@@ -10,9 +10,14 @@
 import { log } from '@shared/logger'
 import type { Branch, Repo } from '@shared/types'
 import { extractLocalBranchName } from '@shared/types'
-import { findBestPr, findOpenPr, type MergeStrategy } from '@shared/types/git-forge'
+import {
+  findBestPr,
+  findOpenPr,
+  type ForgePullRequest,
+  type MergeStrategy
+} from '@shared/types/git-forge'
 import { isTrunk } from '@shared/types/repo'
-import { getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
+import { canFastForward, getGitAdapter, supportsMerge, type GitAdapter } from '../adapters/git'
 import { PrTargetResolver, ShipItNavigator } from '../domain'
 import { RepoModelService } from '../services'
 import { ExecutionContextService } from '../services/ExecutionContextService'
@@ -146,7 +151,14 @@ export class PullRequestOperation {
     // Check if active worktree is dirty before merging
     const isActiveWorktreeDirty = await ExecutionContextService.isActiveWorktreeDirty(repoPath)
 
-    // Merge via GitHub API
+    if (mergeStrategy === 'fast-forward') {
+      const ffResult = await this.fastForwardMerge(repoPath, branchName, pr, git)
+      if (!ffResult.success) {
+        return ffResult
+      }
+      return ffResult
+    }
+
     try {
       await gitForgeService.mergePullRequest(repoPath, pr.number, mergeStrategy)
     } catch (error) {
@@ -252,6 +264,92 @@ export class PullRequestOperation {
     log.warn(
       `[PullRequestOperation] PR sync timeout after ${maxAttempts} attempts, proceeding anyway`
     )
+  }
+
+  /** Performs a fast-forward merge locally (not via GitHub API).
+   * This is required because GitHub's API doesn't support fast-forward merges.
+   *
+   * Steps:
+   * 1. Fetch latest from remote
+   * 2. Check if target branch can be fast-forwarded to feature branch
+   * 3. Checkout target branch, merge --ff-only, push
+   * 4. Retarget any PRs that were pointing at the merged branch to point at target
+   * 5. Close PR (won't auto-close since we bypassed GitHub's merge)
+   */
+  private static async fastForwardMerge(
+    repoPath: string,
+    branchName: string,
+    pr: ForgePullRequest,
+    git: GitAdapter
+  ): Promise<ShipItResult> {
+    const targetBranch = pr.baseRefName
+
+    await git.fetch(repoPath)
+
+    const canFF = await canFastForward(repoPath, `origin/${targetBranch}`, `origin/${branchName}`)
+    if (!canFF) {
+      return {
+        success: false,
+        error: `Cannot fast-forward: ${targetBranch} has commits not in ${branchName}. Rebase and try again.`
+      }
+    }
+
+    const originalBranch = await git.currentBranch(repoPath)
+
+    try {
+      await git.checkout(repoPath, targetBranch)
+
+      if (!supportsMerge(git)) {
+        throw new Error('Git adapter does not support merge')
+      }
+      await git.merge(repoPath, `origin/${branchName}`, { ffOnly: true })
+
+      await git.push(repoPath, { remote: 'origin', ref: targetBranch, force: false })
+
+      await this.retargetDependentPrs(repoPath, branchName, targetBranch)
+
+      await gitForgeService.closePullRequest(repoPath, pr.number)
+    } catch (error) {
+      if (originalBranch) {
+        try {
+          await git.checkout(repoPath, originalBranch)
+        } catch {
+        }
+      }
+      const msg = error instanceof Error ? error.message : String(error)
+      return { success: false, error: `Fast-forward failed: ${msg}` }
+    }
+
+    return {
+      success: true,
+      message: `Fast-forward merged ${branchName} into ${targetBranch}`,
+      needsRebase: false,
+      navigated: false,
+      navigationSkippedReason: 'no_navigation_needed'
+    }
+  }
+
+  /** Retargets any open PRs that have baseRefName === mergedBranch to point at newBase.
+   * This matches GitHub's automatic behavior when merging a PR.
+   */
+  private static async retargetDependentPrs(
+    repoPath: string,
+    mergedBranch: string,
+    newBase: string
+  ): Promise<void> {
+    const { state } = await gitForgeService.getStateWithStatus(repoPath)
+    const dependentPrs = state.pullRequests.filter(
+      (p) => p.state === 'open' && p.baseRefName === mergedBranch
+    )
+
+    for (const dependentPr of dependentPrs) {
+      try {
+        await gitForgeService.updatePullRequestBase(repoPath, dependentPr.number, newBase)
+        log.info(`[PullRequestOperation] Retargeted PR #${dependentPr.number} from ${mergedBranch} to ${newBase}`)
+      } catch (error) {
+        log.warn(`[PullRequestOperation] Failed to retarget PR #${dependentPr.number}:`, error)
+      }
+    }
   }
 
   private static async loadRepoWithRemotes(repoPath: string): Promise<Repo> {

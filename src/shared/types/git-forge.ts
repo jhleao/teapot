@@ -1,8 +1,9 @@
 /**
  * Merge strategy for pull requests.
- * Maps directly to GitHub API merge_method values.
+ * 'squash', 'merge', 'rebase' map to GitHub API merge_method values.
+ * 'fast-forward' uses local git operations (not supported by GitHub API).
  */
-export type MergeStrategy = 'squash' | 'merge' | 'rebase'
+export type MergeStrategy = 'squash' | 'merge' | 'rebase' | 'fast-forward'
 
 /**
  * Rate limit information from GitHub API.

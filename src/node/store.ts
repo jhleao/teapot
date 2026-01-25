@@ -265,5 +265,15 @@ export class ConfigStore {
   }
 }
 
-// Export singleton instance
-export const configStore = new ConfigStore()
+// Lazy singleton to ensure app.setPath() has been called before Store initializes
+let _configStore: ConfigStore | null = null
+
+export const configStore = new Proxy({} as ConfigStore, {
+  get(_target, prop) {
+    if (!_configStore) {
+      _configStore = new ConfigStore()
+    }
+    const value = (_configStore as any)[prop]
+    return typeof value === 'function' ? value.bind(_configStore) : value
+  }
+})

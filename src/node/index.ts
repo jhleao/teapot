@@ -8,6 +8,15 @@ import { IPC_EVENTS } from '../shared/types'
 import { registerHandlers } from './handlers'
 import { configStore } from './store'
 
+const isE2ETest = process.env.TEAPOT_E2E === '1'
+const shouldDisableUpdater = process.env.TEAPOT_DISABLE_UPDATER === '1' || isE2ETest
+
+// Set userData path for E2E tests - must happen before configStore is accessed
+// The configStore uses a lazy proxy so initialization is deferred until first access
+if (isE2ETest && process.env.TEAPOT_E2E_USER_DATA) {
+  app.setPath('userData', process.env.TEAPOT_E2E_USER_DATA)
+}
+
 function setupAutoUpdater(): void {
   const { autoUpdater } = electronUpdater
 
@@ -118,7 +127,7 @@ app.whenReady().then(async () => {
   createWindow()
 
   // Check for updates in production (silent download + OS notification when ready)
-  if (!is.dev) {
+  if (!is.dev && !shouldDisableUpdater) {
     setupAutoUpdater()
     electronUpdater.autoUpdater.checkForUpdatesAndNotify()
   }

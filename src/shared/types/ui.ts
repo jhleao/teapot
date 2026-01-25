@@ -117,6 +117,8 @@ export type UiBranch = {
    * Requires: branch is directly off trunk AND PR targets trunk.
    */
   canShip?: boolean
+  canCreatePr?: boolean
+  createPrBlockedReason?: string
 }
 
 /**

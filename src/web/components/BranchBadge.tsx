@@ -195,13 +195,16 @@ export const BranchBadge = memo(function BranchBadge({
               </ContextMenuItem>
             )}
             {!data.isRemote && !data.isTrunk && (
-              <ContextMenuItem
-                onClick={handleOpenSquashDialog}
-                disabled={!data.canSquash || isLoadingSquashPreview}
-                disabledReason={data.squashDisabledReason}
-              >
-                {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
-              </ContextMenuItem>
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={handleOpenSquashDialog}
+                  disabled={!data.canSquash || isLoadingSquashPreview}
+                  disabledReason={data.squashDisabledReason}
+                >
+                  {isLoadingSquashPreview ? 'Checking...' : 'Squash into parent'}
+                </ContextMenuItem>
+              </>
             )}
             {data.canCreateWorktree && (
               <>

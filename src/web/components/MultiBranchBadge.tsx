@@ -1,16 +1,8 @@
 import type { UiBranch } from '@shared/types'
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
-import { createPortal } from 'react-dom'
+import React, { memo, useMemo, useState } from 'react'
 import { cn } from '../utils/cn'
 import { BranchBadge } from './BranchBadge'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 interface MultiBranchBadgeProps {
   branches: UiBranch[]
@@ -65,10 +57,7 @@ function processBranches(branches: UiBranch[]): ProcessedBranches {
 export const MultiBranchBadge = memo(function MultiBranchBadge({
   branches
 }: MultiBranchBadgeProps): React.JSX.Element {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [popoverPosition, setPopoverPosition] = useState<{ x: number; y: number } | null>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-  const popoverRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
 
   // Process all branch data in a single memoized computation
   const { primary, additionalLocal, additionalRemote, additionalCount } = useMemo(
@@ -76,186 +65,53 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
     [branches]
   )
 
-  const closePopover = useCallback(() => {
-    setIsExpanded(false)
-    setPopoverPosition(null)
-  }, [])
-
-  const handleToggleExpanded = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      e.preventDefault()
-
-      if (isExpanded) {
-        closePopover()
-      } else {
-        const rect = triggerRef.current?.getBoundingClientRect()
-        if (rect) {
-          setPopoverPosition({
-            x: rect.left,
-            y: rect.bottom + 4
-          })
-        }
-        setIsExpanded(true)
-      }
-    },
-    [isExpanded, closePopover]
-  )
-
-  // Close popover when clicking outside or pressing Escape
-  useEffect(() => {
-    if (!isExpanded) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (
-        triggerRef.current &&
-        !triggerRef.current.contains(target) &&
-        popoverRef.current &&
-        !popoverRef.current.contains(target)
-      ) {
-        closePopover()
-      }
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        closePopover()
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isExpanded, closePopover])
-
   // If only one branch, just render the regular BranchBadge
   if (branches.length === 1) {
     return <BranchBadge data={branches[0]} />
   }
 
+  const hasLocalBranches = additionalLocal.length > 0
+  const hasRemoteBranches = additionalRemote.length > 0
+
   return (
     <div className="flex items-center gap-1">
       <BranchBadge data={primary} />
       {additionalCount > 0 && (
-        <>
-          <button
-            ref={triggerRef}
-            onClick={handleToggleExpanded}
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className={cn(
+                'inline-flex w-[1.625rem] items-center justify-center rounded-lg py-1 text-xs font-medium transition-colors',
+                'border-border/50 bg-muted/70 text-muted-foreground border',
+                'hover:bg-muted hover:text-foreground',
+                open && 'bg-muted text-foreground'
+              )}
+              title={`${additionalCount} more branch${additionalCount > 1 ? 'es' : ''}`}
+              aria-expanded={open}
+              aria-haspopup="dialog"
+            >
+              +{additionalCount}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="min-w-[12rem] p-2"
             onMouseDown={(e) => e.stopPropagation()}
-            className={cn(
-              'inline-flex items-center justify-center rounded-lg py-1 w-[1.625rem] text-xs font-medium transition-colors',
-              'bg-muted/70 text-muted-foreground border-border/50 border',
-              'hover:bg-muted hover:text-foreground',
-              isExpanded && 'bg-muted text-foreground'
-            )}
-            title={`${additionalCount} more branch${additionalCount > 1 ? 'es' : ''}`}
-            aria-expanded={isExpanded}
-            aria-haspopup="dialog"
           >
-            +{additionalCount}
-          </button>
-          {isExpanded && popoverPosition && (
-            <BranchPopover
-              ref={popoverRef}
-              localBranches={additionalLocal}
-              remoteBranches={additionalRemote}
-              position={popoverPosition}
-              triggerRef={triggerRef}
-            />
-          )}
-        </>
+            {hasLocalBranches && <BranchSection title="Local branches" branches={additionalLocal} />}
+            {hasLocalBranches && hasRemoteBranches && <div className="bg-border my-2 h-px" />}
+            {hasRemoteBranches && (
+              <BranchSection title="Remote branches" branches={additionalRemote} />
+            )}
+          </PopoverContent>
+        </Popover>
       )}
     </div>
-  )
-})
-
-interface BranchPopoverProps {
-  localBranches: UiBranch[]
-  remoteBranches: UiBranch[]
-  position: { x: number; y: number }
-  triggerRef: React.RefObject<HTMLButtonElement | null>
-}
-
-const BranchPopover = React.forwardRef<HTMLDivElement, BranchPopoverProps>(function BranchPopover(
-  { localBranches, remoteBranches, position, triggerRef },
-  forwardedRef
-) {
-  const innerRef = useRef<HTMLDivElement>(null)
-  const [isPositioned, setIsPositioned] = useState(false)
-  const [finalPosition, setFinalPosition] = useState(position)
-
-  // Adjust position before paint, then reveal
-  useLayoutEffect(() => {
-    const popover = innerRef.current
-    const trigger = triggerRef.current
-    if (!popover) return
-
-    const rect = popover.getBoundingClientRect()
-    const triggerRect = trigger?.getBoundingClientRect()
-    const viewportWidth = window.innerWidth
-    const viewportHeight = window.innerHeight
-
-    let x = position.x
-    let y = position.y
-
-    // Adjust horizontal position if needed
-    if (x + rect.width > viewportWidth - 8) {
-      x = viewportWidth - rect.width - 8
-    }
-    // Ensure doesn't go off left edge
-    if (x < 8) {
-      x = 8
-    }
-
-    // Adjust vertical position if needed (show above if no room below)
-    if (y + rect.height > viewportHeight - 8) {
-      const triggerHeight = triggerRect?.height ?? 24
-      y = position.y - rect.height - triggerHeight - 8
-    }
-
-    setFinalPosition({ x, y })
-    setIsPositioned(true)
-  }, [position, triggerRef])
-
-  // Merge refs
-  const setRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      ;(innerRef as React.MutableRefObject<HTMLDivElement | null>).current = node
-      if (typeof forwardedRef === 'function') {
-        forwardedRef(node)
-      } else if (forwardedRef) {
-        forwardedRef.current = node
-      }
-    },
-    [forwardedRef]
-  )
-
-  const hasLocalBranches = localBranches.length > 0
-  const hasRemoteBranches = remoteBranches.length > 0
-
-  return createPortal(
-    <div
-      ref={setRef}
-      role="dialog"
-      aria-label="Additional branches"
-      className={cn(
-        'fixed z-50 min-w-[12rem] overflow-hidden rounded-lg border p-2 shadow-lg',
-        'border-border bg-background',
-        // Hide until positioned to prevent flash, then animate in
-        isPositioned ? 'animate-in fade-in zoom-in-95' : 'invisible'
-      )}
-      style={{ top: finalPosition.y, left: finalPosition.x }}
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {hasLocalBranches && <BranchSection title="Local branches" branches={localBranches} />}
-      {hasLocalBranches && hasRemoteBranches && <div className="bg-border my-2 h-px" />}
-      {hasRemoteBranches && <BranchSection title="Remote branches" branches={remoteBranches} />}
-    </div>,
-    document.body
   )
 })
 

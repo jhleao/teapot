@@ -1,17 +1,13 @@
 import type { MergeReadiness, StatusCheck } from '@shared/types/git-forge'
 import { CheckCircle2Icon, CircleDotIcon, CircleIcon, Loader2Icon, XCircleIcon } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { cn } from '../utils/cn'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScrollArea } from './ui/scroll-area'
 
 interface StatusChecksDisplayProps {
   mergeReadiness: MergeReadiness
   className?: string
-}
-
-type DropdownPosition = {
-  top: boolean // true = opens below, false = opens above
-  left: boolean // true = aligns left, false = aligns right
 }
 
 /**
@@ -22,70 +18,7 @@ export function StatusChecksDisplay({
   mergeReadiness,
   className
 }: StatusChecksDisplayProps): React.JSX.Element | null {
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [position, setPosition] = useState<DropdownPosition>({ top: true, left: true })
-  const containerRef = useRef<HTMLDivElement>(null)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  // Calculate optimal dropdown position based on available viewport space
-  const updatePosition = useCallback(() => {
-    if (!containerRef.current) return
-
-    const rect = containerRef.current.getBoundingClientRect()
-    const viewportHeight = window.innerHeight
-    const viewportWidth = window.innerWidth
-
-    // Estimate dropdown dimensions
-    const dropdownHeight = 250 // max-h-[200px] + padding + header
-    const dropdownWidth = 300 // max-w-[300px]
-
-    // Determine vertical position: prefer below, but flip if not enough space
-    const spaceBelow = viewportHeight - rect.bottom
-    const spaceAbove = rect.top
-    const openBelow = spaceBelow >= dropdownHeight || spaceBelow >= spaceAbove
-
-    // Determine horizontal position: prefer left-aligned, but flip if not enough space
-    const spaceRight = viewportWidth - rect.left
-    const alignLeft = spaceRight >= dropdownWidth
-
-    setPosition({ top: openBelow, left: alignLeft })
-  }, [])
-
-  // Update position when expanding
-  useLayoutEffect(() => {
-    if (isExpanded) {
-      updatePosition()
-    }
-  }, [isExpanded, updatePosition])
-
-  // Close dropdown on click outside or escape key
-  useEffect(() => {
-    if (!isExpanded) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsExpanded(false)
-      }
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setIsExpanded(false)
-      }
-    }
-
-    // Use setTimeout to avoid closing immediately on the click that opened it
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-      document.addEventListener('keydown', handleEscape)
-    }, 0)
-
-    return () => {
-      clearTimeout(timeoutId)
-      document.removeEventListener('click', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [isExpanded])
+  const [open, setOpen] = useState(false)
 
   const { checks, checksStatus } = mergeReadiness
 
@@ -150,48 +83,36 @@ export function StatusChecksDisplay({
   }
 
   return (
-    <div ref={containerRef} className={cn('relative inline-block', className)}>
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={cn(
-          'flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium',
-          'cursor-pointer transition-opacity hover:opacity-80',
-          bgColor,
-          borderColor,
-          color
-        )}
-        title={`${passedCount} passed, ${failedCount} failed, ${pendingCount} pending`}
-      >
-        <Icon className={cn('h-3 w-3', animate && 'animate-spin')} />
-        <span>{getBadgeText()}</span>
-      </button>
-
-      {isExpanded && (
-        <div
-          ref={dropdownRef}
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
           className={cn(
-            'absolute z-50',
-            // Vertical positioning
-            position.top ? 'top-full mt-1' : 'bottom-full mb-1',
-            // Horizontal positioning
-            position.left ? 'left-0' : 'right-0',
-            'bg-background border-border rounded-md border shadow-lg',
-            'max-w-[300px] min-w-[200px] p-2'
+            'flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-xs font-medium',
+            'cursor-pointer transition-opacity hover:opacity-80',
+            bgColor,
+            borderColor,
+            color,
+            className
           )}
+          title={`${passedCount} passed, ${failedCount} failed, ${pendingCount} pending`}
         >
-          <div className="border-border text-muted-foreground mb-1.5 border-b pb-1.5 text-xs font-medium">
-            Status Checks ({passedCount}/{checks.length})
-          </div>
-          <ScrollArea className="max-h-[200px]">
-            <div className="flex flex-col gap-1">
-              {checks.map((check, index) => (
-                <CheckItem key={index} check={check} />
-              ))}
-            </div>
-          </ScrollArea>
+          <Icon className={cn('h-3 w-3', animate && 'animate-spin')} />
+          <span>{getBadgeText()}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="max-w-[300px] min-w-[200px] p-2">
+        <div className="border-border text-muted-foreground mb-1.5 border-b pb-1.5 text-xs font-medium">
+          Status Checks ({passedCount}/{checks.length})
         </div>
-      )}
-    </div>
+        <ScrollArea className="max-h-[200px]">
+          <div className="flex flex-col gap-1">
+            {checks.map((check, index) => (
+              <CheckItem key={index} check={check} />
+            ))}
+          </div>
+        </ScrollArea>
+      </PopoverContent>
+    </Popover>
   )
 }
 

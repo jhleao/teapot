@@ -420,7 +420,7 @@ export const CommitView = memo(function CommitView({
                 isTrunk={stack.isTrunk}
                 commitSha={data.sha}
                 trunkHeadSha={trunkHeadSha}
-                canRebaseToTrunk={stack.canRebaseToTrunk}
+                canRebaseToTrunk={stack.canRebaseToTrunk && isTailOfStack}
               />
               {!stack.isTrunk && isHead && (
                 <button

@@ -61,12 +61,13 @@ export function RepoSelector({
   }
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} data-testid="repo-selector">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="text-foreground bg-card border-border hover:bg-muted focus:ring-accent inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
         aria-haspopup="true"
         aria-expanded={isOpen}
+        data-testid="repo-selector-button"
       >
         <svg
           className="text-muted-foreground h-4 w-4"
@@ -96,7 +97,7 @@ export function RepoSelector({
       </button>
 
       {isOpen && (
-        <div className="bg-card border-border absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-lg border shadow-lg">
+        <div className="bg-card border-border absolute right-0 z-50 mt-2 w-80 overflow-hidden rounded-lg border shadow-lg" data-testid="repo-dropdown">
           <div className="max-h-96 overflow-y-auto py-1">
             {repos.length === 0 ? (
               <div className="text-muted-foreground px-4 py-3 text-sm">No repositories found</div>
@@ -181,6 +182,7 @@ export function RepoSelector({
             <button
               onClick={() => handleAddRepo()}
               className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+              data-testid="add-repo-button"
             >
               <svg
                 className="text-muted-foreground h-4 w-4"
@@ -200,6 +202,7 @@ export function RepoSelector({
             <button
               onClick={handleCloneRepo}
               className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+              data-testid="clone-repo-button"
             >
               <svg
                 className="text-muted-foreground h-4 w-4"

@@ -21,13 +21,13 @@ export function Topbar(): React.JSX.Element {
   }
 
   return (
-    <div className="mb-6 flex items-center justify-between gap-4">
+    <div className="mb-6 flex items-center justify-between gap-4" data-testid="topbar">
       {/* Left side: Repository metadata */}
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1" data-testid="repo-metadata-container">
         {selectedRepo ? (
           <RepoMetadata repo={selectedRepo} />
         ) : (
-          <div className="text-muted-foreground text-sm">No repository selected</div>
+          <div className="text-muted-foreground text-sm" data-testid="no-repo-message">No repository selected</div>
         )}
       </div>
 

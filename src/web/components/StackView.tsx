@@ -137,7 +137,7 @@ export function StackView({
   const childrenFirst = [...data.commits].reverse()
 
   return (
-    <div>
+    <div data-testid="stack-view">
       {Boolean(data.isTrunk) && (
         <div className="mb-[-16px]">
           <SyncButton />
@@ -471,6 +471,7 @@ function SyncButton(): React.JSX.Element | null {
         disabled={isSyncing}
         className="bg-muted/50 text-muted-foreground/80 border-border/50 hover:bg-muted hover:text-muted-foreground inline-flex cursor-pointer items-center rounded-lg border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-70"
         title="Sync trunk with origin"
+        data-testid="sync-button"
       >
         {isSyncing ? 'pulling...' : 'git pull'}
       </button>

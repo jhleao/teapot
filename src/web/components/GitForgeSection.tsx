@@ -394,7 +394,7 @@ function ActivePrSection({
   checks: StatusCheck[]
   blockReasons: MergeBlockReason[]
   canShipNow: boolean
-  mergeStrategy?: 'squash' | 'merge' | 'rebase'
+  mergeStrategy?: 'squash' | 'merge' | 'rebase' | 'fast-forward'
   onRebase: (e: React.MouseEvent) => void
   onUpdatePr: (e: React.MouseEvent) => void
   onShipIt: () => void
@@ -662,7 +662,7 @@ function ChecksPopoverContent({
   reviewsRequired?: boolean
   blockReasons: MergeBlockReason[]
   canMerge?: boolean
-  mergeStrategy?: 'squash' | 'merge' | 'rebase'
+  mergeStrategy?: 'squash' | 'merge' | 'rebase' | 'fast-forward'
   onMerge?: () => void
   isMerging?: boolean
 }): React.JSX.Element {
@@ -671,7 +671,9 @@ function ChecksPopoverContent({
       ? 'Squash and merge'
       : mergeStrategy === 'merge'
         ? 'Merge pull request'
-        : 'Rebase and merge'
+        : mergeStrategy === 'fast-forward'
+          ? 'Fast-forward merge'
+          : 'Rebase and merge'
 
   const additionalBlockers = blockReasons.filter(
     (r) => r !== 'reviews_required' && r !== 'checks_pending' && r !== 'checks_failed'

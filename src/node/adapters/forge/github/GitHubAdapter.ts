@@ -14,9 +14,11 @@ import { Agent, request } from 'undici'
 import {
   FETCH_PRS_QUERY,
   GitHubGraphQLClient,
+  GraphQLBranchProtectionRule,
   GraphQLCheckRun,
   GraphQLPullRequest,
   GraphQLPullRequestsResponse,
+  GraphQLRuleset,
   GraphQLStatusContext
 } from './GitHubGraphQLClient'
 
@@ -90,8 +92,11 @@ export class GitHubAdapter implements GitForgeAdapter {
       throw new Error('Repository not found or not accessible')
     }
 
+    const branchProtectionRules = response.data.repository.branchProtectionRules.nodes
+    const rulesets = response.data.repository.rulesets.nodes
+
     const pullRequests: ForgePullRequest[] = response.data.repository.pullRequests.nodes.map((pr) =>
-      this.mapGraphQLPullRequest(pr)
+      this.mapGraphQLPullRequest(pr, branchProtectionRules, rulesets)
     )
 
     return {
@@ -103,10 +108,14 @@ export class GitHubAdapter implements GitForgeAdapter {
   /**
    * Maps a GraphQL PR response to our ForgePullRequest type.
    */
-  private mapGraphQLPullRequest(pr: GraphQLPullRequest): ForgePullRequest {
+  private mapGraphQLPullRequest(
+    pr: GraphQLPullRequest,
+    branchProtectionRules: GraphQLBranchProtectionRule[],
+    rulesets: GraphQLRuleset[]
+  ): ForgePullRequest {
     const state = this.mapGraphQLPrState(pr)
     const checks = this.extractGraphQLChecks(pr)
-    const mergeReadiness = this.buildGraphQLMergeReadiness(pr, checks)
+    const mergeReadiness = this.buildGraphQLMergeReadiness(pr, checks, branchProtectionRules, rulesets)
 
     return {
       number: pr.number,
@@ -216,24 +225,144 @@ export class GitHubAdapter implements GitForgeAdapter {
   }
 
   /**
+   * Finds the branch protection rule that matches a given branch name.
+   * Patterns can be exact matches or glob patterns (e.g., "main", "releases/*").
+   */
+  private findMatchingBranchProtectionRule(
+    branchName: string,
+    rules: GraphQLBranchProtectionRule[]
+  ): GraphQLBranchProtectionRule | undefined {
+    return rules.find((rule) => {
+      // Exact match
+      if (rule.pattern === branchName) return true
+      // Simple glob pattern matching (e.g., "releases/*" matches "releases/v1")
+      if (rule.pattern.endsWith('/*')) {
+        const prefix = rule.pattern.slice(0, -1) // Remove trailing *
+        return branchName.startsWith(prefix)
+      }
+      // Wildcard at start (e.g., "*/main" matches "feature/main")
+      if (rule.pattern.startsWith('*/')) {
+        const suffix = rule.pattern.slice(2) // Remove leading */
+        return branchName.endsWith(suffix)
+      }
+      return false
+    })
+  }
+
+  /**
+   * Extracts required status check contexts from rulesets that apply to a branch.
+   * Rulesets can target branches via patterns like "~DEFAULT_BRANCH", "refs/heads/main", etc.
+   */
+  private extractRequiredChecksFromRulesets(
+    branchName: string,
+    rulesets: GraphQLRuleset[]
+  ): string[] {
+    const requiredChecks: string[] = []
+
+    for (const ruleset of rulesets) {
+      // Skip disabled rulesets
+      if (ruleset.enforcement === 'DISABLED') continue
+
+      // Only consider branch-targeting rulesets
+      if (ruleset.target !== 'BRANCH') continue
+
+      // Check if this ruleset applies to the branch
+      const includePatterns = ruleset.conditions?.refName?.include ?? []
+      const appliesToBranch = includePatterns.some((pattern) => {
+        // Handle special patterns
+        if (pattern === '~DEFAULT_BRANCH') {
+          // Assume main/master are default branches
+          return branchName === 'main' || branchName === 'master'
+        }
+        if (pattern === '~ALL') {
+          return true
+        }
+        // Handle refs/heads/ prefix
+        const normalizedPattern = pattern.startsWith('refs/heads/')
+          ? pattern.slice('refs/heads/'.length)
+          : pattern
+        // Exact match
+        if (normalizedPattern === branchName) return true
+        // Glob patterns (simplified)
+        if (normalizedPattern.endsWith('/*')) {
+          const prefix = normalizedPattern.slice(0, -1)
+          return branchName.startsWith(prefix)
+        }
+        if (normalizedPattern.startsWith('*/')) {
+          const suffix = normalizedPattern.slice(2)
+          return branchName.endsWith(suffix)
+        }
+        return false
+      })
+
+      if (!appliesToBranch) continue
+
+      // Extract required status checks from the ruleset rules
+      for (const rule of ruleset.rules.nodes) {
+        if (rule.type === 'REQUIRED_STATUS_CHECKS' && rule.parameters?.requiredStatusChecks) {
+          for (const check of rule.parameters.requiredStatusChecks) {
+            requiredChecks.push(check.context)
+          }
+        }
+      }
+    }
+
+    return requiredChecks
+  }
+
+  /**
    * Builds MergeReadiness from GraphQL PR data.
    */
   private buildGraphQLMergeReadiness(
     pr: GraphQLPullRequest,
-    checks: StatusCheck[]
+    checks: StatusCheck[],
+    branchProtectionRules: GraphQLBranchProtectionRule[],
+    rulesets: GraphQLRuleset[]
   ): MergeReadiness {
     const canMerge = pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN'
-    const blockers = this.deriveGraphQLBlockers(pr, checks)
-    let checksStatus = this.deriveChecksStatus(checks)
+
+    // Find matching branch protection rule for the PR's base branch
+    const protectionRule = this.findMatchingBranchProtectionRule(pr.baseRefName, branchProtectionRules)
+
+    // Get required check names from branch protection rules
+    const protectionRuleChecks: string[] =
+      protectionRule?.requiredStatusChecks?.map((c) => c.context) ?? []
+
+    // Get required check names from rulesets
+    const rulesetChecks = this.extractRequiredChecksFromRulesets(pr.baseRefName, rulesets)
+
+    // Combine both sources, deduplicating by lowercase name
+    const allRequiredChecks = new Set<string>()
+    for (const name of [...protectionRuleChecks, ...rulesetChecks]) {
+      allRequiredChecks.add(name)
+    }
+    const requiredCheckNames = [...allRequiredChecks]
+
+    const existingCheckNames = new Set(checks.map((c) => c.name.toLowerCase()))
+    const expectedChecks: StatusCheck[] = requiredCheckNames
+      .filter((name) => !existingCheckNames.has(name.toLowerCase()))
+      .map((name) => ({ name, status: 'expected' as const, description: 'Waiting for status to be reported' }))
+
+    // Combine existing checks with expected checks
+    const allChecks = [...checks, ...expectedChecks]
+
+    const blockers = this.deriveGraphQLBlockers(pr, checks, protectionRule)
+    let checksStatus = this.deriveChecksStatus(allChecks)
 
     // Account for expected checks: if the rollup state indicates pending/failure
     // but individual checks all show success (or none exist), trust the rollup.
-    // This handles required checks that haven't started yet.
     const rollupState = pr.commits.nodes[0]?.commit.statusCheckRollup?.state
     if (
       rollupState &&
       (checksStatus === 'success' || checksStatus === 'none') &&
-      (rollupState === 'PENDING' || rollupState === 'EXPECTED')
+      rollupState === 'EXPECTED'
+    ) {
+      // Required checks exist but haven't started yet
+      checksStatus = 'expected'
+    } else if (
+      rollupState &&
+      (checksStatus === 'success' || checksStatus === 'none') &&
+      rollupState === 'PENDING'
     ) {
       checksStatus = 'pending'
     } else if (
@@ -248,14 +377,18 @@ export class GitHubAdapter implements GitForgeAdapter {
       canMerge,
       blockers,
       checksStatus,
-      checks
+      checks: allChecks
     }
   }
 
   /**
    * Derives merge blockers from GraphQL PR state.
    */
-  private deriveGraphQLBlockers(pr: GraphQLPullRequest, checks: StatusCheck[]): MergeBlocker[] {
+  private deriveGraphQLBlockers(
+    pr: GraphQLPullRequest,
+    checks: StatusCheck[],
+    protectionRule?: GraphQLBranchProtectionRule
+  ): MergeBlocker[] {
     const blockers: MergeBlocker[] = []
 
     // Unknown mergeable state - still computing
@@ -304,6 +437,16 @@ export class GitHubAdapter implements GitForgeAdapter {
       !blockers.includes('computing')
     ) {
       blockers.push('checks_pending')
+    }
+
+    // Add reviews_required if branch protection requires approving reviews
+    // and we haven't already added it from BLOCKED state
+    if (
+      protectionRule?.requiresApprovingReviews &&
+      !blockers.includes('reviews_required') &&
+      pr.mergeStateStatus !== 'CLEAN'
+    ) {
+      blockers.push('reviews_required')
     }
 
     return blockers
@@ -690,6 +833,7 @@ export class GitHubAdapter implements GitForgeAdapter {
     if (checks.length === 0) return 'none'
     if (checks.some((c) => c.status === 'failure')) return 'failure'
     if (checks.some((c) => c.status === 'pending')) return 'pending'
+    if (checks.some((c) => c.status === 'expected')) return 'expected'
     return 'success'
   }
 

@@ -255,7 +255,8 @@ export const CommitView = memo(function CommitView({
     isHead && workingTree && workingTree.length > 0 && !isRebasingWithConflicts
 
   const isTopOfStack = data.sha === stack.commits[stack.commits.length - 1].sha
-  const isTailOfStack = data.sha === stack.commits[0].sha
+  const firstBranchfulCommit = stack.commits.find((c) => c.branches.length > 0)
+  const isFirstBranchfulCommit = firstBranchfulCommit?.sha === data.sha
   const isBeingDragged = isPartOfDraggedStack(data.sha, draggedCommitSet)
 
   const hasSpinoffs = data.spinoffs.length > 0
@@ -420,7 +421,7 @@ export const CommitView = memo(function CommitView({
                 isTrunk={stack.isTrunk}
                 commitSha={data.sha}
                 trunkHeadSha={trunkHeadSha}
-                canRebaseToTrunk={stack.canRebaseToTrunk && isTailOfStack}
+                canRebaseToTrunk={stack.canRebaseToTrunk && isFirstBranchfulCommit}
               />
               {!stack.isTrunk && isHead && (
                 <button

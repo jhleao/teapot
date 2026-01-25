@@ -10,21 +10,14 @@ import {
   Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
-import React, {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+import React, { memo, useCallback, useMemo, useState } from 'react'
 import { useForgeStateContext } from '../contexts/ForgeStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
 import { getPrStateStyles } from '../utils/pr-state-styles'
 import { Tooltip } from './Tooltip'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { ScrollArea } from './ui/scroll-area'
 
 interface GitForgeSectionProps {
@@ -49,7 +42,6 @@ export const GitForgeSection = memo(function GitForgeSection({
   const [isShipping, setIsShipping] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isChecksOpen, setIsChecksOpen] = useState(false)
-  const checksRef = useRef<HTMLDivElement>(null)
 
   const mergedBranchToCleanup = useMemo(() => getMergedBranchToCleanup(branches), [branches])
   const branchWithPr = useMemo(() => branches.find((b) => b.pullRequest), [branches])
@@ -211,7 +203,6 @@ export const GitForgeSection = memo(function GitForgeSection({
           </button>
         )}
         <div
-          ref={checksRef}
           className={cn(
             'relative inline-flex items-center gap-1.5',
             isLoading && 'pointer-events-none opacity-60'
@@ -227,27 +218,26 @@ export const GitForgeSection = memo(function GitForgeSection({
             #{pr.number}
           </a>
           {hasChecks && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                setIsChecksOpen(!isChecksOpen)
-              }}
-              className="cursor-pointer hover:opacity-70"
-            >
-              <ChecksIcon checksStatus={checksStatus} />
-            </button>
-          )}
-          {isChecksOpen && (
-            <ChecksPopover
-              checks={checks}
-              onClose={() => setIsChecksOpen(false)}
-              containerRef={checksRef}
-              canMerge={canShipNow}
-              mergeStrategy={mergeStrategy}
-              onMerge={handleShipIt}
-              isMerging={isShipping}
-            />
+            <Popover open={isChecksOpen} onOpenChange={setIsChecksOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  onClick={(e) => e.stopPropagation()}
+                  className="cursor-pointer hover:opacity-70"
+                >
+                  <ChecksIcon checksStatus={checksStatus} />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="max-w-[300px] min-w-[200px] p-2">
+                <ChecksPopoverContent
+                  checks={checks}
+                  canMerge={canShipNow}
+                  mergeStrategy={mergeStrategy}
+                  onMerge={handleShipIt}
+                  isMerging={isShipping}
+                />
+              </PopoverContent>
+            </Popover>
           )}
         </div>
         {pr.hasMultipleOpenPrs && (
@@ -360,61 +350,19 @@ function ChecksIcon({ checksStatus }: { checksStatus: string }): React.JSX.Eleme
   }
 }
 
-function ChecksPopover({
+function ChecksPopoverContent({
   checks,
-  onClose,
-  containerRef,
   canMerge,
   mergeStrategy,
   onMerge,
   isMerging
 }: {
   checks: StatusCheck[]
-  onClose: () => void
-  containerRef: React.RefObject<HTMLDivElement | null>
   canMerge?: boolean
   mergeStrategy?: 'squash' | 'merge' | 'rebase'
   onMerge?: () => void
   isMerging?: boolean
 }): React.JSX.Element {
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState<{ top: boolean; left: boolean }>({
-    top: true,
-    left: true
-  })
-
-  useLayoutEffect(() => {
-    if (!containerRef.current) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    const spaceAbove = rect.top
-    const spaceRight = window.innerWidth - rect.left
-    setPosition({
-      top: spaceBelow >= 250 || spaceBelow >= spaceAbove,
-      left: spaceRight >= 300
-    })
-  }, [containerRef])
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        onClose()
-      }
-    }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside)
-      document.addEventListener('keydown', handleEscape)
-    }, 0)
-    return () => {
-      clearTimeout(timeoutId)
-      document.removeEventListener('click', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [onClose, containerRef])
-
   const passedCount = checks.filter((c) => c.status === 'success').length
 
   const mergeLabel =
@@ -425,16 +373,7 @@ function ChecksPopover({
         : 'Rebase and merge'
 
   return (
-    <div
-      ref={dropdownRef}
-      className={cn(
-        'absolute z-50',
-        position.top ? 'top-full mt-1' : 'bottom-full mb-1',
-        position.left ? 'left-0' : 'right-0',
-        'bg-background border-border rounded-md border shadow-lg',
-        'max-w-[300px] min-w-[200px] p-2'
-      )}
-    >
+    <>
       <div className="border-border text-muted-foreground mb-1.5 border-b pb-1.5 text-xs font-medium">
         Status Checks ({passedCount}/{checks.length})
       </div>
@@ -457,7 +396,7 @@ function ChecksPopover({
           </button>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

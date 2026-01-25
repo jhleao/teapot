@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
+import * as ContextMenuPrimitive from '@radix-ui/react-context-menu'
+import React, { useCallback, useState } from 'react'
 import { cn } from '../utils/cn'
 import { Tooltip, TooltipContainerProvider } from './Tooltip'
 
@@ -10,81 +10,37 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ children, content, disabled }: ContextMenuProps) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null)
-  // Use state instead of ref to trigger re-render when element is attached
   const [menuElement, setMenuElement] = useState<HTMLDivElement | null>(null)
 
   const menuRef = useCallback((node: HTMLDivElement | null) => {
     setMenuElement(node)
   }, [])
 
-  const handleContextMenu = (e: React.MouseEvent) => {
-    if (disabled) return
-
-    e.preventDefault()
-    e.stopPropagation()
-    setPosition({ x: e.clientX, y: e.clientY })
+  if (disabled) {
+    return <>{children}</>
   }
 
-  const close = () => setPosition(null)
-
   return (
-    <>
-      <span onContextMenu={handleContextMenu} className="contents">
-        {children}
-      </span>
-      {position && (
-        <ContextMenuPortal>
-          <ContextMenuOverlay onClick={close} />
-          <div
-            ref={menuRef}
-            role="menu"
-            className={cn(
-              'bg-popover text-popover-foreground animate-in fade-in zoom-in-95 fixed z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-md',
-              'border-border bg-background'
-            )}
-            style={{ top: position.y, left: position.x }}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              // Close on item click
-              close()
-            }}
-          >
-            <TooltipContainerProvider container={menuElement}>{content}</TooltipContainerProvider>
-          </div>
-        </ContextMenuPortal>
-      )}
-    </>
-  )
-}
-
-function ContextMenuPortal({ children }: { children: React.ReactNode }) {
-  if (typeof document === 'undefined') return null
-  return createPortal(children, document.body)
-}
-
-function ContextMenuOverlay({ onClick }: { onClick: () => void }) {
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClick()
-    }
-    document.addEventListener('keydown', handleEsc)
-    return () => document.removeEventListener('keydown', handleEsc)
-  }, [onClick])
-
-  return (
-    <div
-      className="fixed inset-0 z-40"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        onClick()
-      }}
-    />
+    <ContextMenuPrimitive.Root>
+      <ContextMenuPrimitive.Trigger asChild>
+        <span className="contents">{children}</span>
+      </ContextMenuPrimitive.Trigger>
+      <ContextMenuPrimitive.Portal>
+        <ContextMenuPrimitive.Content
+          ref={menuRef}
+          className={cn(
+            'z-50 min-w-[8rem] overflow-hidden rounded-md border p-1 shadow-md',
+            'border-border bg-popover text-popover-foreground',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95'
+          )}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <TooltipContainerProvider container={menuElement}>{content}</TooltipContainerProvider>
+        </ContextMenuPrimitive.Content>
+      </ContextMenuPrimitive.Portal>
+    </ContextMenuPrimitive.Root>
   )
 }
 
@@ -103,23 +59,22 @@ export function ContextMenuItem({
   disabledReason?: string
 }) {
   const item = (
-    <div
-      role="menuitem"
-      aria-disabled={disabled}
-      onClick={() => {
-        if (disabled) return
-        // Don't stop propagation here so the menu container can catch it and close
-        onClick?.()
+    <ContextMenuPrimitive.Item
+      disabled={disabled}
+      onSelect={() => {
+        if (!disabled) {
+          onClick?.()
+        }
       }}
       className={cn(
         'relative flex cursor-default items-center rounded-sm px-2 py-1.5 text-sm outline-none select-none',
-        !disabled && 'hover:bg-accent hover:text-accent-foreground',
+        !disabled && 'focus:bg-accent focus:text-accent-foreground',
         disabled && 'cursor-not-allowed opacity-50',
         className
       )}
     >
       {children}
-    </div>
+    </ContextMenuPrimitive.Item>
   )
 
   if (disabled && disabledReason) {
@@ -134,5 +89,7 @@ export function ContextMenuItem({
 }
 
 export function ContextMenuSeparator({ className }: { className?: string }) {
-  return <div role="separator" className={cn('bg-border -mx-1 my-1 h-px', className)} />
+  return (
+    <ContextMenuPrimitive.Separator className={cn('-mx-1 my-1 h-px bg-border', className)} />
+  )
 }

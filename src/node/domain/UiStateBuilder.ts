@@ -23,7 +23,7 @@ import type {
   Worktree
 } from '@shared/types'
 import type { GitForgeState } from '../../shared/types/git-forge'
-import { findBestPr, countOpenPrs, canRecreatePr } from '../../shared/types/git-forge'
+import { canRecreatePr, countOpenPrs, findBestPr } from '../../shared/types/git-forge'
 import { calculateCommitOwnership, isForkPoint } from './CommitOwnership'
 import { PrTargetResolver } from './PrTargetResolver'
 import { RebaseStateMachine } from './RebaseStateMachine'
@@ -39,13 +39,9 @@ type BuildState = {
   currentCommitSha: string
   trunkShas: Set<string>
   UiStackMembership: Map<string, UiStack>
-  /** Map from branch name to worktree info (for branches checked out in worktrees) */
   worktreeByBranch: Map<string, Worktree>
-  /** The path of the current/active worktree */
   currentWorktreePath: string
-  /** Map from commit SHA to branch names at that SHA (for determining commit ownership boundaries) */
   branchHeadIndex: Map<string, string[]>
-  /** The SHA of the current trunk head commit (used for computing canRebaseToTrunk) */
   trunkHeadSha: string
 }
 
@@ -70,12 +66,7 @@ export type FullUiState = {
 }
 
 export class UiStateBuilder {
-  // Prevent instantiation - use static methods
   private constructor() {}
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Public API
-  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Builds a UiStack from repository data.
@@ -103,7 +94,6 @@ export class UiStateBuilder {
       return null
     }
 
-    // Build worktree lookup: branch name -> worktree
     const worktreeByBranch = new Map<string, Worktree>()
     for (const worktree of repo.worktrees) {
       if (worktree.branch) {
@@ -111,11 +101,8 @@ export class UiStateBuilder {
       }
     }
 
-    // Determine the current worktree path for badge status comparison
     const currentWorktreePath = repo.activeWorktreePath ?? repo.path
 
-    // Build index mapping commit SHA to branch names for commit ownership calculation
-    // Only include local branches (remote branches don't affect local ownership)
     const branchHeadIndex = new Map<string, string[]>()
     for (const branch of UiStackBranches) {
       if (!branch.headSha || branch.isRemote) continue
@@ -142,10 +129,8 @@ export class UiStateBuilder {
       trunkHeadSha: trunk.headSha ?? ''
     }
 
-    // Find remote trunk to extend lineage if it's ahead
     const remoteTrunk = repo.branches.find((b) => b.isTrunk && b.isRemote)
 
-    // Build trunk stack from local trunk, extending to include remote trunk commits if ahead
     const trunkResult = UiStateBuilder.buildTrunkUiStack(trunk, state, remoteTrunk)
     if (!trunkResult) {
       return null
@@ -159,7 +144,6 @@ export class UiStateBuilder {
       UiStateBuilder.createSpinoffUiStacks(commit, state)
     })
 
-    // For annotations, include ALL branches (including remote trunk)
     const allBranchesForAnnotation = [...repo.branches]
     const annotationBranches = allBranchesForAnnotation.sort((a, b) => {
       if (a.ref === trunk.ref && b.ref !== trunk.ref) return -1
@@ -171,7 +155,6 @@ export class UiStateBuilder {
 
     UiStateBuilder.annotateBranchHeads(annotationBranches, state, gitForgeState)
 
-    // Trim trunk commits that have no useful information
     if (declutterTrunk) {
       UiStateBuilder.trimTrunkCommits(trunkStack)
     }
@@ -257,7 +240,6 @@ export class UiStateBuilder {
       }
     }
 
-    // Handle conflicted files - these take priority over other statuses
     for (const path of workingTreeStatus.conflicted) {
       fileMap.set(path, { stageStatus: 'unstaged', status: 'conflicted' })
     }
@@ -281,21 +263,15 @@ export class UiStateBuilder {
     status: 'conflicted' | 'resolved' | 'queued'
   ): void {
     for (const commit of stack.commits) {
-      // Check if this commit belongs to the branch being rebased
       if (commit.branches.some((b) => b.name === branchName)) {
         commit.rebaseStatus = status
       }
 
-      // Recurse into spinoffs
       for (const spinoff of commit.spinoffs) {
         UiStateBuilder.applyRebaseStatusToCommits(spinoff, branchName, status)
       }
     }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Branch selection
-  // ─────────────────────────────────────────────────────────────────────────
 
   private static selectBranchesForUiStacks(branches: Branch[]): Branch[] {
     const canonicalRefs = new Set(
@@ -326,10 +302,6 @@ export class UiStateBuilder {
       null
     )
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Trunk stack building
-  // ─────────────────────────────────────────────────────────────────────────
 
   private static buildTrunkUiStack(
     branch: Branch,
@@ -385,8 +357,12 @@ export class UiStateBuilder {
       return null
     }
 
-    // Trunk stack itself cannot be rebased to trunk, and is trivially "directly off trunk"
-    const stack: UiStack = { commits, isTrunk: true, canRebaseToTrunk: false, isDirectlyOffTrunk: true }
+    const stack: UiStack = {
+      commits,
+      isTrunk: true,
+      canRebaseToTrunk: false,
+      isDirectlyOffTrunk: true
+    }
     return { UiStack: stack, trunkSet: new Set(lineage) }
   }
 
@@ -411,23 +387,16 @@ export class UiStateBuilder {
     return shas.slice().reverse()
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Spinoff stack building
-  // ─────────────────────────────────────────────────────────────────────────
-
   private static createSpinoffUiStacks(parentCommit: UiCommit, state: BuildState): void {
     const domainCommit = state.commitMap.get(parentCommit.sha)
     if (!domainCommit) {
       return
     }
-    // These spinoffs are directly off trunk (called from trunk commit iteration)
-    // parentCommit.sha is the trunk commit SHA that these spinoffs branch from
     const childShas = UiStateBuilder.getOrderedChildren(domainCommit, state, { excludeTrunk: true })
     childShas.forEach((childSha) => {
       if (state.UiStackMembership.has(childSha)) {
         return
       }
-      // Pass the parent (trunk) commit SHA as baseSha for canRebaseToTrunk computation
       const stack = UiStateBuilder.buildNonTrunkUiStack(childSha, state, parentCommit.sha)
       if (stack) {
         parentCommit.spinoffs.push(stack)
@@ -448,8 +417,6 @@ export class UiStateBuilder {
     state: BuildState,
     baseSha: string
   ): UiStack | null {
-    // Compute canRebaseToTrunk: true only if directly off trunk AND base is behind trunk head
-    // If baseSha is a trunk commit and it's not the current trunk head, we can rebase
     const isDirectlyOffTrunk = state.trunkShas.has(baseSha)
     const canRebaseToTrunk =
       isDirectlyOffTrunk && baseSha !== state.trunkHeadSha && state.trunkHeadSha !== ''
@@ -492,8 +459,6 @@ export class UiStateBuilder {
       if (!continuationSha) {
         break
       }
-      // Nested spinoffs branch from this non-trunk commit, so pass currentSha as their baseSha
-      // This ensures canRebaseToTrunk will be false for nested spinoffs
       spinoffShas.forEach((childSha) => {
         if (state.UiStackMembership.has(childSha)) {
           return
@@ -527,10 +492,6 @@ export class UiStateBuilder {
       return a.localeCompare(b)
     })
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Branch annotation
-  // ─────────────────────────────────────────────────────────────────────────
 
   /**
    * Collects the SHAs of commits "owned" by a branch.
@@ -582,26 +543,28 @@ export class UiStateBuilder {
       let isMerged: boolean | undefined
       let hasStaleTarget = false
       let branchCanRecreatePr: boolean | undefined
-      // Note: canShip is computed by the frontend enrichment layer (enrichStackWithForge)
-      // because it requires PR data which is fetched asynchronously from GitHub.
 
       if (gitForgeState) {
         const normalizedRef = UiStateBuilder.normalizeBranchRef(branch)
-        const matchingPrs = gitForgeState.pullRequests.filter((p) => p.headRefName === normalizedRef)
+        const matchingPrs = gitForgeState.pullRequests.filter(
+          (p) => p.headRefName === normalizedRef
+        )
         const pr = findBestPr(normalizedRef, gitForgeState.pullRequests)
         const hasMultipleOpenPrs = countOpenPrs(normalizedRef, gitForgeState.pullRequests) > 1
         branchCanRecreatePr = canRecreatePr(normalizedRef, gitForgeState.pullRequests) || undefined
 
-        // Log when multiple PRs exist - this helps diagnose selection issues
         if (matchingPrs.length > 1) {
           log.info('[UiStateBuilder] Multiple PRs found for branch', {
             branch: normalizedRef,
-            prs: matchingPrs.map((p) => ({ number: p.number, state: p.state, createdAt: p.createdAt })),
+            prs: matchingPrs.map((p) => ({
+              number: p.number,
+              state: p.state,
+              createdAt: p.createdAt
+            })),
             selected: pr ? { number: pr.number, state: pr.state } : null
           })
         }
 
-        // Log when selected PR is not open - helps diagnose why a closed/merged PR is shown
         if (pr && pr.state !== 'open') {
           log.debug('[UiStateBuilder] Selected non-open PR for branch', {
             branch: normalizedRef,
@@ -634,11 +597,9 @@ export class UiStateBuilder {
         }
       }
 
-      // Check if this branch is checked out in a worktree
       let worktree: UiWorktreeBadge | undefined
       const worktreeInfo = state.worktreeByBranch.get(branch.ref)
       if (worktreeInfo) {
-        // Determine worktree status
         let status: UiWorktreeBadge['status']
         if (worktreeInfo.isStale) {
           status = 'stale'
@@ -650,8 +611,6 @@ export class UiStateBuilder {
           status = 'clean'
         }
 
-        // Only show worktree badge for non-active worktrees
-        // (the current worktree's branch uses the regular blue highlight)
         if (status !== 'active') {
           worktree = {
             path: worktreeInfo.path,
@@ -661,15 +620,11 @@ export class UiStateBuilder {
         }
       }
 
-      // Calculate owned commits for local, non-trunk branches
-      // (only these branches can be dragged, and this info is used for drag operations)
       let ownedCommitShas: string[] | undefined
       if (!branch.isRemote && !branch.isTrunk) {
         ownedCommitShas = UiStateBuilder.collectOwnedCommitShas(branch.headSha, branch.ref, state)
       }
 
-      // Compute expected PR base for local, non-trunk branches
-      // This is used by the frontend to detect base drift (PR target differs from expected)
       let expectedPrBase: string | undefined
       if (!branch.isRemote && !branch.isTrunk) {
         try {
@@ -679,23 +634,22 @@ export class UiStateBuilder {
             mergedBranchNames
           )
         } catch {
-          // Can't determine base (ambiguous branches) - leave undefined
+          log.warn('[UiStateBuilder] Failed to find base branch for PR', {
+            branch: branch.ref,
+            headSha: branch.headSha
+          })
         }
       }
 
-      // Compute permissions based on branch state
-      // This keeps all business logic in the backend, making the UI dumb
       const isCurrent = branch.ref === state.currentBranch
       const canRename = !branch.isRemote && !branch.isTrunk
       const canDelete = !isCurrent && !branch.isTrunk
 
-      // For squash: check if parent commit is on trunk (can't squash into trunk)
       const branchCommit = state.commitMap.get(branch.headSha)
       const parentSha = branchCommit?.parentSha
       const parentIsOnTrunk = parentSha ? state.trunkShas.has(parentSha) : true
       const canSquash = !branch.isRemote && !branch.isTrunk && !parentIsOnTrunk
 
-      // Compute the reason why squash is disabled (for tooltip)
       let squashDisabledReason: string | undefined
       if (!canSquash) {
         if (branch.isRemote) {
@@ -726,14 +680,9 @@ export class UiStateBuilder {
         squashDisabledReason,
         canCreateWorktree,
         canRecreatePr: branchCanRecreatePr
-        // canShip is computed by frontend enrichment (enrichStackWithForge)
       })
     })
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Commit node helpers
-  // ─────────────────────────────────────────────────────────────────────────
 
   private static getOrCreateUiCommit(sha: string, state: BuildState): UiCommit | null {
     const existing = state.commitNodes.get(sha)
@@ -745,10 +694,6 @@ export class UiStateBuilder {
       return null
     }
 
-    // Check if this commit is a fork point (multiple non-trunk children)
-    // Fork points are "independent" commits that no single branch owns.
-    // This is computed here so the UI can visually distinguish them.
-    // Uses shared isForkPoint utility to ensure consistency with CommitOwnership.
     const isIndependent = isForkPoint(commit, state.trunkShas)
 
     const uiCommit: UiCommit = {
@@ -784,34 +729,20 @@ export class UiStateBuilder {
       return
     }
 
-    // Keep only commits that are "useful" for the UI:
-    // - Commits with branches attached
-    // - Commits with spinoffs (child branch stacks)
-    // - The trunk tip (newest commit, always shown)
     const lastIndex = trunkStack.commits.length - 1
     trunkStack.commits = trunkStack.commits.filter((commit, index) => {
-      // Always keep the trunk tip
       if (index === lastIndex) return true
       return commit.spinoffs.length > 0 || commit.branches.length > 0
     })
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Private: Rebase projection
-  // ─────────────────────────────────────────────────────────────────────────
-
   private static deriveRebaseProjection(repo: Repo, options: FullUiStateOptions): RebaseProjection {
     if (options.rebaseSession) {
-      // Check if we're still in the planning phase:
-      // - No active job (nothing has started executing yet)
-      // - Git is not currently rebasing
-      // In this case, we should show the planning/prompting UI, not the rebasing UI.
       const session = options.rebaseSession
       const isStillPlanning =
         !session.queue.activeJobId && !repo.workingTreeStatus.isRebasing && options.rebaseIntent
 
       if (isStillPlanning && options.rebaseIntent) {
-        // Treat as planning phase - show prompting UI
         const generateJobId =
           options.generateJobId ?? UiStateBuilder.createDefaultPreviewJobIdGenerator()
         const plan = RebaseStateMachine.createRebasePlan({
@@ -956,9 +887,6 @@ export class UiStateBuilder {
     targetBaseSha: string,
     allocateSyntheticTime: () => number
   ): void {
-    // Find the oldest owned commit (the one whose parent is node.baseSha)
-    // We need to move this commit's parent to targetBaseSha, keeping the chain intact
-    // This ensures all owned commits (branchless ancestors) move together with the branch
     let oldestOwnedSha = node.headSha
     let currentSha: string | null = node.headSha
     while (currentSha) {
@@ -976,7 +904,6 @@ export class UiStateBuilder {
       return
     }
 
-    // Remove oldest commit from old parent's children
     if (oldestCommit.parentSha) {
       const previousParent = commits.get(oldestCommit.parentSha)
       if (previousParent) {
@@ -986,14 +913,12 @@ export class UiStateBuilder {
       }
     }
 
-    // Update parent of oldest owned commit to new target
     oldestCommit.parentSha = targetBaseSha
     const newParent = commits.get(targetBaseSha)
     if (newParent && !newParent.childrenSha.includes(oldestOwnedSha)) {
       newParent.childrenSha = [...newParent.childrenSha, oldestOwnedSha]
     }
 
-    // Update timestamps for all commits in the owned chain (from oldest to head)
     const parentTime = newParent?.timeMs ?? 0
     let chainSha: string | null = oldestOwnedSha
     let lastTime = parentTime
@@ -1003,9 +928,7 @@ export class UiStateBuilder {
       const syntheticTime = Math.max(allocateSyntheticTime(), lastTime + 1, chainCommit.timeMs ?? 0)
       chainCommit.timeMs = syntheticTime
       lastTime = syntheticTime
-      // Stop when we reach the head
       if (chainSha === node.headSha) break
-      // Find the child in this chain (the one that eventually leads to head)
       const nextSha = chainCommit.childrenSha.find((childSha) => {
         let sha: string | null = node.headSha
         while (sha) {
@@ -1019,10 +942,14 @@ export class UiStateBuilder {
       chainSha = nextSha ?? null
     }
 
-    // Process children recursively - they're based on the head commit
     const headCommit = commits.get(node.headSha)
     node.children.forEach((child) =>
-      UiStateBuilder.applyIntentTarget(commits, child, headCommit?.sha ?? node.headSha, allocateSyntheticTime)
+      UiStateBuilder.applyIntentTarget(
+        commits,
+        child,
+        headCommit?.sha ?? node.headSha,
+        allocateSyntheticTime
+      )
     )
   }
 }

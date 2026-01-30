@@ -12,6 +12,7 @@ import type {
   RebaseIntent,
   RebaseJobId,
   RebaseProjection,
+  RebaseSessionPhase,
   RebaseState,
   Repo,
   StackNodeState,
@@ -53,6 +54,8 @@ type TrunkBuildResult = {
 export type FullUiStateOptions = {
   rebaseIntent?: RebaseIntent | null
   rebaseSession?: RebaseState | null
+  /** Phase of the rebase session for explicit UI state tracking */
+  rebaseSessionPhase?: RebaseSessionPhase | null
   generateJobId?: () => RebaseJobId
   gitForgeState?: GitForgeState | null
   declutterTrunk?: boolean
@@ -737,17 +740,47 @@ export class UiStateBuilder {
   }
 
   private static deriveRebaseProjection(repo: Repo, options: FullUiStateOptions): RebaseProjection {
-    if (options.rebaseSession) {
-      const session = options.rebaseSession
-      const isStillPlanning =
-        !session.queue.activeJobId && !repo.workingTreeStatus.isRebasing && options.rebaseIntent
+    // No session - check for intent-only preview
+    if (!options.rebaseSession) {
+      const intent = options.rebaseIntent
+      if (!intent || intent.targets.length === 0) {
+        return { kind: 'idle' }
+      }
 
-      if (isStillPlanning && options.rebaseIntent) {
+      const generateJobId =
+        options.generateJobId ?? UiStateBuilder.createDefaultPreviewJobIdGenerator()
+      const plan = RebaseStateMachine.createRebasePlan({
+        repo,
+        intent,
+        generateJobId
+      })
+
+      return {
+        kind: 'planning',
+        plan
+      }
+    }
+
+    // Use phase if provided, otherwise fall back to signal inference for migration
+    const phase =
+      options.rebaseSessionPhase ?? UiStateBuilder.inferPhaseFromSession(options.rebaseSession)
+
+    switch (phase) {
+      case 'planning': {
+        // Still in planning phase - show the rebase plan preview
+        const intent = options.rebaseIntent
+        if (!intent || intent.targets.length === 0) {
+          // No intent but in planning phase - return rebasing state to avoid stuck UI
+          return {
+            kind: 'rebasing',
+            session: options.rebaseSession
+          }
+        }
         const generateJobId =
           options.generateJobId ?? UiStateBuilder.createDefaultPreviewJobIdGenerator()
         const plan = RebaseStateMachine.createRebasePlan({
           repo,
-          intent: options.rebaseIntent,
+          intent,
           generateJobId
         })
         return {
@@ -755,30 +788,29 @@ export class UiStateBuilder {
           plan
         }
       }
-
-      return {
-        kind: 'rebasing',
-        session: options.rebaseSession
-      }
+      case 'executing':
+      case 'conflicted':
+        // Active rebase - show rebasing state
+        return {
+          kind: 'rebasing',
+          session: options.rebaseSession
+        }
+      case 'completed':
+        // Rebase is done - return idle
+        return { kind: 'idle' }
     }
+  }
 
-    const intent = options.rebaseIntent
-    if (!intent || intent.targets.length === 0) {
-      return { kind: 'idle' }
-    }
-
-    const generateJobId =
-      options.generateJobId ?? UiStateBuilder.createDefaultPreviewJobIdGenerator()
-    const plan = RebaseStateMachine.createRebasePlan({
-      repo,
-      intent,
-      generateJobId
-    })
-
-    return {
-      kind: 'planning',
-      plan
-    }
+  /**
+   * Infers the phase from session state for backward compatibility.
+   * Used when the session doesn't have an explicit phase field.
+   */
+  private static inferPhaseFromSession(session: RebaseState): RebaseSessionPhase {
+    if (session.session.status === 'awaiting-user') return 'conflicted'
+    if (session.session.status === 'completed') return 'completed'
+    if (session.session.status === 'aborted') return 'completed'
+    if (session.queue.activeJobId) return 'executing'
+    return 'planning'
   }
 
   private static createDefaultPreviewJobIdGenerator(): () => RebaseJobId {

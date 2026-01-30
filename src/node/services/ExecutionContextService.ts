@@ -338,6 +338,25 @@ export class ExecutionContextService {
         return context
       }
 
+      // Check feature flag - if parallel worktree mode is disabled, use active worktree directly.
+      // This provides an escape hatch for users experiencing issues with temp worktree mode.
+      if (!configStore.getUseParallelWorktree()) {
+        log.debug('[ExecutionContextService] Parallel worktree disabled, using active worktree', {
+          activeWorktreePath,
+          operation
+        })
+        const context: ExecutionContext = {
+          executionPath: activeWorktreePath,
+          isTemporary: false,
+          requiresCleanup: false,
+          createdAt: Date.now(),
+          operation,
+          repoPath
+        }
+        contextEvents.emit('acquired', context, repoPath)
+        return context
+      }
+
       // Always create a temporary worktree for new operations.
       // This provides consistent UX and keeps the user's working directory untouched.
       const isActiveClean =

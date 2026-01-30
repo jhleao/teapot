@@ -60,6 +60,17 @@ const setFileLogLevelHandler: IpcHandlerOf<'setFileLogLevel'> = (_event, { level
   configStore.setFileLogLevel(level)
 }
 
+const getUseParallelWorktreeHandler: IpcHandlerOf<'getUseParallelWorktree'> = () => {
+  return configStore.getUseParallelWorktree()
+}
+
+const setUseParallelWorktreeHandler: IpcHandlerOf<'setUseParallelWorktree'> = (
+  _event,
+  { enabled }
+) => {
+  configStore.setUseParallelWorktree(enabled)
+}
+
 const showDebugLogFileHandler: IpcHandlerOf<'showDebugLogFile'> = () => {
   const repoPath = configStore.getSelectedRepoPath()
   if (!repoPath) {
@@ -132,6 +143,8 @@ export function registerLocalStateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.getFileLogLevel, getFileLogLevelHandler)
   ipcMain.handle(IPC_CHANNELS.setFileLogLevel, setFileLogLevelHandler)
   ipcMain.handle(IPC_CHANNELS.showDebugLogFile, showDebugLogFileHandler)
+  ipcMain.handle(IPC_CHANNELS.getUseParallelWorktree, getUseParallelWorktreeHandler)
+  ipcMain.handle(IPC_CHANNELS.setUseParallelWorktree, setUseParallelWorktreeHandler)
   ipcMain.handle(IPC_CHANNELS.getMergeStrategy, getMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.setMergeStrategy, setMergeStrategyHandler)
   ipcMain.handle(IPC_CHANNELS.cloneRepository, cloneRepositoryHandler)

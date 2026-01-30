@@ -854,6 +854,9 @@ export class RebaseExecutor {
     })
     const generateJobId = options.generateJobId ?? createJobIdGenerator()
 
+    // Transition to executing phase when jobs start running
+    SessionService.setPhase(repoPath, 'executing')
+
     // Pause the file watcher during rebase execution to prevent the UI
     // from showing intermediate (half-rebased) states
     const watcher = GitWatcher.getInstance()
@@ -1129,6 +1132,8 @@ export class RebaseExecutor {
     }
 
     SessionService.updateState(repoPath, conflictState)
+    // Transition to conflicted phase - UI should show conflict resolution dialog
+    SessionService.setPhase(repoPath, 'conflicted')
     options.onJobConflict?.(updatedJob, conflicts)
 
     return { status: 'conflict', job: updatedJob, conflicts, state: conflictState }
@@ -1289,6 +1294,8 @@ export class RebaseExecutor {
     }
 
     SessionService.updateState(repoPath, finalState)
+    // Transition to completed phase before clearing the session
+    SessionService.setPhase(repoPath, 'completed')
     await SessionService.clearSession(repoPath)
   }
 

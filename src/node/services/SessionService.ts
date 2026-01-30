@@ -1,8 +1,8 @@
 import { log } from '@shared/logger'
 import type { DetachedWorktree, RebasePlan, RebaseState } from '@shared/types'
-import { configStore, type ConfigStore, type StoredRebaseSession } from '../store'
+import { configStore, type ConfigStore, type RebaseSessionPhase, type StoredRebaseSession } from '../store'
 
-export type { StoredRebaseSession }
+export type { StoredRebaseSession, RebaseSessionPhase }
 
 function normalizePath(repoPath: string): string {
   return repoPath.replace(/\/+$/, '')
@@ -166,6 +166,37 @@ export function markJobCompleted(repoPath: string, jobId: string, newSha: string
         [jobId]: { ...job, status: 'completed', rebasedHeadSha: newSha }
       }
     },
+    version: existing.version + 1,
+    updatedAtMs: Date.now()
+  })
+}
+
+/**
+ * Set the explicit phase of a rebase session.
+ * This is the single source of truth for session state.
+ * @see docs/ideas/07-explicit-rebase-phase-tracking.md
+ */
+export function setPhase(repoPath: string, phase: RebaseSessionPhase): void {
+  const key = normalizePath(repoPath)
+  const existing = sessionStore.get(key)
+  if (!existing) {
+    log.error('[SessionService] setPhase() failed - session not found', { repoPath, key, phase })
+    throw new Error(`Session not found: ${repoPath}`)
+  }
+
+  const oldPhase = existing.phase
+  log.debug('[SessionService] setPhase() called', {
+    repoPath,
+    key,
+    oldPhase,
+    newPhase: phase,
+    oldVersion: existing.version,
+    newVersion: existing.version + 1
+  })
+
+  sessionStore.set(key, {
+    ...existing,
+    phase,
     version: existing.version + 1,
     updatedAtMs: Date.now()
   })

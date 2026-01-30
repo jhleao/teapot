@@ -32,6 +32,7 @@ import { log } from '@shared/logger'
 import { getGitAdapter } from '../adapters/git'
 import { WorktreeOperation } from '../operations/WorktreeOperation'
 import { resolveGitDir, resolveGitDirSync } from '../operations/WorktreeUtils'
+import * as SessionService from './SessionService'
 import { configStore } from '../store'
 
 /** Supported operations for tracking */
@@ -94,13 +95,51 @@ export type ExecutionContext = {
   repoPath: string
 }
 
+/** Current version of the persisted context format */
+const CONTEXT_FORMAT_VERSION = 1
+
 /** Persisted context format for disk storage */
 type PersistedContext = {
+  /** Format version for migration support */
+  version: number
   executionPath: string
   isTemporary: boolean
   createdAt: number
   operation: ExecutionOperation
   repoPath: string
+}
+
+/** Types of state coherence issues that can be detected */
+export type StateCoherenceIssueType =
+  | 'orphaned_context' // Context exists but no session
+  | 'orphaned_session' // Session exists but no context (and git not rebasing)
+  | 'invalid_context' // Context points to non-existent worktree
+  | 'session_state_mismatch' // Session status doesn't match git reality
+
+/** A detected state coherence issue */
+export type StateCoherenceIssue = {
+  type: StateCoherenceIssueType
+  message: string
+  details?: Record<string, unknown>
+}
+
+/** Result of a state coherence check */
+export type StateCoherenceResult = {
+  isCoherent: boolean
+  issues: StateCoherenceIssue[]
+}
+
+/** A repair action taken to fix state coherence */
+export type StateRepairAction = {
+  action: string
+  details?: Record<string, unknown>
+}
+
+/** Result of a state coherence repair operation */
+export type StateRepairResult = {
+  repaired: boolean
+  actions: StateRepairAction[]
+  errors?: string[]
 }
 
 /**
@@ -338,6 +377,25 @@ export class ExecutionContextService {
         return context
       }
 
+      // Check if parallel worktree mode is disabled
+      // When disabled, always use the active worktree directly instead of creating temp worktrees
+      if (!configStore.getParallelWorktreeEnabled()) {
+        log.info(
+          '[ExecutionContextService] Parallel worktree disabled, using active worktree directly',
+          { activeWorktreePath, operation }
+        )
+        const context: ExecutionContext = {
+          executionPath: activeWorktreePath,
+          isTemporary: false,
+          requiresCleanup: false,
+          createdAt: Date.now(),
+          operation,
+          repoPath
+        }
+        contextEvents.emit('acquired', context, repoPath)
+        return context
+      }
+
       // Always create a temporary worktree for new operations.
       // This provides consistent UX and keeps the user's working directory untouched.
       const isActiveClean =
@@ -449,6 +507,7 @@ export class ExecutionContextService {
 
     if (context.isTemporary) {
       await this.persistContext(repoPath, {
+        version: CONTEXT_FORMAT_VERSION,
         executionPath: context.executionPath,
         isTemporary: context.isTemporary,
         createdAt: context.createdAt,
@@ -726,6 +785,190 @@ export class ExecutionContextService {
       tempWorktreeDirExists,
       tempWorktreeCount,
       ttlMs: contextTtlMs
+    }
+  }
+
+  // ===========================================================================
+  // State coherence check and repair
+  // ===========================================================================
+
+  /**
+   * Check if the execution context and session state are coherent.
+   * Returns a list of detected issues if state is inconsistent.
+   *
+   * Use this to detect stuck or orphaned state that may cause UI confusion.
+   */
+  static async checkStateCoherence(repoPath: string): Promise<StateCoherenceResult> {
+    const issues: StateCoherenceIssue[] = []
+
+    // Get current state from both systems
+    // Use loadRawPersistedContext to avoid automatic cleanup - we want to detect invalid contexts
+    const rawContext = await this.loadRawPersistedContext(repoPath)
+    const session = SessionService.getSession(repoPath)
+
+    // Get git rebase status
+    const git = getGitAdapter()
+    const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+    let isGitRebasing = false
+    let contextWorktreeRebasing = false
+
+    try {
+      const activeStatus = await git.getWorkingTreeStatus(activeWorktreePath)
+      isGitRebasing = activeStatus.isRebasing
+    } catch {
+      // Ignore - worktree might not exist
+    }
+
+    // Check 3 first: Invalid context (points to non-existent worktree)
+    // This needs to be checked before other checks since invalid context affects them
+    if (rawContext?.isTemporary) {
+      const worktreeExists = fs.existsSync(rawContext.executionPath)
+      if (!worktreeExists) {
+        issues.push({
+          type: 'invalid_context',
+          message: `Context points to worktree that does not exist: ${rawContext.executionPath}`,
+          details: {
+            executionPath: rawContext.executionPath
+          }
+        })
+        // Don't treat as valid context for other checks
+      } else {
+        // Check temp worktree rebase status
+        try {
+          const tempStatus = await git.getWorkingTreeStatus(rawContext.executionPath)
+          contextWorktreeRebasing = tempStatus.isRebasing
+        } catch {
+          // Temp worktree might be in a bad state
+        }
+      }
+    }
+
+    const eitherRebasing = isGitRebasing || contextWorktreeRebasing
+
+    // For other checks, we consider context as valid only if it exists and points to a valid worktree
+    const validContext =
+      rawContext?.isTemporary && fs.existsSync(rawContext.executionPath) ? rawContext : null
+
+    // Check 1: Orphaned context (context exists but no session)
+    if (validContext && !session) {
+      issues.push({
+        type: 'orphaned_context',
+        message: 'Execution context exists but no session found - context will be orphaned',
+        details: {
+          executionPath: validContext.executionPath,
+          operation: validContext.operation,
+          createdAt: validContext.createdAt
+        }
+      })
+    }
+
+    // Check 2: Orphaned session (session has active job but no context and git not rebasing)
+    if (session && !validContext && session.state.queue.activeJobId && !eitherRebasing) {
+      issues.push({
+        type: 'orphaned_session',
+        message:
+          'Session exists with active job but no context found and git is not rebasing - session may be stuck',
+        details: {
+          activeJobId: session.state.queue.activeJobId,
+          sessionStatus: session.state.session.status
+        }
+      })
+    }
+
+    // Check 4: Session state mismatch (session says running but git is not rebasing)
+    if (session && session.state.session.status === 'running' && !eitherRebasing) {
+      issues.push({
+        type: 'session_state_mismatch',
+        message:
+          'Session status is "running" but git is not rebasing - session may be out of sync',
+        details: {
+          sessionStatus: session.state.session.status,
+          activeJobId: session.state.queue.activeJobId,
+          isGitRebasing,
+          contextWorktreeRebasing
+        }
+      })
+    }
+
+    return {
+      isCoherent: issues.length === 0,
+      issues
+    }
+  }
+
+  /**
+   * Attempt to repair state coherence issues.
+   * This will clear orphaned contexts and sessions where safe to do so.
+   *
+   * @param repoPath - Path to the repository
+   * @returns Result indicating what repairs were made
+   */
+  static async repairStateCoherence(repoPath: string): Promise<StateRepairResult> {
+    const actions: StateRepairAction[] = []
+    const errors: string[] = []
+
+    // First check current state
+    const coherenceCheck = await this.checkStateCoherence(repoPath)
+
+    if (coherenceCheck.isCoherent) {
+      return { repaired: true, actions }
+    }
+
+    // Process each issue
+    for (const issue of coherenceCheck.issues) {
+      try {
+        switch (issue.type) {
+          case 'orphaned_context': {
+            // Clear the orphaned context
+            await this.clearStoredContext(repoPath)
+            actions.push({
+              action: 'cleared_orphaned_context',
+              details: issue.details
+            })
+            break
+          }
+
+          case 'invalid_context': {
+            // Clear the invalid context file (worktree already doesn't exist)
+            await this.clearPersistedContext(repoPath)
+            actions.push({
+              action: 'cleared_invalid_context',
+              details: issue.details
+            })
+            break
+          }
+
+          case 'orphaned_session':
+          case 'session_state_mismatch': {
+            // These require clearing the session, which is riskier
+            // We log them but don't auto-repair - let the user decide
+            log.warn(`[ExecutionContextService] State issue detected but not auto-repaired`, {
+              repoPath,
+              issueType: issue.type,
+              message: issue.message
+            })
+            actions.push({
+              action: 'detected_but_not_repaired',
+              details: { issueType: issue.type, ...issue.details }
+            })
+            break
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        errors.push(`Failed to repair ${issue.type}: ${errorMessage}`)
+        log.error(`[ExecutionContextService] Failed to repair state issue`, {
+          repoPath,
+          issueType: issue.type,
+          error: errorMessage
+        })
+      }
+    }
+
+    return {
+      repaired: errors.length === 0,
+      actions,
+      errors: errors.length > 0 ? errors : undefined
     }
   }
 
@@ -1039,7 +1282,7 @@ export class ExecutionContextService {
     }
 
     // Validate operation field (optional but should be valid type if present)
-    const validOperations = ['rebase', 'sync-trunk', 'ship-it', 'unknown']
+    const validOperations = ['rebase', 'sync-trunk', 'ship-it', 'squash', 'unknown']
     if (obj.operation !== undefined && !validOperations.includes(obj.operation as string)) {
       log.warn('[ExecutionContextService] Invalid context: invalid operation', {
         repoPath,
@@ -1048,7 +1291,20 @@ export class ExecutionContextService {
       return null
     }
 
+    // Handle version migration
+    // Version 0 (missing version field) = original format, migrate to v1
+    const version = typeof obj.version === 'number' ? obj.version : 0
+
+    if (version < CONTEXT_FORMAT_VERSION) {
+      log.info('[ExecutionContextService] Migrating context from version', {
+        repoPath,
+        oldVersion: version,
+        newVersion: CONTEXT_FORMAT_VERSION
+      })
+    }
+
     return {
+      version: CONTEXT_FORMAT_VERSION,
       executionPath: obj.executionPath,
       repoPath: obj.repoPath,
       isTemporary: obj.isTemporary,
@@ -1099,6 +1355,24 @@ export class ExecutionContextService {
         }
       }
 
+      return context
+    } catch {
+      return null
+    }
+  }
+
+  /**
+   * Load persisted context WITHOUT validation or cleanup.
+   * Use this for coherence checks where we want to detect invalid contexts.
+   */
+  private static async loadRawPersistedContext(repoPath: string): Promise<PersistedContext | null> {
+    try {
+      const filePath = await this.getContextFilePath(repoPath)
+      const content = await fs.promises.readFile(filePath, 'utf-8')
+      const parsed: unknown = JSON.parse(content)
+
+      // Only validate schema, don't check worktree existence
+      const context = this.validatePersistedContext(parsed, repoPath)
       return context
     } catch {
       return null

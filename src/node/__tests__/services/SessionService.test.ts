@@ -19,9 +19,11 @@ import {
   getSession,
   hasSession,
   rebaseSessionStore,
+  setPhase,
   updateState,
   type StoredRebaseSession
 } from '../../services/SessionService'
+import type { RebaseSessionPhase } from '../../store'
 
 describe('SessionService', () => {
   beforeEach(() => {
@@ -167,6 +169,79 @@ describe('SessionService', () => {
       expect(hasSession('/path/to/repo')).toBe(true)
     })
   })
+
+  describe('phase tracking', () => {
+    it('creates session with initial phase', async () => {
+      await rebaseSessionStore.createSession(
+        '/path/to/repo',
+        createSessionData({ phase: 'planning' })
+      )
+
+      const session = getSession('/path/to/repo')
+      expect(session?.phase).toBe('planning')
+    })
+
+    it('setPhase updates the session phase', async () => {
+      await rebaseSessionStore.createSession(
+        '/path/to/repo',
+        createSessionData({ phase: 'planning' })
+      )
+
+      setPhase('/path/to/repo', 'executing')
+
+      const session = getSession('/path/to/repo')
+      expect(session?.phase).toBe('executing')
+    })
+
+    it('setPhase transitions through all phases', async () => {
+      await rebaseSessionStore.createSession(
+        '/path/to/repo',
+        createSessionData({ phase: 'planning' })
+      )
+
+      expect(getSession('/path/to/repo')?.phase).toBe('planning')
+
+      setPhase('/path/to/repo', 'executing')
+      expect(getSession('/path/to/repo')?.phase).toBe('executing')
+
+      setPhase('/path/to/repo', 'conflicted')
+      expect(getSession('/path/to/repo')?.phase).toBe('conflicted')
+
+      setPhase('/path/to/repo', 'executing')
+      expect(getSession('/path/to/repo')?.phase).toBe('executing')
+
+      setPhase('/path/to/repo', 'completed')
+      expect(getSession('/path/to/repo')?.phase).toBe('completed')
+    })
+
+    it('setPhase increments version', async () => {
+      await rebaseSessionStore.createSession(
+        '/path/to/repo',
+        createSessionData({ phase: 'planning' })
+      )
+      expect(getSession('/path/to/repo')?.version).toBe(1)
+
+      setPhase('/path/to/repo', 'executing')
+      expect(getSession('/path/to/repo')?.version).toBe(2)
+    })
+
+    it('setPhase logs the transition', async () => {
+      await rebaseSessionStore.createSession(
+        '/path/to/repo',
+        createSessionData({ phase: 'planning' })
+      )
+
+      // This should not throw and should log the transition
+      setPhase('/path/to/repo', 'executing')
+
+      const session = getSession('/path/to/repo')
+      expect(session?.phase).toBe('executing')
+    })
+
+    it('setPhase throws when session does not exist', () => {
+      expect(() => setPhase('/path/to/nonexistent', 'executing')).toThrow('Session not found')
+    })
+  })
 })
 
 // ============================================================================
@@ -178,11 +253,13 @@ function createSessionData(
     intent: RebaseIntent
     state: RebaseState
     originalBranch: string
+    phase: RebaseSessionPhase
   }> = {}
 ): Omit<StoredRebaseSession, 'version' | 'createdAtMs' | 'updatedAtMs'> {
   return {
     intent: overrides.intent ?? createIntent(),
     state: overrides.state ?? createState(),
+    phase: overrides.phase ?? 'planning',
     originalBranch: overrides.originalBranch ?? 'main'
   }
 }

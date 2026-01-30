@@ -8,10 +8,26 @@ import type {
 import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
+/**
+ * Explicit phase tracking for rebase sessions.
+ * This is the single source of truth for UI state derivation.
+ * @see docs/ideas/07-explicit-rebase-phase-tracking.md
+ */
+export type RebaseSessionPhase =
+  | 'planning' // User previewing, can confirm/cancel
+  | 'executing' // Jobs actively running
+  | 'conflicted' // Paused on conflict, awaiting user
+  | 'completed' // All done
+
 // Rebase session type - defined here to avoid circular imports with SessionService
 export type StoredRebaseSession = {
   intent: RebaseIntent
   state: RebaseState
+  /**
+   * Explicit phase - single source of truth for session state.
+   * Use this instead of inferring state from other fields.
+   */
+  phase: RebaseSessionPhase
   version: number
   createdAtMs: number
   updatedAtMs: number
@@ -38,6 +54,14 @@ interface StoreSchema {
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
   forgeStateCache: Record<string, CachedForgeState>
+  /**
+   * Whether to use parallel worktrees for rebase operations.
+   * When enabled (default), rebases run in a temporary worktree, allowing
+   * the user to continue working in their main worktree.
+   * When disabled, rebases run directly in the active worktree.
+   * Disabling this can help avoid issues with complex repos or automation tools.
+   */
+  parallelWorktreeEnabled?: boolean
 }
 
 export class ConfigStore {
@@ -262,6 +286,25 @@ export class ConfigStore {
     const cache = this.store.get('forgeStateCache', {})
     delete cache[repoPath]
     this.store.set('forgeStateCache', cache)
+  }
+
+  // Parallel worktree feature flag methods
+
+  /**
+   * Check if parallel worktree mode is enabled.
+   * When enabled (default), rebases run in a temporary worktree.
+   * When disabled, rebases run directly in the active worktree.
+   */
+  getParallelWorktreeEnabled(): boolean {
+    return this.store.get('parallelWorktreeEnabled', true)
+  }
+
+  /**
+   * Enable or disable parallel worktree mode.
+   * @param enabled - true to use temp worktrees (default), false to use active worktree
+   */
+  setParallelWorktreeEnabled(enabled: boolean): void {
+    this.store.set('parallelWorktreeEnabled', enabled)
   }
 }
 

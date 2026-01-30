@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock the store
 let mockActiveWorktree: string | null = null
+let mockParallelWorktreeEnabled: boolean = true
 vi.mock('../../store', () => ({
   configStore: {
-    getActiveWorktree: () => mockActiveWorktree
+    getActiveWorktree: () => mockActiveWorktree,
+    getParallelWorktreeEnabled: () => mockParallelWorktreeEnabled
   }
 }))
 
@@ -33,12 +35,14 @@ describe('ExecutionContextService', () => {
     execSync('git init -b main', { cwd: repoPath })
     execSync('git config user.name "Test User"', { cwd: repoPath })
     execSync('git config user.email "test@example.com"', { cwd: repoPath })
+    execSync('git config commit.gpgsign false', { cwd: repoPath })
     await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'content')
     execSync('git add .', { cwd: repoPath })
     execSync('git commit -m "initial commit"', { cwd: repoPath })
 
     // Reset mock state
     mockActiveWorktree = null
+    mockParallelWorktreeEnabled = true
   })
 
   afterEach(async () => {
@@ -703,6 +707,151 @@ describe('ExecutionContextService', () => {
       await expect(ExecutionContextService.acquire(nonGitDir)).rejects.toThrow(
         'Not a git repository'
       )
+    })
+  })
+
+  describe('context version migration', () => {
+    it('migrates context without version field (v0) to current version', async () => {
+      // Create a v0 context file (no version field)
+      const contextFilePath = path.join(repoPath, '.git', 'teapot-exec-context.json')
+
+      // Create a real temp worktree first so the context is valid
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+      const tempPath = context.executionPath
+
+      // Store context then modify the file to remove version (simulate v0)
+      await ExecutionContextService.storeContext(repoPath, context)
+      const storedContent = JSON.parse(await fs.promises.readFile(contextFilePath, 'utf-8'))
+      delete storedContent.version
+      await fs.promises.writeFile(contextFilePath, JSON.stringify(storedContent))
+
+      // Load context - should migrate and include version
+      const loaded = await ExecutionContextService.getStoredContext(repoPath)
+
+      expect(loaded).not.toBeNull()
+      expect(loaded?.executionPath).toBe(tempPath)
+
+      // Clean up
+      await ExecutionContextService.clearStoredContext(repoPath)
+    })
+
+    it('persists context with current version', async () => {
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      await ExecutionContextService.storeContext(repoPath, context)
+
+      const contextFilePath = path.join(repoPath, '.git', 'teapot-exec-context.json')
+      const storedContent = JSON.parse(await fs.promises.readFile(contextFilePath, 'utf-8'))
+
+      expect(storedContent.version).toBe(1) // Current version
+
+      // Clean up
+      await ExecutionContextService.clearStoredContext(repoPath)
+    })
+  })
+
+  describe('parallel worktree feature flag', () => {
+    it('uses active worktree directly when parallel worktree is disabled (clean worktree)', async () => {
+      // Disable parallel worktree mode
+      mockParallelWorktreeEnabled = false
+
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      // Should use active worktree, not create temp worktree
+      expect(context.executionPath).toBe(repoPath)
+      expect(context.isTemporary).toBe(false)
+      expect(context.requiresCleanup).toBe(false)
+    })
+
+    it('uses active worktree directly when parallel worktree is disabled (dirty worktree)', async () => {
+      // Disable parallel worktree mode
+      mockParallelWorktreeEnabled = false
+
+      // Create a dirty worktree with staged changes
+      await fs.promises.writeFile(path.join(repoPath, 'new-file.txt'), 'new content')
+      execSync('git add new-file.txt', { cwd: repoPath })
+
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      // Should use active worktree even when dirty (user opted out of parallel mode)
+      expect(context.executionPath).toBe(repoPath)
+      expect(context.isTemporary).toBe(false)
+      expect(context.requiresCleanup).toBe(false)
+    })
+
+    it('creates temp worktree when parallel worktree is enabled (default)', async () => {
+      // Parallel worktree is enabled by default
+      mockParallelWorktreeEnabled = true
+
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      // Should create temp worktree
+      expect(context.executionPath).not.toBe(repoPath)
+      expect(context.executionPath).toContain('teapot-exec-')
+      expect(context.isTemporary).toBe(true)
+      expect(context.requiresCleanup).toBe(true)
+
+      // Clean up
+      await ExecutionContextService.release(context)
+    })
+
+    it('still uses active worktree when rebase in progress even with flag disabled', async () => {
+      mockParallelWorktreeEnabled = false
+
+      // Create a branch for the rebase
+      execSync('git checkout -b feature-flag-test', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'feature-flag.txt'), 'feature content')
+      execSync('git add feature-flag.txt', { cwd: repoPath })
+      execSync('git commit -m "feature commit"', { cwd: repoPath })
+      execSync('git checkout main', { cwd: repoPath })
+
+      // Create a conflicting change on main
+      await fs.promises.writeFile(path.join(repoPath, 'feature-flag.txt'), 'main content')
+      execSync('git add feature-flag.txt', { cwd: repoPath })
+      execSync('git commit -m "main commit"', { cwd: repoPath })
+
+      // Start a rebase that will conflict
+      execSync('git checkout feature-flag-test', { cwd: repoPath })
+      try {
+        execSync('git rebase main', { cwd: repoPath, stdio: 'pipe' })
+      } catch {
+        // Expected - rebase will fail due to conflict
+      }
+
+      // Acquire should return the active worktree (not create a temp worktree)
+      const context = await ExecutionContextService.acquire(repoPath, 'rebase')
+
+      expect(context.executionPath).toBe(repoPath)
+      expect(context.isTemporary).toBe(false)
+      expect(context.requiresCleanup).toBe(false)
+
+      // Abort the rebase for cleanup
+      execSync('git rebase --abort', { cwd: repoPath })
+    })
+
+    it('reuses stored context even when parallel worktree is disabled', async () => {
+      // First, acquire a context with parallel mode enabled
+      mockParallelWorktreeEnabled = true
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
+
+      const firstContext = await ExecutionContextService.acquire(repoPath, 'rebase')
+      expect(firstContext.isTemporary).toBe(true)
+
+      // Store the context (simulating conflict)
+      await ExecutionContextService.storeContext(repoPath, firstContext)
+
+      // Now disable parallel mode and try to acquire again
+      mockParallelWorktreeEnabled = false
+
+      // Should still reuse the stored context
+      const secondContext = await ExecutionContextService.acquire(repoPath)
+      expect(secondContext.executionPath).toBe(firstContext.executionPath)
+      expect(secondContext.isTemporary).toBe(true)
+
+      // Clean up
+      await ExecutionContextService.clearStoredContext(repoPath)
     })
   })
 })

@@ -13,6 +13,17 @@ import type { Repo, WorkingTreeStatus } from './repo'
 
 export type RebaseSessionStatus = 'pending' | 'running' | 'awaiting-user' | 'aborted' | 'completed'
 
+/**
+ * Phase of a rebase session for UI state tracking.
+ * Used to determine which UI components to show.
+ *
+ * - planning: User previewing the rebase, can confirm/cancel
+ * - executing: Jobs are actively running
+ * - conflicted: Paused on conflict, awaiting user resolution
+ * - completed: All done, ready to clear session
+ */
+export type RebaseSessionPhase = 'planning' | 'executing' | 'conflicted' | 'completed'
+
 export type RebaseJobStatus = 'queued' | 'applying' | 'awaiting-user' | 'completed' | 'failed'
 
 export type RebaseJobId = string

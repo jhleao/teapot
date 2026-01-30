@@ -28,6 +28,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const [editor, setEditor] = useState('')
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
   const [fileLogLevel, setFileLogLevel] = useState<FileLogLevel>('off')
+  const [useParallelWorktree, setUseParallelWorktreeState] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -39,16 +40,24 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor, storedStrategy, storedFileLogLevel] = await Promise.all([
+      const [
+        storedPat,
+        storedEditor,
+        storedStrategy,
+        storedFileLogLevel,
+        storedUseParallelWorktree
+      ] = await Promise.all([
         window.api.getGithubPat(),
         window.api.getPreferredEditor(),
         window.api.getMergeStrategy(),
-        window.api.getFileLogLevel()
+        window.api.getFileLogLevel(),
+        window.api.getUseParallelWorktree()
       ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
       setMergeStrategy(storedStrategy)
       setFileLogLevel(storedFileLogLevel)
+      setUseParallelWorktreeState(storedUseParallelWorktree)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -227,6 +236,32 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
                 {FILE_LOG_LEVEL_OPTIONS.find((o) => o.value === fileLogLevel)?.description}
               </p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm leading-none font-medium">Experimental: Parallel Rebase Mode</h4>
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={useParallelWorktree}
+                disabled={isLoading}
+                onChange={async (e) => {
+                  const enabled = e.target.checked
+                  setUseParallelWorktreeState(enabled)
+                  try {
+                    await window.api.setUseParallelWorktree({ enabled })
+                  } catch (error) {
+                    log.error('Failed to save parallel worktree setting:', error)
+                  }
+                }}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <span className="text-sm">Execute rebases in a temporary worktree</span>
+            </label>
+            <p className="text-muted-foreground text-xs">
+              When enabled, rebases run in an isolated worktree, preserving uncommitted changes.
+              Disable this if you experience stuck rebases or disappearing dialogs.
+            </p>
           </div>
         </div>
       </DialogContent>

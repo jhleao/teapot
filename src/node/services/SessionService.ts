@@ -1,11 +1,36 @@
 import { log } from '@shared/logger'
-import type { DetachedWorktree, RebasePlan, RebaseState } from '@shared/types'
+import type {
+  DetachedWorktree,
+  RebasePlan,
+  RebaseSessionPhase,
+  RebaseSessionStatus,
+  RebaseState
+} from '@shared/types'
 import { configStore, type ConfigStore, type StoredRebaseSession } from '../store'
 
 export type { StoredRebaseSession }
 
 function normalizePath(repoPath: string): string {
   return repoPath.replace(/\/+$/, '')
+}
+
+/**
+ * Migrate session status to phase for backward compatibility.
+ * Used when loading sessions that don't have a phase field (pre-migration).
+ */
+function migrateStatusToPhase(status: RebaseSessionStatus): RebaseSessionPhase {
+  switch (status) {
+    case 'pending':
+      return 'planning'
+    case 'running':
+      return 'executing'
+    case 'awaiting-user':
+      return 'conflicted'
+    case 'completed':
+    case 'aborted':
+    default:
+      return 'completed'
+  }
 }
 
 /**
@@ -20,7 +45,15 @@ class SessionStore {
   get(key: string): StoredRebaseSession | null {
     if (!this.memory.has(key)) {
       const persisted = this.disk.getRebaseSession(key)
-      if (persisted) this.memory.set(key, persisted)
+      if (persisted) {
+        // Migration: derive phase from status if missing
+        if (!persisted.phase) {
+          persisted.phase = migrateStatusToPhase(persisted.state.session.status)
+          this.disk.setRebaseSession(key, persisted)
+          log.info('[SessionService] Migrated session phase', { key, phase: persisted.phase })
+        }
+        this.memory.set(key, persisted)
+      }
     }
     return this.memory.get(key) ?? null
   }
@@ -93,13 +126,14 @@ export function createSession(
   sessionStore.set(key, {
     intent: plan.intent,
     state: plan.state,
+    phase: 'planning', // Always start in planning phase
     originalBranch,
     autoDetachedWorktrees,
     version: 1,
     createdAtMs: now,
     updatedAtMs: now
   })
-  log.debug('[SessionService] createSession() completed', { key })
+  log.debug('[SessionService] createSession() completed', { key, phase: 'planning' })
 }
 
 export function clearSession(repoPath: string): void {
@@ -143,6 +177,41 @@ export function updateState(repoPath: string, state: RebaseState): void {
     version: existing.version + 1,
     updatedAtMs: Date.now()
   })
+}
+
+/**
+ * Set the phase of a rebase session.
+ * Phase transitions are logged for debugging.
+ */
+export function setPhase(repoPath: string, phase: RebaseSessionPhase): void {
+  const key = normalizePath(repoPath)
+  const existing = sessionStore.get(key)
+  if (!existing) {
+    log.warn('[SessionService] setPhase() called but no session exists', { repoPath, phase })
+    return
+  }
+
+  log.info('[SessionService] Phase transition', {
+    repoPath,
+    from: existing.phase ?? 'undefined',
+    to: phase
+  })
+
+  sessionStore.set(key, {
+    ...existing,
+    phase,
+    version: existing.version + 1,
+    updatedAtMs: Date.now()
+  })
+}
+
+/**
+ * Get the current phase of a rebase session.
+ * Returns null if no session exists.
+ */
+export function getPhase(repoPath: string): RebaseSessionPhase | null {
+  const session = sessionStore.get(normalizePath(repoPath))
+  return session?.phase ?? null
 }
 
 export function markJobCompleted(repoPath: string, jobId: string, newSha: string): void {
@@ -200,6 +269,7 @@ export const rebaseSessionStore: IRebaseSessionStore = {
     const now = Date.now()
     sessionStore.set(key, {
       ...session,
+      phase: session.phase ?? 'planning', // Default to planning if not set
       version: 1,
       createdAtMs: now,
       updatedAtMs: now
@@ -220,11 +290,12 @@ export const rebaseSessionStore: IRebaseSessionStore = {
 export function createStoredSession(
   plan: RebasePlan,
   originalBranch: string,
-  options: { autoDetachedWorktrees?: DetachedWorktree[] } = {}
+  options: { autoDetachedWorktrees?: DetachedWorktree[]; phase?: RebaseSessionPhase } = {}
 ): Omit<StoredRebaseSession, 'version' | 'createdAtMs' | 'updatedAtMs'> {
   return {
     intent: plan.intent,
     state: plan.state,
+    phase: options.phase ?? 'planning',
     originalBranch,
     autoDetachedWorktrees: options.autoDetachedWorktrees
   }

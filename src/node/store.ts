@@ -3,6 +3,7 @@ import type {
   FileLogLevel,
   LocalRepo,
   RebaseIntent,
+  RebaseSessionPhase,
   RebaseState
 } from '@shared/types'
 import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
@@ -12,6 +13,8 @@ import Store from 'electron-store'
 export type StoredRebaseSession = {
   intent: RebaseIntent
   state: RebaseState
+  /** Phase of the rebase session for UI tracking (optional for migration) */
+  phase?: RebaseSessionPhase
   version: number
   createdAtMs: number
   updatedAtMs: number
@@ -38,6 +41,9 @@ interface StoreSchema {
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
   forgeStateCache: Record<string, CachedForgeState>
+  // Feature flag: when true, rebases execute in a temporary worktree (parallel mode)
+  // When false (default), rebases execute in-place in the active worktree
+  useParallelWorktree?: boolean
 }
 
 export class ConfigStore {
@@ -123,6 +129,24 @@ export class ConfigStore {
     if (this.store.get('debugLoggingEnabled') !== undefined) {
       this.store.delete('debugLoggingEnabled')
     }
+  }
+
+  // Parallel worktree feature flag methods
+
+  /**
+   * Get whether parallel worktree mode is enabled.
+   * When enabled, rebases execute in a temporary worktree to preserve uncommitted changes.
+   * Defaults to false (in-place rebase mode).
+   */
+  getUseParallelWorktree(): boolean {
+    return this.store.get('useParallelWorktree', false)
+  }
+
+  /**
+   * Set whether parallel worktree mode is enabled.
+   */
+  setUseParallelWorktree(enabled: boolean): void {
+    this.store.set('useParallelWorktree', enabled)
   }
 
   /**

@@ -1,9 +1,7 @@
 import React, { useState } from 'react'
 import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { CloneDialog } from './CloneDialog'
-import { ForgeStatusIndicator } from './ForgeStatusIndicator'
-import { RepoMetadata } from './RepoMetadata'
-import { RepoSelector } from './RepoSelector'
+import { RepoSelectorHeader } from './RepoSelectorHeader'
 
 export function Topbar(): React.JSX.Element {
   const { repos, selectedRepo, selectRepo, addRepo, removeRepo } = useLocalStateContext()
@@ -21,33 +19,21 @@ export function Topbar(): React.JSX.Element {
   }
 
   return (
-    <div className="mb-6 flex items-center justify-between gap-4">
-      {/* Left side: Repository metadata */}
-      <div className="min-w-0 flex-1">
-        {selectedRepo ? (
-          <RepoMetadata repo={selectedRepo} />
-        ) : (
-          <div className="text-muted-foreground text-sm">No repository selected</div>
-        )}
-      </div>
-
-      {/* Right side: Actions and status */}
-      <div className="flex shrink-0 items-center gap-3">
-        <ForgeStatusIndicator />
-        <RepoSelector
-          repos={repos}
-          onSelectRepo={selectRepo}
-          onAddRepo={handleAddRepo}
-          onRemoveRepo={removeRepo}
-          onCloneRepo={() => setIsCloneDialogOpen(true)}
-        />
-      </div>
+    <>
+      <RepoSelectorHeader
+        repo={selectedRepo}
+        repos={repos}
+        onSelectRepo={selectRepo}
+        onAddRepo={handleAddRepo}
+        onRemoveRepo={removeRepo}
+        onCloneRepo={() => setIsCloneDialogOpen(true)}
+      />
 
       <CloneDialog
         open={isCloneDialogOpen}
         onOpenChange={setIsCloneDialogOpen}
         onCloneComplete={handleCloneComplete}
       />
-    </div>
+    </>
   )
 }

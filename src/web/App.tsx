@@ -43,21 +43,20 @@ function App(): React.JSX.Element {
     <TooltipProvider>
       <div className="flex h-screen flex-col">
         <TitleBar />
+        <div className="border-border/50 bg-background border-b px-6 py-2">
+          <Topbar />
+        </div>
         <ScrollArea className="flex-1" viewportRef={setViewportRef}>
-          <div className="px-6 pt-2 pb-32">
-            <Topbar />
-
-            <div className="">
-              {!selectedRepo ? (
-                <EmptyState variant="no-repo" onAction={handleAddRepo} />
-              ) : repoError ? (
-                <EmptyState variant="error" errorMessage={repoError} />
-              ) : enrichedStack ? (
-                <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
-              ) : (
-                <EmptyState variant="loading" />
-              )}
-            </div>
+          <div className="px-6 pt-4 pb-32">
+            {!selectedRepo ? (
+              <EmptyState variant="no-repo" onAction={handleAddRepo} />
+            ) : repoError ? (
+              <EmptyState variant="error" errorMessage={repoError} />
+            ) : enrichedStack ? (
+              <StackView data={enrichedStack} workingTree={uiState?.workingTree ?? []} />
+            ) : (
+              <EmptyState variant="loading" />
+            )}
           </div>
           <ScrollBar orientation="horizontal" />
         </ScrollArea>

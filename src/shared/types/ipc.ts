@@ -1,6 +1,7 @@
 import { IpcMainInvokeEvent } from 'electron'
 import type { ForgeStateResult, MergeStrategy } from './git-forge'
 import type { RebaseState, WorktreeConflict } from './rebase'
+import type { WorktreeInitConfig, WorktreeInitializationResult } from './repo'
 import type { BranchChoice, SquashPreview, SquashResult } from './squash'
 import type { LocalRepo, UiState } from './ui'
 
@@ -152,6 +153,8 @@ export const IPC_CHANNELS = {
   copyWorktreePath: 'copyWorktreePath',
   createWorktree: 'createWorktree',
   createWorktreeWithBranch: 'createWorktreeWithBranch',
+  getWorktreeInitConfig: 'getWorktreeInitConfig',
+  setWorktreeInitConfig: 'setWorktreeInitConfig',
   // Clone
   cloneRepository: 'cloneRepository',
   getLastClonePath: 'getLastClonePath',
@@ -431,6 +434,8 @@ export interface IpcContract {
       createWorktree?: boolean
       /** Whether to create an empty WIP commit */
       createWorkingCommit: boolean
+      /** Whether to run initialization (copy files, run commands) */
+      runInitialization: boolean
     }
     response: {
       success: boolean
@@ -438,7 +443,17 @@ export interface IpcContract {
       worktreePath?: string
       branchName?: string
       uiState?: UiState | null
+      /** Initialization result (only present if runInitialization was true and worktree was created) */
+      initializationResult?: WorktreeInitializationResult
     }
+  }
+  [IPC_CHANNELS.getWorktreeInitConfig]: {
+    request: { repoPath: string }
+    response: WorktreeInitConfig
+  }
+  [IPC_CHANNELS.setWorktreeInitConfig]: {
+    request: { repoPath: string; config: WorktreeInitConfig }
+    response: void
   }
   [IPC_CHANNELS.cloneRepository]: {
     request: { url: string; targetPath: string; folderName?: string }

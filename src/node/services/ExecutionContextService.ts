@@ -314,17 +314,14 @@ export class ExecutionContextService {
 
       const activeStatus = await git.getWorkingTreeStatus(activeWorktreePath)
 
-      // If a rebase is in progress in the active worktree, use it directly.
-      // This handles the legacy case where a rebase was started in-place (before
-      // always-temp-worktree), hit a conflict, and now the user is continuing.
-      // Note: Rebases started via temp worktree have their context persisted and
-      // are handled by the persistedContext check above.
-      if (activeStatus.isRebasing) {
-        log.debug('[ExecutionContextService] acquire() rebase in progress in active worktree', {
+      // Use active worktree directly if:
+      // 1. Rebase already in progress (legacy/continue support), OR
+      // 2. Parallel worktree mode is disabled (feature flag)
+      if (activeStatus.isRebasing || !configStore.getUseParallelWorktree()) {
+        log.debug('[ExecutionContextService] Using active worktree', {
+          reason: activeStatus.isRebasing ? 'rebase-in-progress' : 'parallel-disabled',
           activeWorktreePath,
-          operation,
-          isRebasing: activeStatus.isRebasing,
-          conflictedCount: activeStatus.conflicted?.length ?? 0
+          operation
         })
         const context: ExecutionContext = {
           executionPath: activeWorktreePath,

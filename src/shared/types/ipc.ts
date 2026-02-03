@@ -139,6 +139,8 @@ export const IPC_CHANNELS = {
   getFileLogLevel: 'getFileLogLevel',
   setFileLogLevel: 'setFileLogLevel',
   showDebugLogFile: 'showDebugLogFile',
+  getUseParallelWorktree: 'getUseParallelWorktree',
+  setUseParallelWorktree: 'setUseParallelWorktree',
   // Worktree
   getActiveWorktree: 'getActiveWorktree',
   switchWorktree: 'switchWorktree',
@@ -304,6 +306,14 @@ export interface IpcContract {
   [IPC_CHANNELS.showDebugLogFile]: {
     request: void
     response: { success: boolean; error?: string }
+  }
+  [IPC_CHANNELS.getUseParallelWorktree]: {
+    request: void
+    response: boolean
+  }
+  [IPC_CHANNELS.setUseParallelWorktree]: {
+    request: { enabled: boolean }
+    response: void
   }
   [IPC_CHANNELS.getMergeStrategy]: {
     request: void

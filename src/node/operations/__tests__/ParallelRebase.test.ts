@@ -29,6 +29,7 @@ vi.mock('../../store', () => ({
   configStore: {
     getActiveWorktree: () => mockActiveWorktree,
     getGithubPat: () => null, // No PAT for tests - forge operations will return null
+    getUseParallelWorktree: vi.fn().mockReturnValue(true),
     // Session storage methods
     getRebaseSession: (key: string) => mockRebaseSessions.get(key) ?? null,
     setRebaseSession: (key: string, session: unknown) => mockRebaseSessions.set(key, session),
@@ -56,7 +57,11 @@ describe('Parallel Rebase Workflow', () => {
     git = getGitAdapter()
 
     // Create temp directory
-    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'parallel-rebase-test-'))
+    // Use realpath to resolve symlinks (e.g., /var -> /private/var on macOS)
+    // so paths match what git returns
+    tempDir = await fs.promises.realpath(
+      await fs.promises.mkdtemp(path.join(os.tmpdir(), 'parallel-rebase-test-'))
+    )
     repoPath = path.join(tempDir, 'repo')
 
     // Create git repo with initial commit

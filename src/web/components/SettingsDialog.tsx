@@ -28,6 +28,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const [editor, setEditor] = useState('')
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
   const [fileLogLevel, setFileLogLevel] = useState<FileLogLevel>('off')
+  const [useParallelWorktree, setUseParallelWorktree] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -39,16 +40,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor, storedStrategy, storedFileLogLevel] = await Promise.all([
-        window.api.getGithubPat(),
-        window.api.getPreferredEditor(),
-        window.api.getMergeStrategy(),
-        window.api.getFileLogLevel()
-      ])
+      const [storedPat, storedEditor, storedStrategy, storedFileLogLevel, storedParallelWorktree] =
+        await Promise.all([
+          window.api.getGithubPat(),
+          window.api.getPreferredEditor(),
+          window.api.getMergeStrategy(),
+          window.api.getFileLogLevel(),
+          window.api.getUseParallelWorktree()
+        ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
       setMergeStrategy(storedStrategy)
       setFileLogLevel(storedFileLogLevel)
+      setUseParallelWorktree(storedParallelWorktree)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -92,6 +96,15 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
       await window.api.setFileLogLevel({ level })
     } catch (error) {
       log.error('Failed to save file log level setting:', error)
+    }
+  }
+
+  const handleParallelWorktreeChange = async (enabled: boolean) => {
+    setUseParallelWorktree(enabled)
+    try {
+      await window.api.setUseParallelWorktree({ enabled })
+    } catch (error) {
+      log.error('Failed to save parallel worktree setting:', error)
     }
   }
 
@@ -227,6 +240,32 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
                 {FILE_LOG_LEVEL_OPTIONS.find((o) => o.value === fileLogLevel)?.description}
               </p>
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm leading-none font-medium">Parallel Worktree Mode</h4>
+              <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-xs text-yellow-600 dark:text-yellow-400">
+                Experimental
+              </span>
+            </div>
+            <div className="text-muted-foreground text-sm">
+              <p>Run rebases in a temporary worktree to preserve uncommitted changes</p>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useParallelWorktree}
+                onChange={(e) => handleParallelWorktreeChange(e.target.checked)}
+                disabled={isLoading}
+                className="border-input bg-background h-4 w-4 rounded border accent-current disabled:cursor-not-allowed disabled:opacity-50"
+              />
+              <span className="text-sm">Enable parallel worktree mode</span>
+            </label>
+            <p className="text-muted-foreground text-xs">
+              Warning: This feature may cause stuck rebases or disappearing dialogs. Disable if you
+              experience issues.
+            </p>
           </div>
         </div>
       </DialogContent>

@@ -9,7 +9,8 @@ vi.mock('../../store', () => ({
   configStore: {
     getGithubPat: vi.fn().mockReturnValue(null),
     getActiveWorktree: vi.fn().mockReturnValue(null),
-    setActiveWorktree: vi.fn()
+    setActiveWorktree: vi.fn(),
+    getUseParallelWorktree: vi.fn().mockReturnValue(true)
   }
 }))
 

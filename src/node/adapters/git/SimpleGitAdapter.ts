@@ -386,7 +386,7 @@ export class SimpleGitAdapter implements GitAdapter {
    */
   async listWorktrees(
     dir: string,
-    options?: { skipDirtyCheck?: boolean }
+    options?: { skipDirtyCheck?: boolean; skipConflictCheck?: boolean }
   ): Promise<WorktreeInfo[]> {
     try {
       const git = this.createGit(dir)
@@ -439,35 +439,98 @@ export class SimpleGitAdapter implements GitAdapter {
         })
       }
 
-      // Phase 2: Check dirty status (skip if requested for performance)
-      if (options?.skipDirtyCheck) {
-        // Fast path: skip dirty checking, all worktrees appear clean
+      // Phase 2: Check dirty status and conflict status (skip if requested for performance)
+      const skipDirty = options?.skipDirtyCheck ?? false
+      const skipConflict = options?.skipConflictCheck ?? false
+
+      if (skipDirty && skipConflict) {
+        // Fast path: skip all additional checks
         return parsedWorktrees.map((wt) => ({
           path: wt.path,
           headSha: wt.headSha,
           branch: wt.branch,
           isMain: wt.isMain,
           isStale: wt.isStale,
-          isDirty: false
+          isDirty: false,
+          isRebasing: false,
+          conflictedFiles: []
         }))
       }
 
-      // Standard path: Check dirty status in parallel for all non-stale worktrees
-      const worktrees = await Promise.all(
+      // Standard path: Check dirty/conflict status in parallel for all non-stale worktrees
+      // Use Promise.allSettled to handle individual failures gracefully
+      const results = await Promise.allSettled(
         parsedWorktrees.map(async (wt) => {
-          const isDirty = wt.isStale ? false : await this.isWorktreeDirty(wt.path)
+          if (wt.isStale) {
+            return {
+              path: wt.path,
+              headSha: wt.headSha,
+              branch: wt.branch,
+              isMain: wt.isMain,
+              isStale: wt.isStale,
+              isDirty: false,
+              isRebasing: false,
+              conflictedFiles: []
+            }
+          }
+
+          // Check dirty status
+          const isDirty = skipDirty ? false : await this.isWorktreeDirty(wt.path)
+
+          // Check rebase/conflict status
+          let isRebasing = false
+          let conflictedFiles: string[] = []
+          let branch = wt.branch
+
+          if (!skipConflict) {
+            isRebasing = await this.detectRebase(wt.path)
+            if (isRebasing) {
+              // Only check for conflicted files if rebasing (optimization)
+              const wtGit = this.createGit(wt.path)
+              const status = await wtGit.status()
+              conflictedFiles = status.conflicted ?? []
+
+              // During rebase, git is in detached HEAD state, so branch is null.
+              // Read the original branch name from rebase-merge/head-name
+              if (branch === null) {
+                branch = await this.getRebasingBranchName(wt.path)
+              }
+            }
+          }
+
           return {
             path: wt.path,
             headSha: wt.headSha,
-            branch: wt.branch,
+            branch,
             isMain: wt.isMain,
             isStale: wt.isStale,
-            isDirty
+            isDirty,
+            isRebasing,
+            conflictedFiles
           }
         })
       )
 
-      return worktrees
+      // Filter to only fulfilled results, or use fallback for failed ones
+      return results.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value
+        }
+        // Log warning for failed worktree checks
+        const wt = parsedWorktrees[index]
+        log.warn(`Failed to check worktree status for ${wt.path}:`, result.reason)
+        // Return conservative defaults for failed worktrees
+        return {
+          path: wt.path,
+          headSha: wt.headSha,
+          branch: wt.branch,
+          isMain: wt.isMain,
+          isStale: wt.isStale,
+          isDirty: false,
+          isRebasing: false,
+          conflictedFiles: []
+        }
+      })
     } catch (error) {
       throw this.createError('listWorktrees', error)
     }
@@ -1207,6 +1270,32 @@ export class SimpleGitAdapter implements GitAdapter {
         return false
       }
     }
+  }
+
+  /**
+   * Get the branch name being rebased (from rebase-merge/head-name or rebase-apply/head-name).
+   * Returns null if not rebasing or branch name cannot be determined.
+   */
+  private async getRebasingBranchName(dir: string): Promise<string | null> {
+    const gitDir = await resolveGitDir(dir)
+
+    // Try rebase-merge (interactive) then rebase-apply (non-interactive)
+    for (const subdir of ['rebase-merge', 'rebase-apply']) {
+      const headNamePath = path.join(gitDir, subdir, 'head-name')
+      try {
+        const content = await fs.promises.readFile(headNamePath, 'utf-8')
+        const branchRef = content.trim()
+        if (!branchRef) continue
+        // Strip refs/heads/ prefix if present
+        return branchRef.startsWith('refs/heads/')
+          ? branchRef.slice('refs/heads/'.length)
+          : branchRef
+      } catch {
+        // Continue to next location
+      }
+    }
+
+    return null
   }
 
   private async checkForLockFile(dir: string): Promise<{ locked: boolean; lockPath?: string }> {

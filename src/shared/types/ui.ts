@@ -1,4 +1,5 @@
 import type { MergeReadiness } from './git-forge'
+import type { Worktree } from './repo'
 
 export type LocalRepo = {
   path: string
@@ -12,6 +13,8 @@ export type UiState = {
   workingTree: UiWorkingTreeFile[]
   /** The SHA of the current trunk head commit. Used for rebase operations. */
   trunkHeadSha: string
+  /** All worktrees associated with this repository */
+  worktrees: Worktree[]
 }
 
 export type UiStack = {
@@ -134,8 +137,9 @@ export type UiWorktreeBadge = {
    * - 'dirty': Has uncommitted changes (branch is blocked)
    * - 'active': This is the currently active worktree in Teapot
    * - 'stale': Worktree path no longer exists
+   * - 'conflicted': Has merge/rebase conflicts that need resolution
    */
-  status: 'clean' | 'dirty' | 'active' | 'stale'
+  status: 'clean' | 'dirty' | 'active' | 'stale' | 'conflicted'
   /** True if this is the main worktree (original clone location) */
   isMain: boolean
 }

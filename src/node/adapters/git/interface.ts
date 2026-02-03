@@ -145,7 +145,10 @@ export interface GitAdapter {
    * @param options - Optional settings for worktree listing
    * @returns Array of worktree information
    */
-  listWorktrees(dir: string, options?: { skipDirtyCheck?: boolean }): Promise<WorktreeInfo[]>
+  listWorktrees(
+    dir: string,
+    options?: { skipDirtyCheck?: boolean; skipConflictCheck?: boolean }
+  ): Promise<WorktreeInfo[]>
 
   /**
    * Prune stale worktree references

@@ -2,6 +2,7 @@ import type { UiWorkingTreeFile } from '@shared/types'
 import { AlertTriangle, CheckCircle, Clipboard, ExternalLink, Terminal } from 'lucide-react'
 import React, { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { findRebasingBranchName } from '../utils/stack-utils'
@@ -9,15 +10,21 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader } 
 
 export function ConflictResolutionDialog(): React.JSX.Element {
   const { continueRebase, abortRebase, uiState, repoPath } = useUiStateContext()
+  const { selectedRepo, refreshRepos } = useLocalStateContext()
   const [isPending, setIsPending] = useState(false)
   const [executionPath, setExecutionPath] = useState<string | null>(null)
 
   // Fetch the execution path when dialog mounts
+  // For Teapot-initiated rebases, this returns the temp worktree path
+  // For external rebases, fall back to repoPath (the current worktree)
   useEffect(() => {
     if (!repoPath) return
     window.api.getRebaseExecutionPath({ repoPath }).then((result) => {
       if (result.path) {
         setExecutionPath(result.path)
+      } else {
+        // External rebase - use the current worktree path
+        setExecutionPath(repoPath)
       }
     })
   }, [repoPath])
@@ -43,6 +50,22 @@ export function ConflictResolutionDialog(): React.JSX.Element {
     setIsPending(true)
     try {
       await abortRebase()
+      // After aborting, switch back to the main worktree.
+      // The temp worktree used for the rebase may have been cleaned up,
+      // so staying on it would leave the user stuck.
+      const mainRepoPath = selectedRepo?.path
+      if (mainRepoPath) {
+        await window.api.switchWorktree({
+          repoPath: mainRepoPath,
+          worktreePath: mainRepoPath
+        })
+        await refreshRepos()
+      }
+      toast.success('Rebase aborted', {
+        description: rebasingBranchName
+          ? `${rebasingBranchName} restored to its previous state`
+          : 'Branch restored to its previous state'
+      })
     } finally {
       setIsPending(false)
     }

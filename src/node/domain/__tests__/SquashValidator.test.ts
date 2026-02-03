@@ -518,6 +518,8 @@ function createWorktree(path: string, branch: string | null, isDirty: boolean): 
     branch,
     isMain: path === '/repo',
     isStale: false,
-    isDirty
+    isDirty,
+    isRebasing: false,
+    conflictedFiles: []
   }
 }

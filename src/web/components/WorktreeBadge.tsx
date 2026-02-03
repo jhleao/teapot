@@ -1,4 +1,5 @@
 import type { UiWorktreeBadge } from '@shared/types'
+import { AlertTriangle } from 'lucide-react'
 import React, { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -14,7 +15,8 @@ import { TreeIcon } from './icons'
  * - Green: currently active worktree
  * - Yellow: worktree has uncommitted changes (branch is blocked)
  * - Gray: worktree is clean (not active)
- * - Red/muted: worktree path no longer exists (stale)
+ * - Orange: worktree path no longer exists (stale - configuration problem)
+ * - Red: worktree has merge conflicts (active work blocker)
  *
  * Double-click to switch to that worktree (only for non-active, non-stale worktrees).
  * Right-click for context menu with worktree actions.
@@ -38,14 +40,16 @@ export const WorktreeBadge = memo(function WorktreeBadge({
     active: 'bg-muted/50 text-muted-foreground/70 border-border/50',
     dirty: 'bg-yellow-500/20 text-yellow-600 border-yellow-500/50',
     clean: 'bg-muted/50 text-muted-foreground/70 border-border/50',
-    stale: 'bg-destructive/20 text-destructive border-destructive/50'
+    stale: 'bg-orange-500/20 text-orange-600 border-orange-500/50',
+    conflicted: 'bg-red-500/20 text-red-600 border-red-500/50'
   }
 
   const statusLabels = {
     active: 'Active worktree',
     dirty: 'Has uncommitted changes',
     clean: 'Clean',
-    stale: 'Path no longer exists'
+    stale: 'Path no longer exists',
+    conflicted: 'Has merge conflicts - click to resolve'
   }
 
   // Can switch only if not active and not stale
@@ -53,6 +57,7 @@ export const WorktreeBadge = memo(function WorktreeBadge({
   const isActive = data.status === 'active'
   const isDirty = data.status === 'dirty'
   const isStale = data.status === 'stale'
+  const isConflicted = data.status === 'conflicted'
 
   const handleDoubleClick = useCallback(() => {
     if (canSwitch) {
@@ -186,7 +191,11 @@ export const WorktreeBadge = memo(function WorktreeBadge({
         onDoubleClick={handleDoubleClick}
       >
         {variant === 'compact' && 'Using worktree '}
-        <TreeIcon className="h-3.5 w-3.5" />
+        {isConflicted ? (
+          <AlertTriangle className="h-3.5 w-3.5" />
+        ) : (
+          <TreeIcon className="h-3.5 w-3.5" />
+        )}
         {displayPath}
         {data.isMain && ' (main)'}
       </span>

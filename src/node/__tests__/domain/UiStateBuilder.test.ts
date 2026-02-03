@@ -1823,7 +1823,13 @@ describe('buildUiStack with merged branch detection', () => {
 
 describe('buildUiStack isDirectlyOffTrunk computation', () => {
   it('sets isDirectlyOffTrunk=true for trunk stack', () => {
-    const root = createCommit({ sha: 'root', message: 'root', timeMs: 1, parentSha: '', childrenSha: [] })
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: []
+    })
     const repo = createRepo({
       commits: [root],
       branches: [createBranch({ ref: 'main', isTrunk: true, headSha: root.sha })]
@@ -1835,9 +1841,27 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
   })
 
   it('sets isDirectlyOffTrunk=true for stack directly off trunk', () => {
-    const root = createCommit({ sha: 'root', message: 'root', timeMs: 1, parentSha: '', childrenSha: ['trunk', 'feature'] })
-    const trunk = createCommit({ sha: 'trunk', message: 'trunk', timeMs: 2, parentSha: 'root', childrenSha: [] })
-    const feature = createCommit({ sha: 'feature', message: 'feature', timeMs: 3, parentSha: 'root', childrenSha: [] })
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk', 'feature']
+    })
+    const trunk = createCommit({
+      sha: 'trunk',
+      message: 'trunk',
+      timeMs: 2,
+      parentSha: 'root',
+      childrenSha: []
+    })
+    const feature = createCommit({
+      sha: 'feature',
+      message: 'feature',
+      timeMs: 3,
+      parentSha: 'root',
+      childrenSha: []
+    })
     const repo = createRepo({
       commits: [root, trunk, feature],
       branches: [
@@ -1859,11 +1883,41 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
 
   it('sets isDirectlyOffTrunk=false for nested stack (stacked on another branch)', () => {
     // To create a nested stack (spinoff), f1 needs TWO children so one continues the stack and one becomes a spinoff
-    const root = createCommit({ sha: 'root', message: 'root', timeMs: 1, parentSha: '', childrenSha: ['trunk', 'f1'] })
-    const trunk = createCommit({ sha: 'trunk', message: 'trunk', timeMs: 2, parentSha: 'root', childrenSha: [] })
-    const f1 = createCommit({ sha: 'f1', message: 'f1', timeMs: 3, parentSha: 'root', childrenSha: ['f1-tip', 'f2'] })
-    const f1tip = createCommit({ sha: 'f1-tip', message: 'f1-tip', timeMs: 4, parentSha: 'f1', childrenSha: [] })
-    const f2 = createCommit({ sha: 'f2', message: 'f2', timeMs: 5, parentSha: 'f1', childrenSha: [] })
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk', 'f1']
+    })
+    const trunk = createCommit({
+      sha: 'trunk',
+      message: 'trunk',
+      timeMs: 2,
+      parentSha: 'root',
+      childrenSha: []
+    })
+    const f1 = createCommit({
+      sha: 'f1',
+      message: 'f1',
+      timeMs: 3,
+      parentSha: 'root',
+      childrenSha: ['f1-tip', 'f2']
+    })
+    const f1tip = createCommit({
+      sha: 'f1-tip',
+      message: 'f1-tip',
+      timeMs: 4,
+      parentSha: 'f1',
+      childrenSha: []
+    })
+    const f2 = createCommit({
+      sha: 'f2',
+      message: 'f2',
+      timeMs: 5,
+      parentSha: 'f1',
+      childrenSha: []
+    })
     const repo = createRepo({
       commits: [root, trunk, f1, f1tip, f2],
       branches: [
@@ -1881,7 +1935,7 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
     const f1Stack = rootCommit.spinoffs[0]
     if (!f1Stack) throw new Error('expected f1 stack')
     // f1 is in f1Stack.commits, find it
-    const f1Commit = f1Stack.commits.find(c => c.sha === 'f1')
+    const f1Commit = f1Stack.commits.find((c) => c.sha === 'f1')
     if (!f1Commit) throw new Error('expected f1 commit')
     const f2Stack = f1Commit.spinoffs[0]
     if (!f2Stack) throw new Error('expected f2 stack')
@@ -1894,12 +1948,48 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
     // Trunk: root -> t1 -> t2 -> t3 (main at t3)
     // feature-old branches from t1 (old trunk commit)
     // feature-new branches from t3 (new trunk commit / HEAD)
-    const root = createCommit({ sha: 'root', message: 'root', timeMs: 1, parentSha: '', childrenSha: ['t1'] })
-    const t1 = createCommit({ sha: 't1', message: 't1', timeMs: 2, parentSha: 'root', childrenSha: ['t2', 'old'] })
-    const t2 = createCommit({ sha: 't2', message: 't2', timeMs: 3, parentSha: 't1', childrenSha: ['t3'] })
-    const t3 = createCommit({ sha: 't3', message: 't3', timeMs: 4, parentSha: 't2', childrenSha: ['new'] })
-    const old = createCommit({ sha: 'old', message: 'old commit', timeMs: 5, parentSha: 't1', childrenSha: [] })
-    const newCommit = createCommit({ sha: 'new', message: 'new commit', timeMs: 6, parentSha: 't3', childrenSha: [] })
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['t1']
+    })
+    const t1 = createCommit({
+      sha: 't1',
+      message: 't1',
+      timeMs: 2,
+      parentSha: 'root',
+      childrenSha: ['t2', 'old']
+    })
+    const t2 = createCommit({
+      sha: 't2',
+      message: 't2',
+      timeMs: 3,
+      parentSha: 't1',
+      childrenSha: ['t3']
+    })
+    const t3 = createCommit({
+      sha: 't3',
+      message: 't3',
+      timeMs: 4,
+      parentSha: 't2',
+      childrenSha: ['new']
+    })
+    const old = createCommit({
+      sha: 'old',
+      message: 'old commit',
+      timeMs: 5,
+      parentSha: 't1',
+      childrenSha: []
+    })
+    const newCommit = createCommit({
+      sha: 'new',
+      message: 'new commit',
+      timeMs: 6,
+      parentSha: 't3',
+      childrenSha: []
+    })
     const repo = createRepo({
       commits: [root, t1, t2, t3, old, newCommit],
       branches: [
@@ -1913,13 +2003,13 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
     if (!stack) throw new Error('expected stack')
 
     // Find the old feature stack
-    const t1Commit = stack.commits.find(c => c.sha === 't1')
+    const t1Commit = stack.commits.find((c) => c.sha === 't1')
     if (!t1Commit) throw new Error('expected t1 commit')
     const oldStack = t1Commit.spinoffs[0]
     if (!oldStack) throw new Error('expected old stack')
 
     // Find the new feature stack
-    const t3Commit = stack.commits.find(c => c.sha === 't3')
+    const t3Commit = stack.commits.find((c) => c.sha === 't3')
     if (!t3Commit) throw new Error('expected t3 commit')
     const newStack = t3Commit.spinoffs[0]
     if (!newStack) throw new Error('expected new stack')
@@ -1932,8 +2022,20 @@ describe('buildUiStack isDirectlyOffTrunk computation', () => {
   it('sets isDirectlyOffTrunk=true for branch pointing to trunk commit (same as trunk head)', () => {
     // Edge case: branch points directly to a trunk commit (e.g., just created, no new commits yet)
     // trunk: root -> trunk (main points here, feature also points here)
-    const root = createCommit({ sha: 'root', message: 'root', timeMs: 1, parentSha: '', childrenSha: ['trunk'] })
-    const trunk = createCommit({ sha: 'trunk', message: 'trunk', timeMs: 2, parentSha: 'root', childrenSha: [] })
+    const root = createCommit({
+      sha: 'root',
+      message: 'root',
+      timeMs: 1,
+      parentSha: '',
+      childrenSha: ['trunk']
+    })
+    const trunk = createCommit({
+      sha: 'trunk',
+      message: 'trunk',
+      timeMs: 2,
+      parentSha: 'root',
+      childrenSha: []
+    })
     const repo = createRepo({
       commits: [root, trunk],
       branches: [

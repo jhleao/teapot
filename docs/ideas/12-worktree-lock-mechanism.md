@@ -24,12 +24,12 @@ Implement file-based locking to prevent race conditions.
 
 ```typescript
 interface WorktreeLock {
-  pid: number           // Process ID holding the lock
-  operation: string     // e.g., 'rebase', 'checkout', 'remove'
+  pid: number // Process ID holding the lock
+  operation: string // e.g., 'rebase', 'checkout', 'remove'
   worktreePath: string
-  acquiredAt: number    // Timestamp
-  expiresAt: number     // Automatic expiry for crash recovery
-  instanceId: string    // Unique app instance identifier
+  acquiredAt: number // Timestamp
+  expiresAt: number // Automatic expiry for crash recovery
+  instanceId: string // Unique app instance identifier
 }
 ```
 
@@ -114,9 +114,9 @@ static async checkout(repoPath: string, ref: string): Promise<CheckoutResult> {
 ## Configuration
 
 ```typescript
-const LOCK_TIMEOUT_MS = 30_000      // 30 seconds
-const STALE_LOCK_THRESHOLD_MS = 60_000  // 1 minute
-const REFRESH_INTERVAL_MS = 10_000  // 10 seconds
+const LOCK_TIMEOUT_MS = 30_000 // 30 seconds
+const STALE_LOCK_THRESHOLD_MS = 60_000 // 1 minute
+const REFRESH_INTERVAL_MS = 10_000 // 10 seconds
 ```
 
 ---
@@ -128,12 +128,14 @@ const REFRESH_INTERVAL_MS = 10_000  // 10 seconds
 **Decision:** Use JSON lock files in `$GIT_DIR/teapot-locks/` with structured metadata.
 
 **Rationale:**
+
 - File system provides atomic rename for lock acquisition
 - JSON content enables debugging (who holds lock, when acquired)
 - Works across multiple Teapot windows
 - No external dependencies (databases, Redis, etc.)
 
 **Alternatives Considered:**
+
 1. **In-memory locks only**: Rejected - doesn't work across processes
 2. **Advisory flock()**: Rejected - not reliable across all platforms
 3. **Separate lock server**: Rejected - over-engineering for single-machine app
@@ -143,6 +145,7 @@ const REFRESH_INTERVAL_MS = 10_000  // 10 seconds
 **Decision:** Write to temp file, then rename to lock file. Rename fails if lock exists.
 
 **Rationale:**
+
 - `rename()` is atomic on POSIX systems
 - Avoids TOCTOU (time-of-check-to-time-of-use) race
 - Clean semantics: success means you have the lock
@@ -152,6 +155,7 @@ const REFRESH_INTERVAL_MS = 10_000  // 10 seconds
 **Decision:** Locks auto-expire after 60s, with 10s refresh interval.
 
 **Rationale:**
+
 - Handles process crashes (lock eventually expires)
 - Long operations stay locked (refresh keeps extending)
 - Other processes can detect and recover from stale locks
@@ -339,9 +343,9 @@ app.on('before-quit', async () => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Lock file persists after crash | Auto-expiry + stale detection |
-| Rename not atomic on Windows | Use `fs-extra` with proper flags |
-| Too many lock files | Clean up old locks periodically |
-| Lock contention in UI | Show "operation in progress" message |
+| Risk                           | Mitigation                           |
+| ------------------------------ | ------------------------------------ |
+| Lock file persists after crash | Auto-expiry + stale detection        |
+| Rename not atomic on Windows   | Use `fs-extra` with proper flags     |
+| Too many lock files            | Clean up old locks periodically      |
+| Lock contention in UI          | Show "operation in progress" message |

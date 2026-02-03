@@ -52,4 +52,3 @@ export function computeCollapsibleBranches(
 
   return collapsible
 }
-

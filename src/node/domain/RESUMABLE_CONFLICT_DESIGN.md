@@ -56,6 +56,7 @@ Match the rebase conflict resolution experience:
 ```
 
 **What works well:**
+
 - Clear indication of which branch is being rebased
 - Real-time tracking of resolved/unresolved files
 - Quick access to editor/terminal for resolution
@@ -86,6 +87,7 @@ Match the rebase conflict resolution experience:
 ```
 
 **Key differences from rebase:**
+
 - Header shows squash context (parent branch, descendant count)
 - "Skip Branch" option to skip problematic descendant
 - "Abort All" rolls back entire squash operation
@@ -95,6 +97,7 @@ Match the rebase conflict resolution experience:
 **When user clicks "Skip Branch":**
 
 1. **Confirmation dialog** (optional, configurable):
+
    ```
    ┌─────────────────────────────────────────────────────────┐
    │  Skip rebasing `child-feature`?                         │
@@ -122,6 +125,7 @@ Match the rebase conflict resolution experience:
 4. Toast notification: "Squash operation aborted"
 
 **Edge case**: If abort fails (e.g., temp worktree deleted):
+
 - Show error dialog with manual recovery steps
 - Log detailed error for debugging
 
@@ -383,14 +387,14 @@ interface SquashStoredSession {
 
 ### Error Scenarios
 
-| Scenario | Handling | User Message |
-|----------|----------|--------------|
-| Continue with unresolved conflicts | Block continue button | "Resolve all conflicts before continuing" |
-| Git rebase continue fails | Show error, keep in awaiting-user | "Failed to continue: {git error}" |
-| Abort fails (worktree issue) | Show error dialog with recovery steps | "Abort failed. Manual cleanup may be required." |
-| Skip fails (branch reset fails) | Attempt rollback, show error | "Could not skip branch: {error}" |
-| Session not found on continue | Return to normal state | Toast: "No squash operation in progress" |
-| Execution context lost | Attempt recovery or abort | "Execution context lost. Aborting operation." |
+| Scenario                           | Handling                              | User Message                                    |
+| ---------------------------------- | ------------------------------------- | ----------------------------------------------- |
+| Continue with unresolved conflicts | Block continue button                 | "Resolve all conflicts before continuing"       |
+| Git rebase continue fails          | Show error, keep in awaiting-user     | "Failed to continue: {git error}"               |
+| Abort fails (worktree issue)       | Show error dialog with recovery steps | "Abort failed. Manual cleanup may be required." |
+| Skip fails (branch reset fails)    | Attempt rollback, show error          | "Could not skip branch: {error}"                |
+| Session not found on continue      | Return to normal state                | Toast: "No squash operation in progress"        |
+| Execution context lost             | Attempt recovery or abort             | "Execution context lost. Aborting operation."   |
 
 ### Recovery After Crash
 

@@ -21,7 +21,7 @@ When the system modifies worktrees without consent:
 - **Review disruption**: User may be reviewing specific commits; rebase changes the commit tree
 - **Editor state disconnect**: Open files, cursor positions, undo history may reference changed commits
 - **Confusion**: User discovers unexpected detached HEAD state later
-- **Lost context**: User may not know *why* their worktree is in an unexpected state
+- **Lost context**: User may not know _why_ their worktree is in an unexpected state
 - **Trust erosion**: Users become wary of using Teapot for rebases
 
 ### Root Cause
@@ -102,12 +102,14 @@ interface RebaseSettings {
 **Decision:** Operations should never modify worktrees the user isn't actively working in without explicit prior consent.
 
 **Rationale:**
+
 - Principle of least surprise
 - Users trust that their work environment remains stable
 - Cross-window/cross-worktree modifications are unexpected
 - Explicit user action (switching branches) is clearer than automation
 
 **Alternatives Considered:**
+
 1. **Auto-modify with notification**: Rejected - notification may be missed, damage already done
 2. **Consent modal**: Rejected - interrupts flow, complex UI
 3. **Opt-in setting**: Rejected - hidden setting, most users won't find it
@@ -115,11 +117,13 @@ interface RebaseSettings {
 ### ADR-002: Clear Blocking Messages
 
 **Decision:** When blocking an operation due to worktree conflicts, provide:
+
 1. List of affected worktrees
 2. Current branch in each
 3. Clear action the user should take
 
 **Rationale:**
+
 - User can fix all issues at once
 - No guessing about what to do
 - Builds trust: system explains what it needs
@@ -129,6 +133,7 @@ interface RebaseSettings {
 **Decision:** The worktree the user is actively working in (where they initiated the operation) can be modified without extra consent.
 
 **Rationale:**
+
 - User initiated the operation from this location
 - Implicit consent via action
 - Standard git behavior (rebasing current branch modifies current worktree)
@@ -154,10 +159,7 @@ export function getActiveWorktreePath(context: OperationContext): string {
 /**
  * Checks if a worktree is the active one (user-initiated context).
  */
-export function isActiveWorktree(
-  worktreePath: string,
-  context: OperationContext
-): boolean {
+export function isActiveWorktree(worktreePath: string, context: OperationContext): boolean {
   return path.normalize(worktreePath) === path.normalize(context.worktreePath)
 }
 ```
@@ -182,7 +184,7 @@ export async function detectWorktreeConflicts(
   const conflicts: WorktreeConflict[] = []
 
   for (const branch of branches) {
-    const worktree = worktrees.find(wt => wt.branch === branch)
+    const worktree = worktrees.find((wt) => wt.branch === branch)
     if (worktree) {
       conflicts.push({
         worktreePath: worktree.path,
@@ -196,7 +198,7 @@ export async function detectWorktreeConflicts(
 }
 
 export function hasNonActiveConflicts(conflicts: WorktreeConflict[]): boolean {
-  return conflicts.some(c => !c.isActive)
+  return conflicts.some((c) => !c.isActive)
 }
 ```
 
@@ -210,30 +212,19 @@ async function validateRebasePreConditions(
   branches: string[],
   context: OperationContext
 ): Promise<void> {
-  const conflicts = await detectWorktreeConflicts(
-    repoPath,
-    branches,
-    context.worktreePath
-  )
+  const conflicts = await detectWorktreeConflicts(repoPath, branches, context.worktreePath)
 
-  const nonActiveConflicts = conflicts.filter(c => !c.isActive)
+  const nonActiveConflicts = conflicts.filter((c) => !c.isActive)
 
   if (nonActiveConflicts.length > 0) {
-    throw new RebaseBlockedError(
-      formatNonActiveWorktreeError(nonActiveConflicts)
-    )
+    throw new RebaseBlockedError(formatNonActiveWorktreeError(nonActiveConflicts))
   }
 
   // Active worktree conflicts are OK - user is working there
 }
 
-function formatNonActiveWorktreeError(
-  conflicts: WorktreeConflict[]
-): string {
-  const lines = [
-    'Cannot rebase: Some branches are checked out in other worktrees:',
-    ''
-  ]
+function formatNonActiveWorktreeError(conflicts: WorktreeConflict[]): string {
+  const lines = ['Cannot rebase: Some branches are checked out in other worktrees:', '']
 
   for (const { branch, worktreePath } of conflicts) {
     lines.push(`  • ${branch} → ${worktreePath}`)
@@ -260,18 +251,12 @@ interface RebaseRequest {
   activeWorktreePath: string
 }
 
-export async function handleStartRebase(
-  request: RebaseRequest
-): Promise<RebaseResult> {
+export async function handleStartRebase(request: RebaseRequest): Promise<RebaseResult> {
   const context: OperationContext = {
     worktreePath: request.activeWorktreePath
   }
 
-  await validateRebasePreConditions(
-    request.repoPath,
-    extractBranches(request.queue),
-    context
-  )
+  await validateRebasePreConditions(request.repoPath, extractBranches(request.queue), context)
 
   // Proceed with rebase...
 }
@@ -288,7 +273,7 @@ async function startRebase(queue: RebaseQueue): Promise<void> {
   await ipc.invoke('rebase:start', {
     repoPath,
     queue,
-    activeWorktreePath  // Include in request
+    activeWorktreePath // Include in request
   })
 }
 ```
@@ -302,11 +287,7 @@ describe('Worktree Modification Consent', () => {
     // Branch 'feature' is checked out in active worktree
 
     await expect(
-      validateRebasePreConditions(
-        repoPath,
-        ['feature'],
-        { worktreePath: activeWorktree }
-      )
+      validateRebasePreConditions(repoPath, ['feature'], { worktreePath: activeWorktree })
     ).resolves.not.toThrow()
   })
 
@@ -315,11 +296,7 @@ describe('Worktree Modification Consent', () => {
     // Branch 'feature' is checked out in /repo/worktrees/feature
 
     await expect(
-      validateRebasePreConditions(
-        repoPath,
-        ['feature'],
-        { worktreePath: activeWorktree }
-      )
+      validateRebasePreConditions(repoPath, ['feature'], { worktreePath: activeWorktree })
     ).rejects.toThrow(/checked out in other worktrees/)
   })
 })
@@ -339,7 +316,7 @@ interface WorktreeModificationNotification {
   worktreePath: string
   previousBranch: string
   currentState: 'detached' | { branch: string }
-  reason: string  // "Rebase of feature-stack from /other/worktree"
+  reason: string // "Rebase of feature-stack from /other/worktree"
   timestamp: number
 }
 
@@ -363,9 +340,9 @@ If users do end up with unexpected states, provide help:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| More friction for power users | Clear error messages with actionable steps |
-| Multi-worktree stacks harder to rebase | Document workflow: rebase from one worktree at a time |
-| Users confused about "active worktree" | Error message explains the concept implicitly |
-| IPC context missing | Validate context exists, fall back to blocking all conflicts |
+| Risk                                   | Mitigation                                                   |
+| -------------------------------------- | ------------------------------------------------------------ |
+| More friction for power users          | Clear error messages with actionable steps                   |
+| Multi-worktree stacks harder to rebase | Document workflow: rebase from one worktree at a time        |
+| Users confused about "active worktree" | Error message explains the concept implicitly                |
+| IPC context missing                    | Validate context exists, fall back to blocking all conflicts |

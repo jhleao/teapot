@@ -125,7 +125,8 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       scrollAmount = -AUTO_SCROLL_MAX_SPEED * proximity
     } else if (distanceFromBottom < AUTO_SCROLL_EDGE_THRESHOLD) {
       // Near or past bottom edge - scroll down (positive)
-      const proximity = distanceFromBottom <= 0 ? 1 : 1 - distanceFromBottom / AUTO_SCROLL_EDGE_THRESHOLD
+      const proximity =
+        distanceFromBottom <= 0 ? 1 : 1 - distanceFromBottom / AUTO_SCROLL_EDGE_THRESHOLD
       scrollAmount = AUTO_SCROLL_MAX_SPEED * proximity
     }
 
@@ -155,11 +156,7 @@ export function DragProvider({ children }: { children: ReactNode }): React.JSX.E
       const state = dragState.current
       if (!state.potentialDragSha || draggingCommitSha) return
 
-      const captured = captureCommitBoundingBoxes(
-        commitRefsMap.current,
-        stack,
-        viewportRef.current
-      )
+      const captured = captureCommitBoundingBoxes(commitRefsMap.current, stack, viewportRef.current)
       state.frozenBoundingBoxes = captured.boundingBoxes
       state.initialScrollTop = captured.initialScrollTop
       log.debug('[DragContext.maybeStartDrag] Captured drag state', {

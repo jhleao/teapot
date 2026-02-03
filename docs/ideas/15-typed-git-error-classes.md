@@ -32,6 +32,7 @@ try {
 ```
 
 This is fragile:
+
 - Error message format can change
 - Easy to miss error cases
 - Duplicated parsing logic across callers
@@ -85,12 +86,7 @@ export class BranchAlreadyExistsError extends BranchError {
 export class WorktreeError extends GitError {
   readonly worktreePath: string
 
-  constructor(
-    worktreePath: string,
-    operation: string,
-    message: string,
-    cause?: unknown
-  ) {
+  constructor(worktreePath: string, operation: string, message: string, cause?: unknown) {
     super(operation, message, cause)
     this.worktreePath = worktreePath
   }
@@ -231,12 +227,14 @@ async function handleBranchDeletion(repoPath: string, branch: string) {
 **Decision:** Create a hierarchy of error classes rooted at `GitError`.
 
 **Rationale:**
+
 - Enables `instanceof` checks for type-safe error handling
 - Provides specific properties for each error type (e.g., `branch`, `worktreePath`)
 - Follows established patterns (Node.js errors, DOM errors)
 - Self-documenting: error types show what can go wrong
 
 **Alternatives Considered:**
+
 1. **Error codes on generic Error**: Rejected - no type safety, no specific properties
 2. **Result types (Either/Option)**: Rejected - doesn't match JavaScript conventions
 3. **Error parsing at each call site**: Rejected - duplicated logic, fragile
@@ -246,6 +244,7 @@ async function handleBranchDeletion(repoPath: string, branch: string) {
 **Decision:** The adapter layer (`SimpleGitAdapter`) parses git errors and throws typed errors. Operation code catches typed errors.
 
 **Rationale:**
+
 - Centralizes error parsing logic
 - Operation code is cleaner (no string parsing)
 - Single place to update when git output changes
@@ -256,6 +255,7 @@ async function handleBranchDeletion(repoPath: string, branch: string) {
 **Decision:** All typed errors include the original error via the `cause` property.
 
 **Rationale:**
+
 - Preserves full stack trace for debugging
 - Original error may contain useful details
 - Follows ES2022 Error cause convention
@@ -266,6 +266,7 @@ async function handleBranchDeletion(repoPath: string, branch: string) {
 **Decision:** Error classes have properties that match domain concepts (e.g., `branch`, `worktreePath`) rather than raw git output.
 
 **Rationale:**
+
 - Callers work with domain concepts, not git internals
 - Easier to use in error messages and UI
 - Abstracts git implementation details
@@ -352,12 +353,7 @@ export class DirtyWorktreeError extends WorktreeError {
   readonly name = 'DirtyWorktreeError'
 
   constructor(worktreePath: string, cause?: unknown) {
-    super(
-      worktreePath,
-      'worktree',
-      `Worktree at '${worktreePath}' has uncommitted changes`,
-      cause
-    )
+    super(worktreePath, 'worktree', `Worktree at '${worktreePath}' has uncommitted changes`, cause)
   }
 }
 
@@ -379,11 +375,7 @@ export class RebaseConflictError extends GitError {
     readonly conflictedFiles: string[],
     cause?: unknown
   ) {
-    super(
-      'rebase',
-      `Rebase conflict in: ${conflictedFiles.join(', ')}`,
-      cause
-    )
+    super('rebase', `Rebase conflict in: ${conflictedFiles.join(', ')}`, cause)
   }
 }
 ```
@@ -399,7 +391,7 @@ import {
   BranchAlreadyExistsError,
   WorktreeConflictError,
   IndexLockedError,
-  RebaseConflictError,
+  RebaseConflictError
 } from '../../shared/errors'
 
 export class GitErrorParser {
@@ -407,9 +399,7 @@ export class GitErrorParser {
     const message = this.extractMessage(error)
 
     // Worktree conflicts
-    const worktreeMatch = message.match(
-      /(?:used by|already used by) worktree at '([^']+)'/
-    )
+    const worktreeMatch = message.match(/(?:used by|already used by) worktree at '([^']+)'/)
     if (worktreeMatch) {
       return new WorktreeConflictError(context, worktreeMatch[1], error)
     }
@@ -498,11 +488,7 @@ export class SimpleGitAdapter {
 ```typescript
 // src/node/operations/BranchOperation.ts
 
-import {
-  WorktreeConflictError,
-  BranchNotFoundError,
-  DirtyWorktreeError,
-} from '../shared/errors'
+import { WorktreeConflictError, BranchNotFoundError, DirtyWorktreeError } from '../shared/errors'
 
 export class BranchOperation {
   static async delete(repoPath: string, branch: string): Promise<void> {
@@ -570,9 +556,7 @@ describe('GitError hierarchy', () => {
 
 describe('GitErrorParser', () => {
   it('parses worktree conflict error', () => {
-    const gitError = new Error(
-      "fatal: cannot delete branch 'main' used by worktree at '/repo/wt'"
-    )
+    const gitError = new Error("fatal: cannot delete branch 'main' used by worktree at '/repo/wt'")
 
     const parsed = GitErrorParser.parse('deleteBranch', 'main', gitError)
 
@@ -594,9 +578,9 @@ describe('GitErrorParser', () => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Git error format changes | Centralized parser; tests catch regressions |
-| Missing error patterns | Generic `GitError` as fallback; add patterns iteratively |
-| Error class proliferation | Only create classes for actionable errors |
-| Prototype chain issues | Use `Object.setPrototypeOf` in constructor |
+| Risk                      | Mitigation                                               |
+| ------------------------- | -------------------------------------------------------- |
+| Git error format changes  | Centralized parser; tests catch regressions              |
+| Missing error patterns    | Generic `GitError` as fallback; add patterns iteratively |
+| Error class proliferation | Only create classes for actionable errors                |
+| Prototype chain issues    | Use `Object.setPrototypeOf` in constructor               |

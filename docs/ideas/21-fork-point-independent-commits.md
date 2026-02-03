@@ -22,11 +22,13 @@ trunk:  A ─ B ─ C
 ```
 
 **Before this change:**
+
 - `feature-left` ownership walk: F → E → D → stops at C (trunk)
 - `feature-right` ownership walk: H → G → D → stops at C (trunk)
 - Both branches "own" commit D
 
 **This causes surprising behavior:**
+
 - Rebasing `feature-left` moves D, breaking `feature-right`
 - Rebasing `feature-right` moves D, breaking `feature-left`
 - User expectation: sibling branches should be independent
@@ -61,6 +63,7 @@ trunk:  A ─ B ─ C
 ```
 
 **After this change:**
+
 - `feature-left` ownership: F → E → stops at D (fork point). Owns: [F, E]
 - `feature-right` ownership: H → G → stops at D (fork point). Owns: [H, G]
 - Commit D is owned by neither branch - it's a stable waypoint
@@ -110,10 +113,7 @@ interface DragTarget {
   affectedBranches?: string[]
 }
 
-function handleDragIndependentCommit(
-  forkPointSha: string,
-  targetSha: string
-): RebaseIntent {
+function handleDragIndependentCommit(forkPointSha: string, targetSha: string): RebaseIntent {
   // Find all branches that spinoff from this fork point
   const spinoffBranches = findSpinoffBranches(forkPointSha)
 
@@ -147,6 +147,7 @@ trunk:  A ─ B
 ```
 
 **Considerations:**
+
 - Dragging C moves the entire subtree (D, E, F, G)
 - Dragging D moves only its subtree (E, F), leaving G in place
 - UI should show the scope of the drag operation before confirming
@@ -165,6 +166,7 @@ trunk:  A ─ B
 ```
 
 **Considerations:**
+
 - All three branches are independent
 - Dragging C moves all three together
 - Visual clarity becomes more important with more spinoffs
@@ -182,6 +184,7 @@ trunk:  A ─ B
 ```
 
 **Considerations:**
+
 - Commits D and E are owned by `feature-left`
 - Rebasing `feature-left` moves D, E, F but NOT C
 - C remains as a stable waypoint for `feature-right`
@@ -202,6 +205,7 @@ After deleting feature-right:
 ```
 
 **Considerations:**
+
 - Ownership should recalculate when branch structure changes
 - C transitions from independent to owned by `feature-left`
 - Visual styling should update accordingly
@@ -219,6 +223,7 @@ trunk:  A ─ B
 ```
 
 **Considerations:**
+
 - Ownership walk correctly stops at C for both branches
 - Dragging C would rebase many commits - need confirmation
 - Performance: ownership calculation is O(n) per branch
@@ -228,6 +233,7 @@ trunk:  A ─ B
 What happens if rebasing the subtree encounters conflicts?
 
 **Considerations:**
+
 - Need to handle partial failures
 - Options:
   1. Abort entire operation on first conflict
@@ -249,6 +255,7 @@ What happens if rebasing the subtree encounters conflicts?
 ### Confirmation
 
 For subtree rebases, show a confirmation dialog:
+
 ```
 Move subtree?
 
@@ -283,6 +290,7 @@ To: main (def5678)
 **Decision:** Fork point detection in `CommitOwnership.ts` as shared utility.
 
 **Rationale:**
+
 - Single source of truth for ownership rules
 - Used by both UI (visual styling) and operations (rebase)
 - Easy to test in isolation
@@ -292,6 +300,7 @@ To: main (def5678)
 **Decision:** `isIndependent` is computed at UI build time, not stored in commit data.
 
 **Rationale:**
+
 - Independence depends on current branch structure
 - Changes when branches are created/deleted
 - No stale state to manage
@@ -302,6 +311,7 @@ To: main (def5678)
 **Decision:** Implement subtree drag as new `RebaseIntent` type.
 
 **Rationale:**
+
 - Distinct from single-branch rebase
 - Clear scope in intent makes testing easier
 - Can be rejected at validation if too complex
@@ -312,6 +322,7 @@ To: main (def5678)
 ## Implementation Status
 
 ### Completed
+
 - [x] Fork point detection (`isForkPoint` utility)
 - [x] Ownership walk stops at fork points
 - [x] `isIndependent` flag on `UiCommit`
@@ -319,6 +330,7 @@ To: main (def5678)
 - [x] Unit tests for fork point scenarios
 
 ### Proposed (Not Implemented)
+
 - [ ] Drag handlers for independent commits
 - [ ] Subtree rebase intent type
 - [ ] Hover preview of affected branches
@@ -336,11 +348,11 @@ To: main (def5678)
 
 ## Files Modified (Core Implementation)
 
-| File | Changes |
-|------|---------|
-| `src/node/domain/CommitOwnership.ts` | Added `isForkPoint()`, fork point detection in ownership walk |
-| `src/shared/types/ui.ts` | Added `isIndependent?: boolean` to `UiCommit` |
-| `src/node/domain/UiStateBuilder.ts` | Uses `isForkPoint()` to set `isIndependent` |
-| `src/web/components/SvgPaths.tsx` | Added 'independent' variant styling |
-| `src/web/components/StackView.tsx` | Uses `isIndependent` for variant selection |
-| `src/node/domain/__tests__/CommitOwnership.test.ts` | Tests for fork point scenarios |
+| File                                                | Changes                                                       |
+| --------------------------------------------------- | ------------------------------------------------------------- |
+| `src/node/domain/CommitOwnership.ts`                | Added `isForkPoint()`, fork point detection in ownership walk |
+| `src/shared/types/ui.ts`                            | Added `isIndependent?: boolean` to `UiCommit`                 |
+| `src/node/domain/UiStateBuilder.ts`                 | Uses `isForkPoint()` to set `isIndependent`                   |
+| `src/web/components/SvgPaths.tsx`                   | Added 'independent' variant styling                           |
+| `src/web/components/StackView.tsx`                  | Uses `isIndependent` for variant selection                    |
+| `src/node/domain/__tests__/CommitOwnership.test.ts` | Tests for fork point scenarios                                |

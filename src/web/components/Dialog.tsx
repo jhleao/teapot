@@ -49,11 +49,12 @@ function DialogOverlay({ onClick }: { onClick: () => void }) {
 
 export function DialogContent({
   children,
-  className
+  className,
+  ...props
 }: {
   children: React.ReactNode
   className?: string
-}) {
+} & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
@@ -63,6 +64,7 @@ export function DialogContent({
         'gap-4 border p-6 shadow-lg duration-200 sm:rounded-lg',
         className
       )}
+      {...props}
     >
       {children}
     </div>

@@ -36,11 +36,11 @@ import { RebaseStateMachine, RebaseValidator, StackAnalyzer } from '../domain'
 import type { ValidationResult } from '../domain/RebaseValidator'
 import { ExecutionContextService, SessionService, TransactionService } from '../services'
 import { WorktreeCreationError, type ExecutionContext } from '../services/ExecutionContextService'
+import { GitWatcher } from '../services/GitWatcherService'
 import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { checkConflictResolution } from '../utils/conflict-markers'
-import { GitWatcher } from '../services/GitWatcherService'
 import { WorktreeOperation } from './WorktreeOperation'
 import { parseWorktreeConflictError } from './WorktreeUtils'
 
@@ -860,7 +860,14 @@ export class RebaseExecutor {
     watcher.pause()
 
     try {
-      return await this.executeJobsLoop(repoPath, executionPath, git, intent, options, generateJobId)
+      return await this.executeJobsLoop(
+        repoPath,
+        executionPath,
+        git,
+        intent,
+        options,
+        generateJobId
+      )
     } finally {
       watcher.resume()
     }

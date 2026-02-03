@@ -1,4 +1,5 @@
-import { Loader2 } from 'lucide-react'
+import type { WorktreeInitConfig } from '@shared/types/repo'
+import { Loader2, Settings } from 'lucide-react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
@@ -9,6 +10,7 @@ interface NewBranchDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   sourceBranch: string
+  onOpenSettings?: () => void
 }
 
 const containsInvalidGitBranchChars = (name: string): boolean => {
@@ -53,28 +55,43 @@ function generatePlaceholderName(): string {
 export function NewBranchDialog({
   open,
   onOpenChange,
-  sourceBranch
+  sourceBranch,
+  onOpenSettings
 }: NewBranchDialogProps): React.JSX.Element {
   const { repoPath, createWorktreeWithBranch } = useUiStateContext()
 
   const [branchName, setBranchName] = useState('')
   const [createWorktree, setCreateWorktree] = useState(true)
   const [createWorkingCommit, setCreateWorkingCommit] = useState(false)
+  const [runInitialization, setRunInitialization] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [initConfig, setInitConfig] = useState<WorktreeInitConfig | null>(null)
 
   // Generate placeholder on dialog open
   const placeholderName = useMemo(() => (open ? generatePlaceholderName() : ''), [open])
 
-  // Reset form state when dialog opens
+  // Load repo config when dialog opens
   useEffect(() => {
-    if (open) {
+    if (open && repoPath) {
+      window.api.getWorktreeInitConfig({ repoPath }).then(setInitConfig)
+      // Reset form state
       setBranchName('')
       setCreateWorktree(true)
-      setCreateWorkingCommit(false)
+      setRunInitialization(true)
       setError(null)
     }
-  }, [open])
+  }, [open, repoPath])
+
+  // Update default for working commit from config
+  useEffect(() => {
+    if (initConfig) {
+      setCreateWorkingCommit(initConfig.createWorkingCommit)
+    }
+  }, [initConfig])
+
+  const hasInitConfig =
+    initConfig && (initConfig.filesToCopy.length > 0 || initConfig.setupCommands.length > 0)
 
   const trimmedName = branchName.trim()
   const validationError = trimmedName ? validateBranchName(trimmedName) : null
@@ -95,7 +112,8 @@ export function NewBranchDialog({
         sourceBranch,
         newBranchName: trimmedName || undefined,
         createWorktree,
-        createWorkingCommit: createWorktree && createWorkingCommit
+        createWorkingCommit: createWorktree && createWorkingCommit,
+        runInitialization: createWorktree && runInitialization && !!hasInitConfig
       })
 
       if (result.success) {
@@ -104,8 +122,10 @@ export function NewBranchDialog({
 
         // Show success toast
         if (createWorktree && result.worktreePath) {
+          const initMessage =
+            runInitialization && hasInitConfig ? ' Initialization running in background.' : ''
           toast.success('Branch and worktree created', {
-            description: `Branch ${result.branchName} at ${result.worktreePath}`
+            description: `Branch ${result.branchName} at ${result.worktreePath}${initMessage}`
           })
         } else {
           toast.success('Branch created', {
@@ -127,6 +147,8 @@ export function NewBranchDialog({
     validationError,
     createWorktree,
     createWorkingCommit,
+    runInitialization,
+    hasInitConfig,
     createWorktreeWithBranch,
     onOpenChange
   ])
@@ -172,7 +194,7 @@ export function NewBranchDialog({
               placeholder={placeholderName}
               disabled={isCreating}
               autoFocus
-              className="border-border bg-background placeholder:text-muted-foreground focus:border-foreground flex w-full rounded-md border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              className="border-input bg-background placeholder:text-muted-foreground focus:border-foreground flex w-full rounded-md border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
             {(error || validationError) && (
               <p className="text-destructive text-xs">{error || validationError}</p>
@@ -185,17 +207,17 @@ export function NewBranchDialog({
           </div>
 
           {/* Create worktree checkbox */}
-          <label className="flex cursor-pointer items-start gap-3">
+          <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
               checked={createWorktree}
               onChange={(e) => setCreateWorktree(e.target.checked)}
               disabled={isCreating}
-              className="mt-1"
+              className="border-input bg-background h-4 w-4 shrink-0 rounded border accent-current disabled:cursor-not-allowed disabled:opacity-50"
             />
             <div>
-              <span className="text-sm font-medium">Create worktree</span>
-              <p className="text-muted-foreground mt-0.5 text-xs">
+              <span className="text-sm">Create worktree</span>
+              <p className="text-muted-foreground text-xs">
                 Check out the branch in a new working directory
               </p>
             </div>
@@ -203,23 +225,60 @@ export function NewBranchDialog({
 
           {/* Worktree-specific options (only shown when creating worktree) */}
           {createWorktree && (
-            <div className="border-muted space-y-3 border-l-2 pl-4">
+            <div className="space-y-3">
               {/* Working commit checkbox */}
-              <label className="flex cursor-pointer items-start gap-3">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="checkbox"
                   checked={createWorkingCommit}
                   onChange={(e) => setCreateWorkingCommit(e.target.checked)}
                   disabled={isCreating}
-                  className="mt-1"
+                  className="border-input bg-background h-4 w-4 shrink-0 rounded border accent-current disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <div>
-                  <span className="text-sm font-medium">Create working commit</span>
-                  <p className="text-muted-foreground mt-0.5 text-xs">
+                  <span className="text-sm">Create working commit</span>
+                  <p className="text-muted-foreground text-xs">
                     Add an empty &quot;WIP&quot; commit as a starting point
                   </p>
                 </div>
               </label>
+
+              {/* Initialization toggle */}
+              {hasInitConfig && (
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={runInitialization}
+                    onChange={(e) => setRunInitialization(e.target.checked)}
+                    disabled={isCreating}
+                    className="border-input bg-background h-4 w-4 shrink-0 rounded border accent-current disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <div>
+                    <span className="text-sm">Run initialization</span>
+                    <p className="text-muted-foreground text-xs">
+                      Copy {initConfig.filesToCopy.length} file(s), run{' '}
+                      {initConfig.setupCommands.length} command(s)
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {!hasInitConfig && onOpenSettings && (
+                <p className="text-muted-foreground text-xs">
+                  No initialization configured.{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenChange(false)
+                      onOpenSettings()
+                    }}
+                    className="text-accent inline-flex items-center gap-1 hover:underline"
+                  >
+                    <Settings className="h-3 w-3" />
+                    Configure in settings
+                  </button>
+                </p>
+              )}
             </div>
           )}
         </div>

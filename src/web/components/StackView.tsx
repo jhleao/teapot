@@ -370,10 +370,11 @@ export const CommitView = memo(function CommitView({
           isPartOfRebasePlan && 'bg-accent/30',
           isBeingDragged && 'bg-accent/10'
         )}
+        onMouseDown={onCommitDotMouseDown}
       >
         {/* Drop indicator - shown/hidden via direct DOM manipulation in DragContext */}
         <div className="drop-indicator bg-accent absolute -top-px left-0 hidden h-[3px] w-full" />
-        <div onMouseDown={onCommitDotMouseDown}>
+        <div>
           <CommitDot
             top={!isOwned && showTopLine}
             bottom={!isOwned && showBottomLine}

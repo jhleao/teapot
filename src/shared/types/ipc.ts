@@ -151,6 +151,7 @@ export const IPC_CHANNELS = {
   openWorktreeInTerminal: 'openWorktreeInTerminal',
   copyWorktreePath: 'copyWorktreePath',
   createWorktree: 'createWorktree',
+  createWorktreeWithBranch: 'createWorktreeWithBranch',
   // Clone
   cloneRepository: 'cloneRepository',
   getLastClonePath: 'getLastClonePath',
@@ -418,6 +419,26 @@ export interface IpcContract {
   [IPC_CHANNELS.createWorktree]: {
     request: { repoPath: string; branch: string }
     response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
+  }
+  [IPC_CHANNELS.createWorktreeWithBranch]: {
+    request: {
+      repoPath: string
+      /** Source branch to base the new branch on */
+      sourceBranch: string
+      /** Name for the new branch (optional - auto-generate if not provided) */
+      newBranchName?: string
+      /** Whether to create a worktree for the new branch (default: true) */
+      createWorktree?: boolean
+      /** Whether to create an empty WIP commit */
+      createWorkingCommit: boolean
+    }
+    response: {
+      success: boolean
+      error?: string
+      worktreePath?: string
+      branchName?: string
+      uiState?: UiState | null
+    }
   }
   [IPC_CHANNELS.cloneRepository]: {
     request: { url: string; targetPath: string; folderName?: string }

@@ -214,17 +214,27 @@ export class WorktreeOperation {
 
   /**
    * Create a new worktree for a branch.
-   * The worktree is created in <temp>/teapot/worktrees/<random-name>
+   * The worktree is created in <temp>/teapot/worktrees/wt-<branch-name>
+   * If the directory already exists (e.g., from a deleted worktree), a suffix is added.
    */
   static async create(
     repoPath: string,
     branch: string
   ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
     try {
-      // Generate a random directory name
-      const dirName = BranchUtils.generateRandomBranchName('wt')
+      // Use branch name for the directory, sanitized for filesystem, with wt- prefix
+      const sanitizedBranch = branch.replace(/[^a-zA-Z0-9_-]/g, '-')
       const baseDir = path.join(os.tmpdir(), 'teapot', 'worktrees')
-      const worktreePath = path.join(baseDir, dirName)
+      let dirName = `wt-${sanitizedBranch}`
+      let worktreePath = path.join(baseDir, dirName)
+
+      // Handle case where directory already exists (add numeric suffix)
+      let suffix = 1
+      while (await this.directoryExists(worktreePath)) {
+        dirName = `wt-${sanitizedBranch}-${suffix}`
+        worktreePath = path.join(baseDir, dirName)
+        suffix++
+      }
 
       // Ensure the parent directory exists (cross-platform)
       await fs.promises.mkdir(baseDir, { recursive: true })
@@ -241,6 +251,74 @@ export class WorktreeOperation {
       const message = error instanceof Error ? error.message : String(error)
       log.error(`[WorktreeOperation.create] Failed:`, error)
       return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Create a new branch, optionally with a worktree.
+   * This is the enhanced branch creation flow that:
+   * 1. Creates a new branch from the source branch
+   * 2. Optionally creates a worktree for that branch
+   * 3. Optionally creates a "working commit" (empty WIP commit)
+   */
+  static async createWithNewBranch(
+    repoPath: string,
+    sourceBranch: string,
+    options: {
+      newBranchName?: string
+      createWorktree?: boolean
+      createWorkingCommit: boolean
+    }
+  ): Promise<{
+    success: boolean
+    error?: string
+    worktreePath?: string
+    branchName?: string
+  }> {
+    const branchName = options.newBranchName?.trim() || BranchUtils.generateRandomBranchName('')
+    const shouldCreateWorktree = options.createWorktree !== false // Default to true
+
+    // Step 1: Create the new branch from source
+    try {
+      await execAsync(`git -C "${repoPath}" branch "${branchName}" "${sourceBranch}"`)
+      log.info(`[WorktreeOperation] Created branch ${branchName} from ${sourceBranch}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.createWithNewBranch] Failed to create branch:`, error)
+      return { success: false, error: `Failed to create branch: ${message}` }
+    }
+
+    // If not creating worktree, we're done
+    if (!shouldCreateWorktree) {
+      return {
+        success: true,
+        branchName
+      }
+    }
+
+    // Step 2: Create the worktree for the new branch
+    const worktreeResult = await this.create(repoPath, branchName)
+    if (!worktreeResult.success) {
+      // Rollback: delete the branch we just created
+      await this.rollbackBranchCreation(repoPath, branchName)
+      return { success: false, error: worktreeResult.error }
+    }
+
+    const worktreePath = worktreeResult.worktreePath!
+
+    // Step 3: Create working commit if requested
+    if (options.createWorkingCommit) {
+      const commitResult = await this.createWorkingCommit(worktreePath, sourceBranch)
+      if (!commitResult.success) {
+        // Non-fatal: log warning but continue
+        log.warn(`[WorktreeOperation] Failed to create working commit: ${commitResult.error}`)
+      }
+    }
+
+    return {
+      success: true,
+      worktreePath,
+      branchName
     }
   }
 
@@ -327,6 +405,49 @@ export class WorktreeOperation {
       return stdout.trim().length > 0
     } catch {
       return false
+    }
+  }
+
+  /**
+   * Check if a directory exists.
+   */
+  private static async directoryExists(dirPath: string): Promise<boolean> {
+    try {
+      await fs.promises.access(dirPath)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Create an empty "WIP" commit to act as a working commit.
+   */
+  private static async createWorkingCommit(
+    worktreePath: string,
+    sourceBranch: string
+  ): Promise<WorktreeOperationResult> {
+    try {
+      const message = `WIP: Work started from ${sourceBranch}`
+      await execAsync(`git -C "${worktreePath}" commit --allow-empty -m "${message}"`)
+      log.info(`[WorktreeOperation] Created working commit in ${worktreePath}`)
+      return { success: true }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log.error(`[WorktreeOperation.createWorkingCommit] Failed:`, error)
+      return { success: false, error: message }
+    }
+  }
+
+  /**
+   * Rollback branch creation if worktree creation fails.
+   */
+  private static async rollbackBranchCreation(repoPath: string, branchName: string): Promise<void> {
+    try {
+      await execAsync(`git -C "${repoPath}" branch -D "${branchName}"`)
+      log.info(`[WorktreeOperation] Rolled back branch creation: ${branchName}`)
+    } catch (error) {
+      log.warn(`[WorktreeOperation] Failed to rollback branch ${branchName}:`, error)
     }
   }
 }

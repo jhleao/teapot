@@ -16,13 +16,13 @@ Current `pruneStaleWorktrees` returns `{ pruned: boolean; error?: string }`, but
 
 ### Current Usage Analysis
 
-| Location | Uses `pruned`? | Uses `error`? | Pattern |
-|----------|---------------|---------------|---------|
-| `watchRepo` | No | No | Fire-and-forget |
-| `WorktreeOperation.remove` | No | No | Always returns success |
-| `BranchOperation.removeWorktreeForBranch` | No | No | Via `pruneIfStale` |
-| `retryWithPrune` | Yes | No | Only checks success |
-| `pruneIfStale` | Yes | No | Propagates status |
+| Location                                  | Uses `pruned`? | Uses `error`? | Pattern                |
+| ----------------------------------------- | -------------- | ------------- | ---------------------- |
+| `watchRepo`                               | No             | No            | Fire-and-forget        |
+| `WorktreeOperation.remove`                | No             | No            | Always returns success |
+| `BranchOperation.removeWorktreeForBranch` | No             | No            | Via `pruneIfStale`     |
+| `retryWithPrune`                          | Yes            | No            | Only checks success    |
+| `pruneIfStale`                            | Yes            | No            | Propagates status      |
 
 ## Proposed Solution
 
@@ -73,12 +73,14 @@ Accept slight inconsistency for backwards compatibility. This is acceptable if m
 **Decision:** Change `pruneStaleWorktrees` to return `Promise<void>` and throw on error.
 
 **Rationale:**
+
 - Standard JavaScript async/await convention
 - Composable with other async operations
 - Existing `.catch()` handlers continue to work
 - Makes error handling choice explicit at call site
 
 **Alternatives Considered:**
+
 1. **Keep result object**: Rejected - inconsistent with rest of codebase
 2. **Return boolean only**: Rejected - loses error details
 3. **Result type with discriminated union**: Rejected - over-engineering for simple operation
@@ -88,6 +90,7 @@ Accept slight inconsistency for backwards compatibility. This is acceptable if m
 **Decision:** Create `WorktreePruneError` for prune-specific errors.
 
 **Rationale:**
+
 - Can distinguish prune errors from other errors
 - Enables specific error handling if needed
 - Follows existing error patterns in codebase (e.g., `TimeoutError`)
@@ -152,10 +155,7 @@ export async function pruneStaleWorktrees(repoPath: string): Promise<void> {
 // src/node/utils/WorktreeUtils.ts
 
 // Before:
-async function retryWithPrune<T>(
-  fn: () => Promise<T>,
-  repoPath: string
-): Promise<T> {
+async function retryWithPrune<T>(fn: () => Promise<T>, repoPath: string): Promise<T> {
   try {
     return await fn()
   } catch (error) {
@@ -168,10 +168,7 @@ async function retryWithPrune<T>(
 }
 
 // After:
-async function retryWithPrune<T>(
-  fn: () => Promise<T>,
-  repoPath: string
-): Promise<T> {
+async function retryWithPrune<T>(fn: () => Promise<T>, repoPath: string): Promise<T> {
   try {
     return await fn()
   } catch (error) {
@@ -214,7 +211,7 @@ Existing callers using `.catch()` continue to work:
 
 ```typescript
 // These are unchanged:
-pruneStaleWorktrees(repoPath).catch(err => {
+pruneStaleWorktrees(repoPath).catch((err) => {
   log.warn('Failed to prune', err)
 })
 ```
@@ -223,8 +220,8 @@ pruneStaleWorktrees(repoPath).catch(err => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Breaking callers that check `pruned` | Update `retryWithPrune` and `pruneIfStale` |
-| Silent behavior change | Existing `.catch()` handlers still work |
-| Missed caller | Search codebase for all usages before merge |
+| Risk                                 | Mitigation                                  |
+| ------------------------------------ | ------------------------------------------- |
+| Breaking callers that check `pruned` | Update `retryWithPrune` and `pruneIfStale`  |
+| Silent behavior change               | Existing `.catch()` handlers still work     |
+| Missed caller                        | Search codebase for all usages before merge |

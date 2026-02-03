@@ -41,7 +41,7 @@ function App(): React.JSX.Element {
 
   return (
     <TooltipProvider>
-      <div className="flex h-screen flex-col">
+      <div className="flex h-screen flex-col" data-testid="app-container">
         <TitleBar />
         <div className="border-border/50 bg-background border-b px-6 py-2">
           <Topbar />
@@ -65,6 +65,7 @@ function App(): React.JSX.Element {
           onClick={() => setIsSettingsOpen(true)}
           className="focus:ring-foreground bg-secondary text-secondary-foreground hover:bg-secondary/80 fixed right-6 bottom-6 z-50 flex h-10 w-10 cursor-pointer items-center justify-center rounded-full shadow-lg transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
           aria-label="Settings"
+          data-testid="settings-button"
         >
           <Settings className="h-5 w-5" />
         </button>

@@ -47,7 +47,10 @@ export function EmptyState({
   const { icon: Icon, spin, iconClassName, title, description, actionLabel } = config[variant]
 
   return (
-    <div className="flex min-h-[400px] items-center justify-center">
+    <div
+      className="flex min-h-[400px] items-center justify-center"
+      data-testid={`empty-state-${variant}`}
+    >
       <div className="text-center">
         <Icon
           className={cn(
@@ -67,6 +70,7 @@ export function EmptyState({
           <button
             onClick={onAction}
             className="bg-accent text-accent-foreground hover:bg-accent/90 focus:ring-accent inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
+            data-testid="empty-state-action"
           >
             {variant === 'no-repo' && <Plus className="h-4 w-4" />}
             <span>{actionLabel}</span>
@@ -76,6 +80,7 @@ export function EmptyState({
           <button
             onClick={() => window.location.reload()}
             className="bg-accent text-accent-foreground hover:bg-accent/90 focus:ring-accent inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:ring-2 focus:ring-offset-2 focus:outline-none"
+            data-testid="error-reload-button"
           >
             <span>Reload</span>
           </button>

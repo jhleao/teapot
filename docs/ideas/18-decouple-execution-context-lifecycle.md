@@ -13,17 +13,18 @@ The temporary execution worktree is managed by `ExecutionContextService` with an
 acquire() → [operation runs] → release()
 ```
 
-The `executeWithContext` helper enforces this pattern, calling `release()` after the operation callback completes. However, `finalizeRebase` runs *inside* that callback and needs to perform operations that conflict with the execution context still existing.
+The `executeWithContext` helper enforces this pattern, calling `release()` after the operation callback completes. However, `finalizeRebase` runs _inside_ that callback and needs to perform operations that conflict with the execution context still existing.
 
 ### The Conflict
 
 When finalizing a rebase:
+
 1. The temp worktree may have the rebased branch checked out
 2. Finalization wants to re-checkout that branch in another worktree
 3. Git refuses: "branch is already used by worktree"
 4. Current fix: Detach HEAD in temp worktree before finalization
 
-This creates a **temporal dependency**: finalization logic needs the temp worktree to be released, but release happens *after* finalization.
+This creates a **temporal dependency**: finalization logic needs the temp worktree to be released, but release happens _after_ finalization.
 
 ### Current Workaround
 
@@ -40,6 +41,7 @@ async function finalizeRebase(context: ExecutionContext): Promise<void> {
 ```
 
 This workaround:
+
 - Reaches into execution context's internal state
 - Creates implicit coupling between finalization and context management
 - Makes error handling complicated (context in intermediate state)
@@ -60,8 +62,8 @@ interface ExecutionContext {
   phase: 'acquired' | 'preparing_release' | 'released'
 
   // Explicit phase transitions
-  prepareForRelease(): Promise<void>  // Detach HEAD, cleanup
-  release(): Promise<void>            // Remove worktree
+  prepareForRelease(): Promise<void> // Detach HEAD, cleanup
+  release(): Promise<void> // Remove worktree
 }
 
 async function executeWithContext<T>(
@@ -105,12 +107,14 @@ async function executeWithContext<T>(
 **Decision:** Add explicit phases to `ExecutionContext`: `acquired`, `preparing_release`, `released`.
 
 **Rationale:**
+
 - Makes lifecycle visible and debuggable
 - Phase transitions are explicit method calls
 - Guards can prevent operations in wrong phase
 - Logging shows clear state progression
 
 **Alternatives Considered:**
+
 1. **Keep implicit state**: Rejected - source of current bug
 2. **Separate finalization service**: Rejected - over-engineering
 3. **Always detach on acquire**: Rejected - breaks normal operation flow
@@ -118,11 +122,13 @@ async function executeWithContext<T>(
 ### ADR-002: Preparation Phase Responsibility
 
 **Decision:** The `prepareForRelease()` method is responsible for:
+
 1. Detaching HEAD (freeing any branch refs)
 2. Cleaning up any temporary state
 3. Ensuring worktree is safe to delete
 
 **Rationale:**
+
 - Single responsibility for "make context releasable"
 - Callers don't need to know internal details
 - Can evolve preparation logic independently
@@ -132,6 +138,7 @@ async function executeWithContext<T>(
 **Decision:** `executeWithContext` accepts optional `finalization` callback that runs between preparation and release.
 
 **Rationale:**
+
 - Finalization has guaranteed clean state (branches freed)
 - Clear separation of operation from cleanup
 - Finalization failures don't prevent release
@@ -276,10 +283,7 @@ export async function executeWithContext<T>(
 ```typescript
 // src/node/rebase/RebaseExecutor.ts
 
-export async function executeRebase(
-  repoPath: string,
-  queue: RebaseQueue
-): Promise<RebaseResult> {
+export async function executeRebase(repoPath: string, queue: RebaseQueue): Promise<RebaseResult> {
   return executeWithContext(repoPath, {
     operation: async (context) => {
       // Run the actual rebase
@@ -351,9 +355,7 @@ async function runRebaseQueue(
 ): Promise<RebaseResult> {
   for (const job of queue.jobs) {
     // This will throw if called after prepareForRelease
-    await context.gitOperation(() =>
-      git.rebase(context.executionPath, job.onto)
-    )
+    await context.gitOperation(() => git.rebase(context.executionPath, job.onto))
   }
 }
 ```
@@ -406,9 +408,9 @@ describe('ExecutionContext lifecycle', () => {
     const context = await ExecutionContextService.acquire(repoPath)
     await context.prepareForRelease()
 
-    await expect(
-      context.gitOperation(() => git.status(context.executionPath))
-    ).rejects.toThrow(/context is in 'preparing_release' phase/)
+    await expect(context.gitOperation(() => git.status(context.executionPath))).rejects.toThrow(
+      /context is in 'preparing_release' phase/
+    )
   })
 
   it('allows release from any non-released phase', async () => {
@@ -431,10 +433,7 @@ describe('ExecutionContext lifecycle', () => {
       }
     })
 
-    expect(phases).toEqual([
-      'operation: acquired',
-      'finalization: preparing_release'
-    ])
+    expect(phases).toEqual(['operation: acquired', 'finalization: preparing_release'])
   })
 })
 ```
@@ -476,9 +475,9 @@ describe('ExecutionContext lifecycle', () => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Breaking existing code | Gradual migration; support both patterns initially |
-| Forgotten prepareForRelease | executeWithContext handles automatically |
-| Error during prepareForRelease | release() works from any phase |
-| Phase assertion overhead | Assertions are cheap; add only where needed |
+| Risk                           | Mitigation                                         |
+| ------------------------------ | -------------------------------------------------- |
+| Breaking existing code         | Gradual migration; support both patterns initially |
+| Forgotten prepareForRelease    | executeWithContext handles automatically           |
+| Error during prepareForRelease | release() works from any phase                     |
+| Phase assertion overhead       | Assertions are cheap; add only where needed        |

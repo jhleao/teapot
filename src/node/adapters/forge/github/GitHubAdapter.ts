@@ -115,7 +115,12 @@ export class GitHubAdapter implements GitForgeAdapter {
   ): ForgePullRequest {
     const state = this.mapGraphQLPrState(pr)
     const checks = this.extractGraphQLChecks(pr)
-    const mergeReadiness = this.buildGraphQLMergeReadiness(pr, checks, branchProtectionRules, rulesets)
+    const mergeReadiness = this.buildGraphQLMergeReadiness(
+      pr,
+      checks,
+      branchProtectionRules,
+      rulesets
+    )
 
     return {
       number: pr.number,
@@ -322,7 +327,10 @@ export class GitHubAdapter implements GitForgeAdapter {
     const canMerge = pr.mergeable === 'MERGEABLE' && pr.mergeStateStatus === 'CLEAN'
 
     // Find matching branch protection rule for the PR's base branch
-    const protectionRule = this.findMatchingBranchProtectionRule(pr.baseRefName, branchProtectionRules)
+    const protectionRule = this.findMatchingBranchProtectionRule(
+      pr.baseRefName,
+      branchProtectionRules
+    )
 
     // Get required check names from branch protection rules
     const protectionRuleChecks: string[] =
@@ -341,7 +349,11 @@ export class GitHubAdapter implements GitForgeAdapter {
     const existingCheckNames = new Set(checks.map((c) => c.name.toLowerCase()))
     const expectedChecks: StatusCheck[] = requiredCheckNames
       .filter((name) => !existingCheckNames.has(name.toLowerCase()))
-      .map((name) => ({ name, status: 'expected' as const, description: 'Waiting for status to be reported' }))
+      .map((name) => ({
+        name,
+        status: 'expected' as const,
+        description: 'Waiting for status to be reported'
+      }))
 
     // Combine existing checks with expected checks
     const allChecks = [...checks, ...expectedChecks]

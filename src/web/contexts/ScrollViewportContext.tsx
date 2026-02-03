@@ -22,16 +22,9 @@ export function ScrollViewportProvider({ children }: { children: ReactNode }): R
     viewportRef.current = element
   }, [])
 
-  const value = useMemo(
-    () => ({ viewportRef, setViewportRef }),
-    [setViewportRef]
-  )
+  const value = useMemo(() => ({ viewportRef, setViewportRef }), [setViewportRef])
 
-  return (
-    <ScrollViewportContext.Provider value={value}>
-      {children}
-    </ScrollViewportContext.Provider>
-  )
+  return <ScrollViewportContext.Provider value={value}>{children}</ScrollViewportContext.Provider>
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

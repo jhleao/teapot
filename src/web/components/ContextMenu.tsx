@@ -89,7 +89,5 @@ export function ContextMenuItem({
 }
 
 export function ContextMenuSeparator({ className }: { className?: string }) {
-  return (
-    <ContextMenuPrimitive.Separator className={cn('-mx-1 my-1 h-px bg-border', className)} />
-  )
+  return <ContextMenuPrimitive.Separator className={cn('bg-border -mx-1 my-1 h-px', className)} />
 }

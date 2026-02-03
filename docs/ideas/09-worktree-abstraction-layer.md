@@ -25,11 +25,7 @@ export class Worktree {
   readonly gitDir: string
   readonly isLinked: boolean
 
-  private constructor(
-    path: string,
-    gitDir: string,
-    isLinked: boolean
-  ) {
+  private constructor(path: string, gitDir: string, isLinked: boolean) {
     this.path = path
     this.gitDir = gitDir
     this.isLinked = isLinked
@@ -48,9 +44,7 @@ export class Worktree {
     const match = content.match(/^gitdir:\s*(.+)$/m)
     if (!match) throw new Error(`Invalid .git file: ${gitPath}`)
 
-    const gitDir = path.isAbsolute(match[1])
-      ? match[1]
-      : path.resolve(worktreePath, match[1])
+    const gitDir = path.isAbsolute(match[1]) ? match[1] : path.resolve(worktreePath, match[1])
 
     return new Worktree(worktreePath, gitDir, true)
   }
@@ -68,8 +62,14 @@ export class Worktree {
   /** Check if rebase is in progress */
   async isRebasing(): Promise<boolean> {
     const [mergeExists, applyExists] = await Promise.all([
-      fs.promises.access(this.rebaseMergePath).then(() => true, () => false),
-      fs.promises.access(this.rebaseApplyPath).then(() => true, () => false)
+      fs.promises.access(this.rebaseMergePath).then(
+        () => true,
+        () => false
+      ),
+      fs.promises.access(this.rebaseApplyPath).then(
+        () => true,
+        () => false
+      )
     ])
     return mergeExists || applyExists
   }
@@ -87,7 +87,10 @@ export class Worktree {
 // Before (buggy)
 const gitDir = path.join(dir, '.git')
 const rebaseMerge = path.join(gitDir, 'rebase-merge')
-const isRebasing = await fs.promises.access(rebaseMerge).then(() => true, () => false)
+const isRebasing = await fs.promises.access(rebaseMerge).then(
+  () => true,
+  () => false
+)
 
 // After (correct for both linked and main worktrees)
 const worktree = await Worktree.fromPath(dir)
@@ -116,12 +119,14 @@ const isRebasing = await worktree.isRebasing()
 **Decision:** Create `Worktree` as immutable domain class with `fromPath()` async factory.
 
 **Rationale:**
+
 - Encapsulates git directory resolution logic
 - Immutable after construction (path, gitDir, isLinked don't change)
 - Factory method handles async file system operations
 - Follows existing domain class patterns in codebase
 
 **Alternatives Considered:**
+
 1. **Utility functions**: Rejected - no encapsulation, repeated logic
 2. **GitAdapter methods**: Rejected - couples path resolution to git operations
 3. **Synchronous construction with lazy resolution**: Rejected - complicates usage
@@ -131,6 +136,7 @@ const isRebasing = await worktree.isRebasing()
 **Decision:** Provide getters for common git-internal paths (rebaseMergePath, rebaseApplyPath, lockFilePath).
 
 **Rationale:**
+
 - All callers get consistent, correct paths
 - New paths can be added without changing callers
 - Self-documenting API
@@ -140,6 +146,7 @@ const isRebasing = await worktree.isRebasing()
 **Decision:** Cache `Worktree` instances by path to avoid repeated file system access.
 
 **Rationale:**
+
 - Worktree structure doesn't change during runtime
 - Saves repeated file reads for gitdir resolution
 - Cache can be cleared if worktree is deleted
@@ -229,8 +236,14 @@ export class Worktree {
   // Common operations
   async isRebasing(): Promise<boolean> {
     const [mergeExists, applyExists] = await Promise.all([
-      fs.promises.access(this.rebaseMergePath).then(() => true, () => false),
-      fs.promises.access(this.rebaseApplyPath).then(() => true, () => false)
+      fs.promises.access(this.rebaseMergePath).then(
+        () => true,
+        () => false
+      ),
+      fs.promises.access(this.rebaseApplyPath).then(
+        () => true,
+        () => false
+      )
     ])
     return mergeExists || applyExists
   }
@@ -307,8 +320,8 @@ describe('Worktree', () => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                                  | Mitigation                                 |
+| ------------------------------------- | ------------------------------------------ |
 | Cache invalidation on worktree delete | Call `Worktree.clearCache(path)` on delete |
-| Symlink edge cases | Use `fs.promises.realpath()` if needed |
-| Performance of async factory | Cache mitigates repeated lookups |
+| Symlink edge cases                    | Use `fs.promises.realpath()` if needed     |
+| Performance of async factory          | Cache mitigates repeated lookups           |

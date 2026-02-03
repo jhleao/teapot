@@ -7,11 +7,13 @@
 ## Problem
 
 Permission flags are scattered across multiple locations:
+
 - `UiStateBuilder.ts` computes `canRename`, `canFold`, `canCreateWorktree`
 - `web/utils/edit-message-state.ts` has commit editing permissions
 - Each location duplicates permission logic
 
 This causes:
+
 1. Frontend can't show tooltips explaining why actions are disabled
 2. Backend operations must duplicate validation logic
 3. No single source of truth for permission rules
@@ -25,7 +27,10 @@ Create a centralized `shared/permissions/` layer with pure functions:
 export function getRenameBranchPermission({
   isTrunk,
   isRemote
-}: { isTrunk: boolean; isRemote: boolean }): Permission {
+}: {
+  isTrunk: boolean
+  isRemote: boolean
+}): Permission {
   if (isTrunk) {
     return { allowed: false, reason: 'is-trunk', deniedReason: 'Cannot rename trunk branches' }
   }
@@ -45,17 +50,18 @@ export function getRenameBranchPermission({
 
 ## Pending Migrations
 
-| Permission | Current Location | Priority |
-|------------|-----------------|----------|
-| `canRename` | `UiStateBuilder.ts:637` | 1 |
-| `canFold` | `UiStateBuilder.ts:638` | 2 |
-| `canCreateWorktree` | `UiStateBuilder.ts:639` | 3 |
-| `canEdit` (message) | `web/utils/edit-message-state.ts` | 4 |
-| `canRebaseToTrunk` | `UiStateBuilder.ts:449` | 5 |
+| Permission          | Current Location                  | Priority |
+| ------------------- | --------------------------------- | -------- |
+| `canRename`         | `UiStateBuilder.ts:637`           | 1        |
+| `canFold`           | `UiStateBuilder.ts:638`           | 2        |
+| `canCreateWorktree` | `UiStateBuilder.ts:639`           | 3        |
+| `canEdit` (message) | `web/utils/edit-message-state.ts` | 4        |
+| `canRebaseToTrunk`  | `UiStateBuilder.ts:449`           | 5        |
 
 ## Implementation Pattern
 
 For each permission:
+
 1. Create module in `shared/permissions/{operation}.ts`
 2. Export permission function and types
 3. Update backend operation to use permission
@@ -81,12 +87,14 @@ For each permission:
 **Decision:** Permission logic implemented as pure functions in `shared/permissions/`, not as methods on domain objects.
 
 **Rationale:**
+
 - Pure functions are trivially testable (no mocks needed)
 - Can be imported by both frontend and backend
 - No hidden dependencies or side effects
 - Composable for complex permission checks
 
 **Alternatives Considered:**
+
 1. **Methods on UiBranch**: Rejected - couples permission logic to UI representation
 2. **Service class**: Rejected - adds unnecessary abstraction for stateless logic
 3. **Decorator pattern**: Rejected - over-engineering for simple boolean checks
@@ -102,6 +110,7 @@ type Permission =
 ```
 
 **Rationale:**
+
 - `reason` is machine-readable key for conditional logic
 - `deniedReason` is human-readable for UI tooltips
 - Discriminated union ensures exhaustive handling
@@ -119,7 +128,7 @@ export type PermissionReason =
   | 'is-remote'
   | 'has-uncommitted-changes'
   | 'rebase-in-progress'
-  // ... extensible
+// ... extensible
 
 export type Permission =
   | { allowed: true; deniedReason: undefined }
@@ -215,8 +224,8 @@ const renamePermission = getRenameBranchPermission({
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Input shape diverges between FE/BE | Single `XxxInput` type in shared layer |
-| Missing permission check in operation | Add lint rule requiring permission check before mutation |
-| Stale permission in UI after state change | Recompute on render, not in builder |
+| Risk                                      | Mitigation                                               |
+| ----------------------------------------- | -------------------------------------------------------- |
+| Input shape diverges between FE/BE        | Single `XxxInput` type in shared layer                   |
+| Missing permission check in operation     | Add lint rule requiring permission check before mutation |
+| Stale permission in UI after state change | Recompute on render, not in builder                      |

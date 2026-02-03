@@ -164,7 +164,7 @@ export function StackView({
   const childrenFirst = [...data.commits].reverse()
 
   return (
-    <div>
+    <div data-testid="stack-view">
       {Boolean(data.isTrunk) && (
         <div className="mb-[-16px]">
           <SyncButton />
@@ -365,6 +365,7 @@ export const CommitView = memo(function CommitView({
       <div
         ref={commitRef}
         data-commit-sha={data.sha}
+        data-testid="commit-item"
         className={cn(
           'relative -ml-[11px] flex items-center gap-2 transition-colors select-none',
           isPartOfRebasePlan && 'bg-accent/30',
@@ -412,7 +413,7 @@ export const CommitView = memo(function CommitView({
               {data.name}
             </div>
           </ContextMenu>
-          <div className="text-muted-foreground text-xs">
+          <div className="text-muted-foreground text-xs" data-testid="commit-timestamp">
             {formatRelativeTime(data.timestampMs)}
           </div>
           {data.rebaseStatus !== 'prompting' && data.rebaseStatus !== 'queued' && (
@@ -508,6 +509,7 @@ function SyncButton(): React.JSX.Element | null {
         disabled={isSyncing}
         className="bg-muted/50 text-muted-foreground/80 border-border/50 hover:bg-muted hover:text-muted-foreground inline-flex cursor-pointer items-center rounded-lg border px-2 py-1 text-xs font-medium transition-colors disabled:cursor-wait disabled:opacity-70"
         title="Sync trunk with origin"
+        data-testid="sync-button"
       >
         {isSyncing ? 'pulling...' : 'git pull'}
       </button>

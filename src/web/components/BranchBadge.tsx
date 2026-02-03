@@ -230,6 +230,7 @@ export const BranchBadge = memo(function BranchBadge({
       >
         <span
           onDoubleClick={handleDoubleClick}
+          data-testid={`branch-badge-${data.name}`}
           className={`inline-flex items-center rounded-lg px-2 py-1 text-xs font-medium whitespace-nowrap select-none ${
             data.isCurrent
               ? 'bg-accent text-accent-foreground border-accent-border border'

@@ -5,65 +5,75 @@ This directory contains individual idea documents extracted from the `/docs` fol
 ## Ideas by Category
 
 ### Architecture & Testing
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 01 | [Centralized Permission System](./01-centralized-permission-system.md) | High | PERMISSION_MIGRATION.md |
-| 02 | [Instance-Based Services for Testability](./02-instance-based-services.md) | High | change-request-remove-global-state.md |
+
+| #   | Idea                                                                       | Priority | Source                                |
+| --- | -------------------------------------------------------------------------- | -------- | ------------------------------------- |
+| 01  | [Centralized Permission System](./01-centralized-permission-system.md)     | High     | PERMISSION_MIGRATION.md               |
+| 02  | [Instance-Based Services for Testability](./02-instance-based-services.md) | High     | change-request-remove-global-state.md |
 
 ### GitHub API Improvements
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 03 | [GitHub Webhooks for Real-Time Updates](./03-github-webhooks-realtime.md) | Low | future-improvements-status-checks.md |
-| 04 | [Rate Limit Handling](./04-rate-limit-handling.md) | High | future-improvements-status-checks.md |
-| 05 | [GraphQL API for GitHub](./05-graphql-api-github.md) | Medium | future-improvements-status-checks.md |
+
+| #   | Idea                                                                      | Priority | Source                               |
+| --- | ------------------------------------------------------------------------- | -------- | ------------------------------------ |
+| 03  | [GitHub Webhooks for Real-Time Updates](./03-github-webhooks-realtime.md) | Low      | future-improvements-status-checks.md |
+| 04  | [Rate Limit Handling](./04-rate-limit-handling.md)                        | High     | future-improvements-status-checks.md |
+| 05  | [GraphQL API for GitHub](./05-graphql-api-github.md)                      | Medium   | future-improvements-status-checks.md |
 
 ### Reliability & Robustness
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 06 | [Timeout Implementation for Async Ops](./06-timeout-implementation.md) | High | timeout-implementation.md |
+
+| #   | Idea                                                                   | Priority | Source                    |
+| --- | ---------------------------------------------------------------------- | -------- | ------------------------- |
+| 06  | [Timeout Implementation for Async Ops](./06-timeout-implementation.md) | High     | timeout-implementation.md |
 
 ### Rebase State Machine
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 07 | [Explicit Phase Tracking for Rebase](./07-explicit-rebase-phase-tracking.md) | High | post-mortems/2025-01-resume-rebase-queue-dialog.md |
-| 08 | [State Immutability During Operations](./08-state-immutability-operations.md) | Medium | post-mortems/2025-01-resume-rebase-queue-dialog.md |
+
+| #   | Idea                                                                          | Priority | Source                                             |
+| --- | ----------------------------------------------------------------------------- | -------- | -------------------------------------------------- |
+| 07  | [Explicit Phase Tracking for Rebase](./07-explicit-rebase-phase-tracking.md)  | High     | post-mortems/2025-01-resume-rebase-queue-dialog.md |
+| 08  | [State Immutability During Operations](./08-state-immutability-operations.md) | Medium   | post-mortems/2025-01-resume-rebase-queue-dialog.md |
 
 ### Worktree Management
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 09 | [Worktree Abstraction Layer](./09-worktree-abstraction-layer.md) | High | post-mortems/2026-01-parallel-rebase-temp-worktree-conflicts.md |
-| 10 | [Context Validation on Load](./10-context-validation-on-load.md) | Medium | post-mortems/2026-01-parallel-rebase-temp-worktree-conflicts.md |
-| 11 | [Stale Worktree Recovery Telemetry](./11-worktree-telemetry.md) | High | proposals/worktree-improvements.md |
-| 12 | [Worktree Lock File Mechanism](./12-worktree-lock-mechanism.md) | Medium | proposals/worktree-improvements.md |
-| 13 | [Simplified pruneStaleWorktrees API](./13-simplify-prune-api.md) | Low | proposals/worktree-improvements.md |
+
+| #   | Idea                                                             | Priority | Source                                                          |
+| --- | ---------------------------------------------------------------- | -------- | --------------------------------------------------------------- |
+| 09  | [Worktree Abstraction Layer](./09-worktree-abstraction-layer.md) | High     | post-mortems/2026-01-parallel-rebase-temp-worktree-conflicts.md |
+| 10  | [Context Validation on Load](./10-context-validation-on-load.md) | Medium   | post-mortems/2026-01-parallel-rebase-temp-worktree-conflicts.md |
+| 11  | [Stale Worktree Recovery Telemetry](./11-worktree-telemetry.md)  | High     | proposals/worktree-improvements.md                              |
+| 12  | [Worktree Lock File Mechanism](./12-worktree-lock-mechanism.md)  | Medium   | proposals/worktree-improvements.md                              |
+| 13  | [Simplified pruneStaleWorktrees API](./13-simplify-prune-api.md) | Low      | proposals/worktree-improvements.md                              |
 
 ### Git Error Handling
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 14 | [Git Error-First Pattern ("Let Git Decide")](./14-git-error-first-pattern.md) | High | 2339-worktree-branch-deletion.md (post-mortem) |
-| 15 | [Typed Git Error Classes](./15-typed-git-error-classes.md) | High | 2339-worktree-branch-deletion.md (post-mortem) |
+
+| #   | Idea                                                                          | Priority | Source                                         |
+| --- | ----------------------------------------------------------------------------- | -------- | ---------------------------------------------- |
+| 14  | [Git Error-First Pattern ("Let Git Decide")](./14-git-error-first-pattern.md) | High     | 2339-worktree-branch-deletion.md (post-mortem) |
+| 15  | [Typed Git Error Classes](./15-typed-git-error-classes.md)                    | High     | 2339-worktree-branch-deletion.md (post-mortem) |
 
 ### Worktree Conflict Handling
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 16 | [Block All Worktree Conflicts During Rebase](./16-block-worktree-conflicts.md) | High | worktree-rebase-conflicts.md |
-| 17 | [Explicit User Consent for Worktree Modifications](./17-explicit-worktree-modification-consent.md) | High | architecture-issues-rebase-worktree-lifecycle.md |
+
+| #   | Idea                                                                                               | Priority | Source                                           |
+| --- | -------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------ |
+| 16  | [Block All Worktree Conflicts During Rebase](./16-block-worktree-conflicts.md)                     | High     | worktree-rebase-conflicts.md                     |
+| 17  | [Explicit User Consent for Worktree Modifications](./17-explicit-worktree-modification-consent.md) | High     | architecture-issues-rebase-worktree-lifecycle.md |
 
 ### Execution Context & Lifecycle
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 18 | [Decouple Execution Context from Finalization](./18-decouple-execution-context-lifecycle.md) | Medium | architecture-issues-rebase-worktree-lifecycle.md |
-| 19 | [Consistent Error Handling Philosophy](./19-consistent-error-handling-philosophy.md) | Medium | architecture-issues-rebase-worktree-lifecycle.md |
-| 20 | [Branch Ownership Tracking for Worktrees](./20-branch-ownership-tracking.md) | Medium | architecture-issues-rebase-worktree-lifecycle.md |
+
+| #   | Idea                                                                                         | Priority | Source                                           |
+| --- | -------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------ |
+| 18  | [Decouple Execution Context from Finalization](./18-decouple-execution-context-lifecycle.md) | Medium   | architecture-issues-rebase-worktree-lifecycle.md |
+| 19  | [Consistent Error Handling Philosophy](./19-consistent-error-handling-philosophy.md)         | Medium   | architecture-issues-rebase-worktree-lifecycle.md |
+| 20  | [Branch Ownership Tracking for Worktrees](./20-branch-ownership-tracking.md)                 | Medium   | architecture-issues-rebase-worktree-lifecycle.md |
 
 ### Commit Ownership & UI
-| # | Idea | Priority | Source |
-|---|------|----------|--------|
-| 21 | [Fork Point Independent Commits](./21-fork-point-independent-commits.md) | Medium | UX analysis of commit ownership ambiguity |
+
+| #   | Idea                                                                     | Priority | Source                                    |
+| --- | ------------------------------------------------------------------------ | -------- | ----------------------------------------- |
+| 21  | [Fork Point Independent Commits](./21-fork-point-independent-commits.md) | Medium   | UX analysis of commit ownership ambiguity |
 
 ## Priority Summary
 
 ### High Priority (implement soon)
+
 1. **Centralized Permission System** - Partially done, quick wins available
 2. **Instance-Based Services** - Fixes test flakiness
 3. **Rate Limit Handling** - Prevents API limit issues
@@ -77,6 +87,7 @@ This directory contains individual idea documents extracted from the `/docs` fol
 11. **Explicit User Consent** - User trust and predictability
 
 ### Medium Priority (consider next)
+
 - GraphQL API - Reduces API calls significantly
 - State Immutability - Prevents watcher interference
 - Context Validation - Self-healing on corrupt state
@@ -87,6 +98,7 @@ This directory contains individual idea documents extracted from the `/docs` fol
 - Fork Point Independent Commits - Prevents surprising sibling branch rebases (core implemented)
 
 ### Low Priority (nice to have)
+
 - GitHub Webhooks - Requires infrastructure
 - Simplified Prune API - Maintainability improvement
 
@@ -103,7 +115,7 @@ This directory contains individual idea documents extracted from the `/docs` fol
 3. **Worktree conflict resolution**:
    - Block Worktree Conflicts (#16)
    - Explicit User Consent (#17)
-   - *Note: #16 and #17 are closely related and should be implemented together*
+   - _Note: #16 and #17 are closely related and should be implemented together_
 
 4. **Reliability improvements**:
    - Timeout Implementation
@@ -136,6 +148,7 @@ This directory contains individual idea documents extracted from the `/docs` fol
 Some ideas are closely related and should be considered together:
 
 ### Worktree Conflict Resolution Bundle
+
 - #16 Block Worktree Conflicts
 - #17 Explicit User Consent
 - #20 Branch Ownership Tracking
@@ -143,6 +156,7 @@ Some ideas are closely related and should be considered together:
 These three ideas address the same underlying problem: managing worktree state during rebases. Implementing #16 first (blocking conflicts) is the simplest approach. If more sophisticated handling is needed later, #17 and #20 provide the infrastructure.
 
 ### Error Handling Bundle
+
 - #14 Git Error-First Pattern
 - #15 Typed Git Error Classes
 - #19 Consistent Error Handling Philosophy
@@ -150,12 +164,14 @@ These three ideas address the same underlying problem: managing worktree state d
 These ideas work together to create a coherent error handling strategy. Start with #15 (typed errors), then apply #14 (error-first pattern), and use #19 to ensure consistency.
 
 ### Execution Context Bundle
+
 - #18 Decouple Execution Context
 - #20 Branch Ownership Tracking
 
 Both ideas address lifecycle management of temporary worktrees. #18 focuses on phase separation, while #20 focuses on branch references. They complement each other.
 
 ### Ownership Concepts Bundle
+
 - #20 Branch Ownership Tracking (worktree-branch ownership)
 - #21 Fork Point Independent Commits (commit-branch ownership)
 

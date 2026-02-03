@@ -8,7 +8,7 @@
 [![Last commit](https://img.shields.io/github/last-commit/jhleao/teapot?style=flat-square)](https://github.com/jhleao/teapot/commits/main)
 [![License](https://img.shields.io/github/license/jhleao/teapot?style=flat-square)](LICENSE)
 
-</div> 
+</div>
 
 ---
 

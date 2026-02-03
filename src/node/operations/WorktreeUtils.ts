@@ -95,9 +95,7 @@ export function resolveGitDirSync(repoPath: string): string {
     const match = content.match(/^gitdir:\s*(.+)$/m)
     if (match) {
       const linkedGitDir = match[1].trim()
-      return path.isAbsolute(linkedGitDir)
-        ? linkedGitDir
-        : path.resolve(repoPath, linkedGitDir)
+      return path.isAbsolute(linkedGitDir) ? linkedGitDir : path.resolve(repoPath, linkedGitDir)
     }
 
     return gitPath

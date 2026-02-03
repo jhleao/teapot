@@ -13,6 +13,7 @@
 A sophisticated state machine infrastructure exists in `src/node/domain/RebasePhase.ts`:
 
 **Phase Types** - More comprehensive than originally proposed (8 phases vs 4):
+
 - `idle` - No rebase in progress
 - `planning` - User previewing/configuring rebase intent
 - `queued` - Intent confirmed, waiting to start execution
@@ -23,6 +24,7 @@ A sophisticated state machine infrastructure exists in `src/node/domain/RebasePh
 - `error` - Rebase failed with error
 
 **Rich Phase Interfaces** - Each phase carries typed contextual data:
+
 ```typescript
 interface ExecutingPhase extends PhaseBase {
   kind: 'executing'
@@ -30,11 +32,12 @@ interface ExecutingPhase extends PhaseBase {
   state: RebaseState
   executionPath: string
   isTemporaryWorktree: boolean
-  activeJob: RebaseJob  // Currently executing job
+  activeJob: RebaseJob // Currently executing job
 }
 ```
 
 **Transition Validation** - Pure `transition()` function with `InvalidTransitionError`:
+
 ```typescript
 export function transition(phase: RebasePhase, event: RebaseEvent): RebasePhase
 export function canTransition(phase: RebasePhase, eventType: RebaseEvent['type']): boolean
@@ -46,20 +49,22 @@ export class InvalidTransitionError extends Error { ... }
 ### What's NOT Integrated ❌
 
 1. **`RebaseSession` still uses legacy status** (`src/shared/types/rebase.ts:24-36`):
+
    ```typescript
    export type RebaseSession = {
-     status: RebaseSessionStatus  // 'pending' | 'running' | 'awaiting-user' | 'aborted' | 'completed'
+     status: RebaseSessionStatus // 'pending' | 'running' | 'awaiting-user' | 'aborted' | 'completed'
      // NO phase field!
    }
    ```
 
 2. **`deriveRebaseProjection` still infers state** (`src/node/domain/UiStateBuilder.ts:747-795`):
+
    ```typescript
    // The exact fragile pattern this idea warned against:
    const isStillPlanning =
-     !session.queue.activeJobId &&          // Signal 1
-     !repo.workingTreeStatus.isRebasing &&  // Signal 2
-     options.rebaseIntent                   // Signal 3
+     !session.queue.activeJobId && // Signal 1
+     !repo.workingTreeStatus.isRebasing && // Signal 2
+     options.rebaseIntent // Signal 3
    ```
 
 3. **No phase persistence** - `StoredRebaseSession` in `src/node/store.ts` doesn't store phase.
@@ -83,12 +88,14 @@ export class InvalidTransitionError extends Error { ... }
 A bug caused the "Resume Rebase Queue?" dialog to appear instead of the Confirm/Cancel rebase preview. Root cause was that `deriveRebaseProjection()` inferred state from session existence rather than tracking phase explicitly.
 
 The rebase flow has distinct phases:
+
 - **Planning**: User sees preview, can confirm or cancel
 - **Executing**: Rebase is running
 - **Awaiting User**: Conflict occurred, waiting for resolution
 - **Completed**: All jobs done
 
 But the code inferred phase from multiple signals:
+
 - Session existence
 - `activeJobId` presence
 - `isRebasing` git state
@@ -102,10 +109,10 @@ Add explicit `phase` field to session state:
 
 ```typescript
 type RebasePhase =
-  | 'planning'    // Preview shown, awaiting confirmation
-  | 'executing'   // Jobs running
-  | 'paused'      // Conflict or error, awaiting user
-  | 'completed'   // All done
+  | 'planning' // Preview shown, awaiting confirmation
+  | 'executing' // Jobs running
+  | 'paused' // Conflict or error, awaiting user
+  | 'completed' // All done
 
 interface RebaseSession {
   phase: RebasePhase
@@ -156,6 +163,7 @@ interface RebaseSession {
 ## Related Improvements
 
 From same post-mortem:
+
 - State Immutability During Operations (see idea 08)
 - Integration tests for full rebase workflow
 
@@ -168,12 +176,14 @@ From same post-mortem:
 **Decision:** Add `phase: RebasePhase` as a required field in `RebaseSession`, not derived from other fields.
 
 **Rationale:**
+
 - Eliminates inference bugs (the root cause of the post-mortem issue)
 - Phase is the single source of truth for UI rendering
 - State machine transitions are explicit and auditable
 - Simplifies `deriveRebaseProjection` to a simple switch on `phase`
 
 **Alternatives Considered:**
+
 1. **Keep inference with better logic**: Rejected - inference is inherently fragile
 2. **Separate state machine service**: Rejected - over-engineering for simple transitions
 3. **Event sourcing**: Rejected - adds complexity, overkill for this use case
@@ -183,6 +193,7 @@ From same post-mortem:
 **Decision:** Validate phase transitions and throw if invalid.
 
 **Rationale:**
+
 - Catches bugs early (invalid transition = programming error)
 - Documents valid transitions in code
 - Prevents silent corruption of session state
@@ -192,6 +203,7 @@ From same post-mortem:
 **Decision:** Log every phase transition with previous and new phase.
 
 **Rationale:**
+
 - Essential for debugging state issues
 - Creates audit trail for support tickets
 - Low overhead (one log per transition)
@@ -205,10 +217,10 @@ From same post-mortem:
 ```typescript
 // src/shared/types/rebase.ts
 export type RebasePhase =
-  | 'planning'    // Preview shown, awaiting confirmation
-  | 'executing'   // Jobs running
-  | 'paused'      // Conflict or user action required
-  | 'completed'   // All done, session can be cleared
+  | 'planning' // Preview shown, awaiting confirmation
+  | 'executing' // Jobs running
+  | 'paused' // Conflict or user action required
+  | 'completed' // All done, session can be cleared
 
 export interface RebaseSession {
   phase: RebasePhase
@@ -225,10 +237,10 @@ export interface RebaseSession {
 ```typescript
 // src/node/services/SessionService.ts
 const VALID_TRANSITIONS: Record<RebasePhase, RebasePhase[]> = {
-  planning: ['executing', 'completed'],  // confirm or cancel
-  executing: ['paused', 'completed'],    // conflict or done
-  paused: ['executing', 'completed'],    // continue or abort
-  completed: ['planning'],               // start new session
+  planning: ['executing', 'completed'], // confirm or cancel
+  executing: ['paused', 'completed'], // conflict or done
+  paused: ['executing', 'completed'], // continue or abort
+  completed: ['planning'] // start new session
 }
 
 function validateTransition(from: RebasePhase, to: RebasePhase): void {
@@ -237,10 +249,7 @@ function validateTransition(from: RebasePhase, to: RebasePhase): void {
   }
 }
 
-export function setSessionPhase(
-  repoPath: string,
-  newPhase: RebasePhase
-): void {
+export function setSessionPhase(repoPath: string, newPhase: RebasePhase): void {
   const session = getSession(repoPath)
   if (!session) throw new Error('No active session')
 
@@ -267,10 +276,10 @@ export function createSession(
   intent?: RebaseIntent
 ): RebaseSession {
   const session: RebaseSession = {
-    phase: 'planning',  // Always start in planning
+    phase: 'planning', // Always start in planning
     queue,
     intent,
-    startedAt: Date.now(),
+    startedAt: Date.now()
   }
 
   persistSession(repoPath, session)
@@ -324,11 +333,11 @@ async function handleRebaseComplete(repoPath: string): Promise<void> {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                           | Mitigation                                        |
+| ------------------------------ | ------------------------------------------------- |
 | Migration of existing sessions | Default to 'executing' for sessions without phase |
-| Missed transition call | Audit all rebase-related code paths |
-| Phase/actual state mismatch | Integration tests verify phase matches git state |
+| Missed transition call         | Audit all rebase-related code paths               |
+| Phase/actual state mismatch    | Integration tests verify phase matches git state  |
 
 ---
 
@@ -349,11 +358,12 @@ This idea addresses a real architectural problem (state inference bugs) with a s
 **Is the original problem real?** Yes.
 
 The post-mortem describes `deriveRebaseProjection()` inferring state from multiple signals:
+
 ```typescript
 const isStillPlanning =
-  !session.queue.activeJobId &&          // Signal 1
-  !repo.workingTreeStatus.isRebasing &&  // Signal 2
-  options.rebaseIntent                   // Signal 3
+  !session.queue.activeJobId && // Signal 1
+  !repo.workingTreeStatus.isRebasing && // Signal 2
+  options.rebaseIntent // Signal 3
 ```
 
 This pattern is **still present** in `UiStateBuilder.ts:754-755`. The bug class that motivated this idea remains exploitable.
@@ -373,25 +383,27 @@ This pattern is **still present** in `UiStateBuilder.ts:754-755`. The bug class 
 
 #### Strengths of `RebasePhase.ts`
 
-| Aspect | Assessment |
-|--------|------------|
-| **Type safety** | Excellent. Discriminated unions enable exhaustive matching; compiler catches missing cases. |
-| **Purity** | Excellent. `transition()` is a pure function - easy to test, reason about, and compose. |
-| **Rich context** | Good. Each phase carries relevant data (e.g., `ExecutingPhase.activeJob`, `ConflictedPhase.conflictFiles`). |
-| **Transition validation** | Good. Invalid transitions throw `InvalidTransitionError` with diagnostic info. |
-| **Traceability** | Good. `correlationId` and `enteredAtMs` support debugging and telemetry. |
+| Aspect                    | Assessment                                                                                                  |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Type safety**           | Excellent. Discriminated unions enable exhaustive matching; compiler catches missing cases.                 |
+| **Purity**                | Excellent. `transition()` is a pure function - easy to test, reason about, and compose.                     |
+| **Rich context**          | Good. Each phase carries relevant data (e.g., `ExecutingPhase.activeJob`, `ConflictedPhase.conflictFiles`). |
+| **Transition validation** | Good. Invalid transitions throw `InvalidTransitionError` with diagnostic info.                              |
+| **Traceability**          | Good. `correlationId` and `enteredAtMs` support debugging and telemetry.                                    |
 
 #### Design Concerns
 
 **1. Over-engineering risk**
 
 The implemented 8-phase model is more complex than the original 4-phase proposal:
+
 - Original: `planning → executing → paused → completed`
 - Implemented: `idle → planning → queued → executing → conflicted → finalizing → completed → error`
 
 This added complexity may be justified (e.g., `queued` separates confirmation from execution, `error` enables structured recovery), but it also increases the integration burden. The question is: **does the codebase actually need these distinctions?**
 
 Examining `RebaseExecutor.ts` and `SessionService.ts`, the current code uses:
+
 - `RebaseSessionStatus`: `'pending' | 'running' | 'awaiting-user' | 'aborted' | 'completed'`
 
 The 5-value enum maps reasonably to the 8-phase model, but the mapping isn't 1:1. `queued` vs `pending`, `conflicted` vs `awaiting-user`, and `finalizing` are new distinctions that would require changes to existing logic.
@@ -400,17 +412,18 @@ The 5-value enum maps reasonably to the 8-phase model, but the mapping isn't 1:1
 
 The codebase now has:
 
-| System | Location | Used in production? |
-|--------|----------|---------------------|
-| `RebaseSessionStatus` | `shared/types/rebase.ts` | ✅ Yes - everywhere |
-| `RebasePhase` | `node/domain/RebasePhase.ts` | ❌ No - exported but unused |
-| Signal inference | `UiStateBuilder.deriveRebaseProjection` | ✅ Yes - drives UI |
+| System                | Location                                | Used in production?         |
+| --------------------- | --------------------------------------- | --------------------------- |
+| `RebaseSessionStatus` | `shared/types/rebase.ts`                | ✅ Yes - everywhere         |
+| `RebasePhase`         | `node/domain/RebasePhase.ts`            | ❌ No - exported but unused |
+| Signal inference      | `UiStateBuilder.deriveRebaseProjection` | ✅ Yes - drives UI          |
 
 This is the **worst possible state**: infrastructure cost without benefit, plus developer confusion about which system to use.
 
 **3. Missing integration layer**
 
 The `RebasePhase.ts` module is a **library** - it defines types and pure functions. But there's no **service** that:
+
 - Maintains current phase as authoritative state
 - Dispatches events to trigger transitions
 - Persists phase to `StoredRebaseSession`
@@ -422,15 +435,15 @@ Without this integration layer, the library is dead code.
 
 ### 3. Gap Analysis: What's Missing
 
-| Component | Current State | Required for Integration |
-|-----------|---------------|--------------------------|
-| `RebaseSession` type | Has `status: RebaseSessionStatus` | Need `phase: RebasePhase` |
-| `StoredRebaseSession` | No phase field | Need `phase` persisted to disk |
-| `SessionService` | CRUD for sessions | Need `transitionPhase(event)` method |
-| `RebaseExecutor` | Uses `session.status` checks | Need `session.phase.kind` checks |
-| `UiStateBuilder.deriveRebaseProjection` | Infers from signals | Should switch on `session.phase.kind` |
-| Phase logging | None | Need telemetry on every transition |
-| Migration | N/A | Need to handle sessions without `phase` |
+| Component                               | Current State                     | Required for Integration                |
+| --------------------------------------- | --------------------------------- | --------------------------------------- |
+| `RebaseSession` type                    | Has `status: RebaseSessionStatus` | Need `phase: RebasePhase`               |
+| `StoredRebaseSession`                   | No phase field                    | Need `phase` persisted to disk          |
+| `SessionService`                        | CRUD for sessions                 | Need `transitionPhase(event)` method    |
+| `RebaseExecutor`                        | Uses `session.status` checks      | Need `session.phase.kind` checks        |
+| `UiStateBuilder.deriveRebaseProjection` | Infers from signals               | Should switch on `session.phase.kind`   |
+| Phase logging                           | None                              | Need telemetry on every transition      |
+| Migration                               | N/A                               | Need to handle sessions without `phase` |
 
 ---
 
@@ -438,30 +451,30 @@ Without this integration layer, the library is dead code.
 
 **If we complete integration:**
 
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| **Breaking persisted sessions** | High | Medium | Add schema version; migrate `status` → `phase` on load |
-| **Transition missed in code path** | Medium | High | Add invariant: assert `phase.kind` before operations |
-| **Phase desync after crash** | Medium | Low | Recovery: derive phase from git state as fallback |
-| **Regression in UI state derivation** | High | Medium | Comprehensive tests before removing signal inference |
-| **Extended development time** | Medium | Medium | Integration touches 5+ files across layers |
+| Risk                                  | Severity | Likelihood | Mitigation                                             |
+| ------------------------------------- | -------- | ---------- | ------------------------------------------------------ |
+| **Breaking persisted sessions**       | High     | Medium     | Add schema version; migrate `status` → `phase` on load |
+| **Transition missed in code path**    | Medium   | High       | Add invariant: assert `phase.kind` before operations   |
+| **Phase desync after crash**          | Medium   | Low        | Recovery: derive phase from git state as fallback      |
+| **Regression in UI state derivation** | High     | Medium     | Comprehensive tests before removing signal inference   |
+| **Extended development time**         | Medium   | Medium     | Integration touches 5+ files across layers             |
 
 **If we remove `RebasePhase.ts`:**
 
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| **Wasted prior work** | Low | Certain | Accept sunk cost; clear codebase is more valuable |
-| **Original bug class persists** | Medium | Certain | Improve signal inference logic; add more defensive checks |
-| **Lose architectural foundation** | Medium | Certain | Document decision; can rebuild if needed later |
+| Risk                              | Severity | Likelihood | Mitigation                                                |
+| --------------------------------- | -------- | ---------- | --------------------------------------------------------- |
+| **Wasted prior work**             | Low      | Certain    | Accept sunk cost; clear codebase is more valuable         |
+| **Original bug class persists**   | Medium   | Certain    | Improve signal inference logic; add more defensive checks |
+| **Lose architectural foundation** | Medium   | Certain    | Document decision; can rebuild if needed later            |
 
 **If we do nothing (status quo):**
 
-| Risk | Severity | Likelihood | Mitigation |
-|------|----------|------------|------------|
-| **Developer confusion** | Medium | High | Document which system is authoritative |
-| **Maintenance burden** | Medium | Certain | Two systems to understand and maintain |
-| **Original bug class persists** | Medium | Certain | None - this is the stated problem |
-| **Technical debt compounds** | High | High | Harder to change later as more code is written |
+| Risk                            | Severity | Likelihood | Mitigation                                     |
+| ------------------------------- | -------- | ---------- | ---------------------------------------------- |
+| **Developer confusion**         | Medium   | High       | Document which system is authoritative         |
+| **Maintenance burden**          | Medium   | Certain    | Two systems to understand and maintain         |
+| **Original bug class persists** | Medium   | Certain    | None - this is the stated problem              |
+| **Technical debt compounds**    | High     | High       | Harder to change later as more code is written |
 
 ---
 
@@ -479,6 +492,7 @@ Add a simple `phase: 'planning' | 'executing' | 'paused' | 'completed'` to `Reba
 **Alternative B: Fix Signal Inference**
 
 Instead of explicit phases, improve the inference logic:
+
 - Document all valid signal combinations
 - Add assertions for invalid combinations
 - Add logging when state is derived
@@ -523,12 +537,12 @@ This achieves the core goal (eliminate inference bugs) with less integration ris
 
 The team must decide:
 
-| Option | Effort | Risk | Outcome |
-|--------|--------|------|---------|
-| **A. Minimal phase field** | 1-2 days | Low | Solves inference problem pragmatically |
-| **B. Full integration** | 3-5 days | Medium | Realizes full vision with type-safe events |
-| **C. Remove `RebasePhase.ts`** | 1 hour | None | Cleans up dead code; leaves problem unsolved |
-| **D. Do nothing** | 0 | High (debt) | Technical debt continues to accumulate |
+| Option                         | Effort   | Risk        | Outcome                                      |
+| ------------------------------ | -------- | ----------- | -------------------------------------------- |
+| **A. Minimal phase field**     | 1-2 days | Low         | Solves inference problem pragmatically       |
+| **B. Full integration**        | 3-5 days | Medium      | Realizes full vision with type-safe events   |
+| **C. Remove `RebasePhase.ts`** | 1 hour   | None        | Cleans up dead code; leaves problem unsolved |
+| **D. Do nothing**              | 0        | High (debt) | Technical debt continues to accumulate       |
 
 **My recommendation: Option A**, with Option C as fallback if A proves harder than expected.
 
@@ -557,18 +571,18 @@ This section provides detailed implementation plans for each option to support t
 ```typescript
 // NEW: Simple phase type
 export type RebaseSessionPhase =
-  | 'planning'    // User previewing, can confirm/cancel
-  | 'executing'   // Jobs actively running
-  | 'conflicted'  // Paused on conflict, awaiting user
-  | 'completed'   // All done
+  | 'planning' // User previewing, can confirm/cancel
+  | 'executing' // Jobs actively running
+  | 'conflicted' // Paused on conflict, awaiting user
+  | 'completed' // All done
 
 // UPDATED: Add phase to RebaseSession
 export type RebaseSession = {
   id: string
   startedAtMs: number
   completedAtMs?: number
-  status: RebaseSessionStatus  // Keep temporarily for backwards compat
-  phase: RebaseSessionPhase    // NEW - single source of truth
+  status: RebaseSessionStatus // Keep temporarily for backwards compat
+  phase: RebaseSessionPhase // NEW - single source of truth
   initialTrunkSha: string
   finalTrunkSha?: string
   jobs: RebaseJobId[]
@@ -582,7 +596,7 @@ export type RebaseSession = {
 export type StoredRebaseSession = {
   intent: RebaseIntent
   state: RebaseState
-  phase: RebaseSessionPhase  // NEW
+  phase: RebaseSessionPhase // NEW
   version: number
   createdAtMs: number
   updatedAtMs: number
@@ -612,7 +626,7 @@ export function createSession(
   sessionStore.set(key, {
     intent: plan.intent,
     state: plan.state,
-    phase: 'planning',  // NEW - always start in planning
+    phase: 'planning', // NEW - always start in planning
     originalBranch,
     autoDetachedWorktrees,
     version: 1,
@@ -739,18 +753,19 @@ private migrateStatusToPhase(status: RebaseSessionStatus): RebaseSessionPhase {
 
 #### A.6 Files Changed Summary
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/shared/types/rebase.ts` | Modify | Add `RebaseSessionPhase`, add `phase` to `RebaseSession` |
-| `src/node/store.ts` | Modify | Add `phase` to `StoredRebaseSession` |
-| `src/node/services/SessionService.ts` | Modify | Add `setPhase()`, update `createSession()`, add migration |
-| `src/node/domain/UiStateBuilder.ts` | Modify | Replace inference with switch on `phase` |
-| `src/node/operations/RebaseExecutor.ts` | Modify | Add `setPhase()` calls at transitions |
-| `src/node/domain/RebaseStateMachine.ts` | Modify | Set initial phase in `createRebaseSession` |
+| File                                    | Change Type | Description                                               |
+| --------------------------------------- | ----------- | --------------------------------------------------------- |
+| `src/shared/types/rebase.ts`            | Modify      | Add `RebaseSessionPhase`, add `phase` to `RebaseSession`  |
+| `src/node/store.ts`                     | Modify      | Add `phase` to `StoredRebaseSession`                      |
+| `src/node/services/SessionService.ts`   | Modify      | Add `setPhase()`, update `createSession()`, add migration |
+| `src/node/domain/UiStateBuilder.ts`     | Modify      | Replace inference with switch on `phase`                  |
+| `src/node/operations/RebaseExecutor.ts` | Modify      | Add `setPhase()` calls at transitions                     |
+| `src/node/domain/RebaseStateMachine.ts` | Modify      | Set initial phase in `createRebaseSession`                |
 
 #### A.7 What Happens to RebasePhase.ts?
 
 Two sub-options:
+
 - **A.keep**: Leave `RebasePhase.ts` as reference/documentation
 - **A.delete**: Remove `RebasePhase.ts` and exports from `domain/index.ts`
 
@@ -758,15 +773,15 @@ Recommend **A.delete** to eliminate confusion about which system to use.
 
 #### A.8 Effort Breakdown
 
-| Task | Estimate |
-|------|----------|
-| Type changes | 30 min |
-| SessionService changes | 1 hour |
-| UiStateBuilder refactor | 1-2 hours |
-| RebaseExecutor integration | 1 hour |
-| Migration logic | 30 min |
-| Testing | 2-3 hours |
-| **Total** | **1-2 days** |
+| Task                       | Estimate     |
+| -------------------------- | ------------ |
+| Type changes               | 30 min       |
+| SessionService changes     | 1 hour       |
+| UiStateBuilder refactor    | 1-2 hours    |
+| RebaseExecutor integration | 1 hour       |
+| Migration logic            | 30 min       |
+| Testing                    | 2-3 hours    |
+| **Total**                  | **1-2 days** |
 
 ---
 
@@ -785,8 +800,8 @@ export type RebaseSession = {
   id: string
   startedAtMs: number
   completedAtMs?: number
-  status: RebaseSessionStatus  // DEPRECATED - keep for migration
-  phase: RebasePhase           // NEW - authoritative state
+  status: RebaseSessionStatus // DEPRECATED - keep for migration
+  phase: RebasePhase // NEW - authoritative state
   initialTrunkSha: string
   finalTrunkSha?: string
   jobs: RebaseJobId[]
@@ -816,7 +831,7 @@ export type StoredPhase = {
 export type StoredRebaseSession = {
   intent: RebaseIntent
   state: RebaseState
-  phase: StoredPhase           // NEW
+  phase: StoredPhase // NEW
   version: number
   createdAtMs: number
   updatedAtMs: number
@@ -1268,23 +1283,25 @@ private migrateToStoredPhase(session: StoredRebaseSession): StoredPhase {
 
 #### B.7 Files Changed Summary
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/shared/types/rebase.ts` | Modify | Add `phase: RebasePhase`, deprecate `status` |
-| `src/node/store.ts` | Modify | Add `StoredPhase` type, add `phase` to `StoredRebaseSession` |
-| `src/node/services/PhaseService.ts` | **NEW** | Phase dispatch, hydration/dehydration |
-| `src/node/services/SessionService.ts` | Modify | Add `updatePhase()`, migration logic |
-| `src/node/services/index.ts` | Modify | Export `PhaseService` |
-| `src/node/operations/RebaseExecutor.ts` | Modify | Replace status with `PhaseService.dispatch()` |
-| `src/node/domain/UiStateBuilder.ts` | Modify | Replace inference with phase switch |
+| File                                    | Change Type | Description                                                  |
+| --------------------------------------- | ----------- | ------------------------------------------------------------ |
+| `src/shared/types/rebase.ts`            | Modify      | Add `phase: RebasePhase`, deprecate `status`                 |
+| `src/node/store.ts`                     | Modify      | Add `StoredPhase` type, add `phase` to `StoredRebaseSession` |
+| `src/node/services/PhaseService.ts`     | **NEW**     | Phase dispatch, hydration/dehydration                        |
+| `src/node/services/SessionService.ts`   | Modify      | Add `updatePhase()`, migration logic                         |
+| `src/node/services/index.ts`            | Modify      | Export `PhaseService`                                        |
+| `src/node/operations/RebaseExecutor.ts` | Modify      | Replace status with `PhaseService.dispatch()`                |
+| `src/node/domain/UiStateBuilder.ts`     | Modify      | Replace inference with phase switch                          |
 
 #### B.8 Additional Complexity
 
 **Hydration/Dehydration:** Rich phase types contain object references. Must:
+
 - Dehydrate: Store only IDs and primitives
 - Hydrate: Reconstruct full objects from session state
 
 **Event Dispatching:** 12 event types must be dispatched at correct points:
+
 - `SUBMIT_INTENT`, `CANCEL_INTENT`, `CONFIRM_INTENT`
 - `JOB_STARTED`, `JOB_COMPLETED`, `CONFLICT_DETECTED`
 - `CONTINUE_AFTER_RESOLVE`, `ABORT`, `ALL_JOBS_COMPLETE`
@@ -1292,26 +1309,26 @@ private migrateToStoredPhase(session: StoredRebaseSession): StoredPhase {
 
 #### B.9 Effort Breakdown
 
-| Task | Estimate |
-|------|----------|
-| StoredPhase type + serialization | 2 hours |
-| PhaseService implementation | 3-4 hours |
-| SessionService updates | 1 hour |
-| RebaseExecutor integration | 3-4 hours |
-| UiStateBuilder refactor | 2 hours |
-| Migration logic | 1-2 hours |
-| Testing | 4-6 hours |
-| Code review / iteration | 2-3 hours |
-| **Total** | **3-5 days** |
+| Task                             | Estimate     |
+| -------------------------------- | ------------ |
+| StoredPhase type + serialization | 2 hours      |
+| PhaseService implementation      | 3-4 hours    |
+| SessionService updates           | 1 hour       |
+| RebaseExecutor integration       | 3-4 hours    |
+| UiStateBuilder refactor          | 2 hours      |
+| Migration logic                  | 1-2 hours    |
+| Testing                          | 4-6 hours    |
+| Code review / iteration          | 2-3 hours    |
+| **Total**                        | **3-5 days** |
 
 #### B.10 Option B Specific Risks
 
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Hydration bugs (objects reconstructed incorrectly) | High | Comprehensive round-trip tests |
-| Missed dispatch sites | High | Audit all `session.status` usages; lint rule |
-| 12 event types to dispatch correctly | Medium | Documentation; type system catches mismatches |
-| Over-engineering for current needs | Medium | Consider Option A first |
+| Risk                                               | Severity | Mitigation                                    |
+| -------------------------------------------------- | -------- | --------------------------------------------- |
+| Hydration bugs (objects reconstructed incorrectly) | High     | Comprehensive round-trip tests                |
+| Missed dispatch sites                              | High     | Audit all `session.status` usages; lint rule  |
+| 12 event types to dispatch correctly               | Medium   | Documentation; type system catches mismatches |
+| Over-engineering for current needs                 | Medium   | Consider Option A first                       |
 
 ---
 
@@ -1368,10 +1385,10 @@ Based on codebase analysis, nothing imports `RebasePhase` except `domain/index.t
 
 #### C.4 Files Changed Summary
 
-| File | Change Type | Description |
-|------|-------------|-------------|
-| `src/node/domain/RebasePhase.ts` | **DELETE** | Remove entire file |
-| `src/node/domain/index.ts` | Modify | Remove RebasePhase exports |
+| File                             | Change Type | Description                |
+| -------------------------------- | ----------- | -------------------------- |
+| `src/node/domain/RebasePhase.ts` | **DELETE**  | Remove entire file         |
+| `src/node/domain/index.ts`       | Modify      | Remove RebasePhase exports |
 
 #### C.5 What Remains Unchanged
 
@@ -1382,31 +1399,31 @@ Based on codebase analysis, nothing imports `RebasePhase` except `domain/index.t
 
 #### C.6 Effort Breakdown
 
-| Task | Estimate |
-|------|----------|
-| Delete file | 1 min |
-| Update index.ts | 5 min |
-| Verify build | 10 min |
-| Update documentation | 15 min |
-| **Total** | **~30 minutes** |
+| Task                 | Estimate        |
+| -------------------- | --------------- |
+| Delete file          | 1 min           |
+| Update index.ts      | 5 min           |
+| Verify build         | 10 min          |
+| Update documentation | 15 min          |
+| **Total**            | **~30 minutes** |
 
 ---
 
 ## Decision Matrix
 
-| Criteria | Option A (Minimal) | Option B (Full) | Option C (Remove) |
-|----------|-------------------|-----------------|-------------------|
-| **Solves inference bug** | ✅ Yes | ✅ Yes | ❌ No |
-| **Type-safe events** | ❌ No | ✅ Yes | ❌ No |
-| **Transition validation** | ❌ Simple | ✅ Full | ❌ No |
-| **Correlation IDs / tracing** | ❌ No | ✅ Yes | ❌ No |
-| **Schema migration** | Simple | Complex | None |
-| **New files required** | 0 | 1 (PhaseService) | 0 |
-| **Files modified** | 6 | 7 | 2 |
-| **Effort** | 1-2 days | 3-5 days | 30 min |
-| **Risk** | Low | Medium | None |
-| **Removes dead code** | Optional | Yes (integrates it) | Yes |
-| **Future extensibility** | Moderate | High | Low |
+| Criteria                      | Option A (Minimal) | Option B (Full)     | Option C (Remove) |
+| ----------------------------- | ------------------ | ------------------- | ----------------- |
+| **Solves inference bug**      | ✅ Yes             | ✅ Yes              | ❌ No             |
+| **Type-safe events**          | ❌ No              | ✅ Yes              | ❌ No             |
+| **Transition validation**     | ❌ Simple          | ✅ Full             | ❌ No             |
+| **Correlation IDs / tracing** | ❌ No              | ✅ Yes              | ❌ No             |
+| **Schema migration**          | Simple             | Complex             | None              |
+| **New files required**        | 0                  | 1 (PhaseService)    | 0                 |
+| **Files modified**            | 6                  | 7                   | 2                 |
+| **Effort**                    | 1-2 days           | 3-5 days            | 30 min            |
+| **Risk**                      | Low                | Medium              | None              |
+| **Removes dead code**         | Optional           | Yes (integrates it) | Yes               |
+| **Future extensibility**      | Moderate           | High                | Low               |
 
 ---
 
@@ -1415,6 +1432,7 @@ Based on codebase analysis, nothing imports `RebasePhase` except `domain/index.t
 **Primary recommendation: Option A (Minimal Phase Field)**
 
 Rationale:
+
 1. Solves the core problem (inference bugs) with minimal risk
 2. Pragmatic balance of effort vs. value
 3. Can always upgrade to Option B later if needed
@@ -1425,6 +1443,7 @@ Rationale:
 If Option A proves more complex than expected during implementation, fall back to Option C to at least clean up the dead code and eliminate developer confusion.
 
 **When to choose Option B instead:**
+
 - Multiple state-related bugs have occurred
 - Rebase feature will grow significantly in complexity
 - Team wants auditable state transitions for support/debugging

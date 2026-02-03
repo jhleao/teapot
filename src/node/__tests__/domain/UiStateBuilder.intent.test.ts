@@ -384,7 +384,13 @@ describe('buildUiState (branchless ancestors projection)', () => {
     // Graph: trunk -> A (branchless) -> B (branchless) -> C (branch head)
     // When rebasing onto target, ALL of A, B, C should move together
     const commits: Commit[] = [
-      createCommit('trunk-sha', '', ['target-sha', 'A'], 'trunk commit', '2025-01-01T00:00:00.000Z'),
+      createCommit(
+        'trunk-sha',
+        '',
+        ['target-sha', 'A'],
+        'trunk commit',
+        '2025-01-01T00:00:00.000Z'
+      ),
       createCommit('target-sha', 'trunk-sha', [], 'target commit', '2025-01-01T01:00:00.000Z'),
       createCommit('A', 'trunk-sha', ['B'], 'branchless A', '2025-01-01T02:00:00.000Z'),
       createCommit('B', 'A', ['C'], 'branchless B', '2025-01-01T03:00:00.000Z'),
@@ -466,7 +472,13 @@ describe('buildUiState (branchless ancestors projection)', () => {
     // Edge case: branch owns only one commit (no branchless ancestors)
     // Graph: trunk -> target, trunk -> X (branch head, single commit)
     const commits: Commit[] = [
-      createCommit('trunk-sha', '', ['target-sha', 'X'], 'trunk commit', '2025-01-01T00:00:00.000Z'),
+      createCommit(
+        'trunk-sha',
+        '',
+        ['target-sha', 'X'],
+        'trunk commit',
+        '2025-01-01T00:00:00.000Z'
+      ),
       createCommit('target-sha', 'trunk-sha', [], 'target commit', '2025-01-01T01:00:00.000Z'),
       createCommit('X', 'trunk-sha', [], 'single commit branch', '2025-01-01T02:00:00.000Z')
     ]

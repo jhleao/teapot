@@ -16,6 +16,7 @@ The system tracks worktrees through `autoDetachedWorktrees`, a flat list of `{wo
 - What is the relationship between this worktree and the rebase operation?
 
 When re-checkout fails, the user doesn't understand:
+
 - What state their worktree is now in
 - Whether they need to take action
 - How to recover
@@ -51,12 +52,12 @@ interface BranchOwner {
   acquiredAt: number
   previousOwner?: {
     worktreePath: string
-    detachedAt: string  // Commit SHA where it was detached
+    detachedAt: string // Commit SHA where it was detached
   }
 }
 
 interface BranchOwnershipState {
-  owners: Map<string, BranchOwner>  // branch -> owner
+  owners: Map<string, BranchOwner> // branch -> owner
 }
 
 class BranchOwnershipTracker {
@@ -76,10 +77,7 @@ class BranchOwnershipTracker {
    * Release ownership of a branch.
    * If there was a previous owner, restore their checkout.
    */
-  async releaseOwnership(
-    branch: string,
-    worktreePath: string
-  ): Promise<void>
+  async releaseOwnership(branch: string, worktreePath: string): Promise<void>
 
   /**
    * Get the current owner of a branch.
@@ -140,12 +138,14 @@ Final State:
 **Decision:** Create `BranchOwnershipTracker` as a centralized service that tracks all branch-worktree associations.
 
 **Rationale:**
+
 - Single source of truth for ownership
 - Prevents race conditions (one place to check/modify)
 - Enables cross-operation coordination
 - Simplifies cleanup logic
 
 **Alternatives Considered:**
+
 1. **Query git each time**: Rejected - doesn't track history or intent
 2. **Per-worktree tracking**: Rejected - can't coordinate across worktrees
 3. **Store in session only**: Rejected - loses context on crash/restart
@@ -155,6 +155,7 @@ Final State:
 **Decision:** `BranchOwner` includes `previousOwner` information.
 
 **Rationale:**
+
 - Enables automatic restoration on release
 - User knows where their branch was before
 - Supports recovery scenarios
@@ -165,6 +166,7 @@ Final State:
 **Decision:** Distinguish between temporary (e.g., temp worktrees) and permanent (user worktrees) owners.
 
 **Rationale:**
+
 - Temporary owners should release on operation complete
 - Permanent owners persist across operations
 - Different cleanup logic for each
@@ -175,6 +177,7 @@ Final State:
 **Decision:** Persist ownership state to `.git/teapot-branch-ownership.json`.
 
 **Rationale:**
+
 - Survive app restart
 - Enable recovery from crashes
 - Show state in diagnostics
@@ -192,7 +195,7 @@ Final State:
 export interface PreviousOwner {
   worktreePath: string
   detachedAtCommit: string
-  detachedAt: number  // timestamp
+  detachedAt: number // timestamp
 }
 
 export interface BranchOwner {
@@ -205,7 +208,7 @@ export interface BranchOwner {
 
 export interface BranchOwnershipState {
   version: 1
-  owners: Record<string, BranchOwner>  // branch -> owner
+  owners: Record<string, BranchOwner> // branch -> owner
   updatedAt: number
 }
 ```
@@ -251,11 +254,13 @@ export class BranchOwnershipTracker {
       worktreePath,
       isTemporary: options.isTemporary,
       acquiredAt: Date.now(),
-      previousOwner: existingOwner ? {
-        worktreePath: existingOwner.worktreePath,
-        detachedAtCommit: await git.revParse(existingOwner.worktreePath, 'HEAD'),
-        detachedAt: Date.now()
-      } : undefined
+      previousOwner: existingOwner
+        ? {
+            worktreePath: existingOwner.worktreePath,
+            detachedAtCommit: await git.revParse(existingOwner.worktreePath, 'HEAD'),
+            detachedAt: Date.now()
+          }
+        : undefined
     }
 
     // Checkout branch in new owner
@@ -275,10 +280,7 @@ export class BranchOwnershipTracker {
     return owner
   }
 
-  async releaseOwnership(
-    branch: string,
-    worktreePath: string
-  ): Promise<void> {
+  async releaseOwnership(branch: string, worktreePath: string): Promise<void> {
     const owner = this.state.owners[branch]
 
     if (!owner || owner.worktreePath !== worktreePath) {
@@ -307,7 +309,7 @@ export class BranchOwnershipTracker {
         this.state.owners[branch] = {
           branch,
           worktreePath: owner.previousOwner.worktreePath,
-          isTemporary: false,  // Restored owner is permanent
+          isTemporary: false, // Restored owner is permanent
           acquiredAt: Date.now()
         }
       } catch (error) {
@@ -339,8 +341,8 @@ export class BranchOwnershipTracker {
 
   getBranchesOwnedBy(worktreePath: string): string[] {
     return Object.values(this.state.owners)
-      .filter(o => o.worktreePath === worktreePath)
-      .map(o => o.branch)
+      .filter((o) => o.worktreePath === worktreePath)
+      .map((o) => o.branch)
   }
 
   /**
@@ -370,10 +372,7 @@ export class BranchOwnershipTracker {
 
   private async persist(): Promise<void> {
     this.state.updatedAt = Date.now()
-    await fs.promises.writeFile(
-      this.persistPath,
-      JSON.stringify(this.state, null, 2)
-    )
+    await fs.promises.writeFile(this.persistPath, JSON.stringify(this.state, null, 2))
   }
 }
 ```
@@ -389,11 +388,7 @@ export class ExecutionContext {
 
   async checkoutBranch(branch: string): Promise<void> {
     // Acquire ownership (detaches previous owner if needed)
-    await this.ownershipTracker.acquireOwnership(
-      branch,
-      this.executionPath,
-      { isTemporary: true }
-    )
+    await this.ownershipTracker.acquireOwnership(branch, this.executionPath, { isTemporary: true })
 
     this.ownedBranches.push(branch)
   }
@@ -415,10 +410,7 @@ export class ExecutionContext {
 ```typescript
 // src/node/rebase/RebaseExecutor.ts
 
-async function runRebaseJob(
-  context: ExecutionContext,
-  job: RebaseJob
-): Promise<void> {
+async function runRebaseJob(context: ExecutionContext, job: RebaseJob): Promise<void> {
   // Checkout branch with ownership tracking
   await context.checkoutBranch(job.branch)
 
@@ -434,9 +426,7 @@ async function runRebaseJob(
 ```typescript
 // src/node/handlers/diagnosticsHandlers.ts
 
-export function getBranchOwnershipState(
-  repoPath: string
-): BranchOwnershipState {
+export function getBranchOwnershipState(repoPath: string): BranchOwnershipState {
   const tracker = new BranchOwnershipTracker(repoPath)
   return tracker.getState()
 }
@@ -530,10 +520,10 @@ Rebase Completes (temp releases):
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| State file corruption | Validate on load, recreate if invalid |
-| Race between windows | File locking or single-writer pattern |
-| Orphaned ownership records | Cleanup stale entries on startup |
-| Performance overhead | Cache tracker instances per repo |
-| Restore failure | Log and remove from tracking; user can manually checkout |
+| Risk                       | Mitigation                                               |
+| -------------------------- | -------------------------------------------------------- |
+| State file corruption      | Validate on load, recreate if invalid                    |
+| Race between windows       | File locking or single-writer pattern                    |
+| Orphaned ownership records | Cleanup stale entries on startup                         |
+| Performance overhead       | Cache tracker instances per repo                         |
+| Restore failure            | Log and remove from tracking; user can manually checkout |

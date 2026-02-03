@@ -261,12 +261,18 @@ describe('findBestPr', () => {
   })
 
   it('prefers open over draft', () => {
-    const prs = [makePr('feature-1', 'draft', '2024-01-01'), makePr('feature-1', 'open', '2024-01-01')]
+    const prs = [
+      makePr('feature-1', 'draft', '2024-01-01'),
+      makePr('feature-1', 'open', '2024-01-01')
+    ]
     expect(findBestPr('feature-1', prs)?.state).toBe('open')
   })
 
   it('prefers open over closed', () => {
-    const prs = [makePr('feature-1', 'closed', '2024-01-15'), makePr('feature-1', 'open', '2024-01-01')]
+    const prs = [
+      makePr('feature-1', 'closed', '2024-01-15'),
+      makePr('feature-1', 'open', '2024-01-01')
+    ]
     expect(findBestPr('feature-1', prs)?.state).toBe('open')
   })
 
@@ -280,12 +286,18 @@ describe('findBestPr', () => {
   })
 
   it('prefers draft over merged', () => {
-    const prs = [makePr('feature-1', 'merged', '2024-01-02'), makePr('feature-1', 'draft', '2024-01-01')]
+    const prs = [
+      makePr('feature-1', 'merged', '2024-01-02'),
+      makePr('feature-1', 'draft', '2024-01-01')
+    ]
     expect(findBestPr('feature-1', prs)?.state).toBe('draft')
   })
 
   it('prefers merged over closed', () => {
-    const prs = [makePr('feature-1', 'closed', '2024-01-02'), makePr('feature-1', 'merged', '2024-01-01')]
+    const prs = [
+      makePr('feature-1', 'closed', '2024-01-02'),
+      makePr('feature-1', 'merged', '2024-01-01')
+    ]
     expect(findBestPr('feature-1', prs)?.state).toBe('merged')
   })
 
@@ -305,11 +317,19 @@ describe('findBestPr', () => {
   it('preserves additional properties on returned PR', () => {
     const prs = [{ headRefName: 'feature-1', state: 'open', createdAt: '2024-01-01', number: 123 }]
     const result = findBestPr('feature-1', prs)
-    expect(result).toEqual({ headRefName: 'feature-1', state: 'open', createdAt: '2024-01-01', number: 123 })
+    expect(result).toEqual({
+      headRefName: 'feature-1',
+      state: 'open',
+      createdAt: '2024-01-01',
+      number: 123
+    })
   })
 
   it('does not mutate input array', () => {
-    const prs = [makePr('feature-1', 'closed', '2024-01-15'), makePr('feature-1', 'open', '2024-01-01')]
+    const prs = [
+      makePr('feature-1', 'closed', '2024-01-15'),
+      makePr('feature-1', 'open', '2024-01-01')
+    ]
     const originalOrder = [...prs]
     findBestPr('feature-1', prs)
     expect(prs).toEqual(originalOrder)
@@ -329,18 +349,12 @@ describe('findBestPr', () => {
   })
 
   it('handles empty string createdAt gracefully', () => {
-    const prs = [
-      makePr('feature-1', 'closed', ''),
-      makePr('feature-1', 'closed', '2024-01-15')
-    ]
+    const prs = [makePr('feature-1', 'closed', ''), makePr('feature-1', 'closed', '2024-01-15')]
     expect(findBestPr('feature-1', prs)?.createdAt).toBe('2024-01-15')
   })
 
   it('handles both PRs having invalid dates', () => {
-    const prs = [
-      makePr('feature-1', 'open', 'bad'),
-      makePr('feature-1', 'open', 'also-bad')
-    ]
+    const prs = [makePr('feature-1', 'open', 'bad'), makePr('feature-1', 'open', 'also-bad')]
     // Should not throw, returns one of them (both have equal priority)
     const result = findBestPr('feature-1', prs)
     expect(result).toBeDefined()

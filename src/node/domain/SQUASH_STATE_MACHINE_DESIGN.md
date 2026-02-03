@@ -10,13 +10,13 @@ This document outlines the architectural approach for extracting a pure `SquashS
 
 ### Current Architecture Issues
 
-| Aspect | Current State | Target State |
-|--------|--------------|--------------|
-| State Management | Embedded in `SquashOperation.execute()` | Pure `SquashStateMachine` class |
-| Persistence | Manual SHA tracking via `Map<string, string>` | Formal session with disk persistence |
-| Recovery | None (crash loses all progress) | Resume from persisted state |
-| Testability | Requires full mocking of git operations | Pure functions testable in isolation |
-| Job Tracking | Inline loop over descendants | Formal job queue with status tracking |
+| Aspect           | Current State                                 | Target State                          |
+| ---------------- | --------------------------------------------- | ------------------------------------- |
+| State Management | Embedded in `SquashOperation.execute()`       | Pure `SquashStateMachine` class       |
+| Persistence      | Manual SHA tracking via `Map<string, string>` | Formal session with disk persistence  |
+| Recovery         | None (crash loses all progress)               | Resume from persisted state           |
+| Testability      | Requires full mocking of git operations       | Pure functions testable in isolation  |
+| Job Tracking     | Inline loop over descendants                  | Formal job queue with status tracking |
 
 ### What We're Solving
 
@@ -57,6 +57,7 @@ The existing `RebaseStateMachine` provides the template:
 ```
 
 **Key Patterns:**
+
 - State machine has NO dependencies on git, file system, or services
 - All methods take current state and return new state (immutable)
 - Executor owns all I/O and calls state machine for transitions
@@ -112,12 +113,17 @@ The existing `RebaseStateMachine` provides the template:
 interface SquashSession {
   id: string
   startedAtMs: number
-  status: 'pending' | 'applying-patch' | 'rebasing-descendants'
-        | 'awaiting-user' | 'completed' | 'aborted'
+  status:
+    | 'pending'
+    | 'applying-patch'
+    | 'rebasing-descendants'
+    | 'awaiting-user'
+    | 'completed'
+    | 'aborted'
 
   // Squash targets
-  targetBranch: string        // Branch being squashed
-  parentBranch: string        // Branch receiving changes
+  targetBranch: string // Branch being squashed
+  parentBranch: string // Branch receiving changes
 
   // Original positions for rollback
   originalParentSha: string
@@ -137,9 +143,9 @@ interface SquashJob {
 
   originalBaseSha: string
   originalHeadSha: string
-  targetBaseSha: string       // Where to rebase onto
+  targetBaseSha: string // Where to rebase onto
 
-  rebasedHeadSha?: string     // Result after successful rebase
+  rebasedHeadSha?: string // Result after successful rebase
   conflicts?: ConflictFile[]
 
   createdAtMs: number
@@ -230,11 +236,7 @@ class SquashStateMachine {
    * Skip the current conflicting job.
    * Moves to next job or completes if none remain.
    */
-  static skipDescendantJob(
-    state: SquashState,
-    jobId: string,
-    timestampMs: number
-  ): SquashState
+  static skipDescendantJob(state: SquashState, jobId: string, timestampMs: number): SquashState
 
   /**
    * Resume session from persisted state + current git status.
@@ -435,14 +437,14 @@ describe('SquashOperation with state machine', () => {
 
 ## Files to Create/Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/shared/types/squash-session.ts` | Create | Session and job types |
-| `src/node/domain/SquashStateMachine.ts` | Create | Pure state machine |
-| `src/node/domain/SquashStateMachine.test.ts` | Create | Unit tests |
-| `src/node/operations/SquashExecutor.ts` | Create | I/O orchestration |
-| `src/node/operations/SquashOperation.ts` | Modify | Thin facade |
-| `src/node/services/SessionService.ts` | Modify | Add squash session support |
+| File                                         | Action | Description                |
+| -------------------------------------------- | ------ | -------------------------- |
+| `src/shared/types/squash-session.ts`         | Create | Session and job types      |
+| `src/node/domain/SquashStateMachine.ts`      | Create | Pure state machine         |
+| `src/node/domain/SquashStateMachine.test.ts` | Create | Unit tests                 |
+| `src/node/operations/SquashExecutor.ts`      | Create | I/O orchestration          |
+| `src/node/operations/SquashOperation.ts`     | Modify | Thin facade                |
+| `src/node/services/SessionService.ts`        | Modify | Add squash session support |
 
 ---
 

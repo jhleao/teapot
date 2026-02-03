@@ -1,6 +1,6 @@
+import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import React, { memo } from 'react'
-import type { UiCommit, UiStack, UiWorkingTreeFile } from '@shared/types'
 import { cn } from '../utils/cn'
 import { CommitView } from './StackView'
 
@@ -29,13 +29,7 @@ export const CollapsedCommits = memo(function CollapsedCommits({
   const label = `${count} more commit${count !== 1 ? 's' : ''}`
 
   return (
-    <div
-      className={cn(
-        'border-border border-l-2',
-        !isExpanded && 'pb-2',
-        className
-      )}
-    >
+    <div className={cn('border-border border-l-2', !isExpanded && 'pb-2', className)}>
       <button
         onClick={onToggle}
         aria-expanded={isExpanded}

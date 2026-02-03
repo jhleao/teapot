@@ -28,7 +28,7 @@ The initial fix probed `.git/rebase-merge/head-name` to detect which branch was 
 // Before (fragile pre-flight check)
 async function deleteBranch(repoPath: string, branch: string): Promise<void> {
   const worktrees = await listWorktrees(repoPath)
-  const conflict = worktrees.find(w => w.branch === branch)
+  const conflict = worktrees.find((w) => w.branch === branch)
   if (conflict) {
     throw new Error(`Branch ${branch} is checked out in ${conflict.path}`)
   }
@@ -59,11 +59,13 @@ async function deleteBranch(repoPath: string, branch: string): Promise<void> {
 ### When to Use This Pattern
 
 Use error-first when:
+
 - Git has authoritative knowledge about the condition you're checking
 - The error message contains actionable information
 - The operation is idempotent or its failure is acceptable
 
 Don't use when:
+
 - You need to show a preview before attempting (user confirmation flow)
 - The operation has side effects that are hard to undo
 - Git's error message doesn't provide enough context
@@ -77,12 +79,14 @@ Don't use when:
 **Decision:** For operations where git has authoritative state knowledge, attempt the operation first and handle errors, rather than pre-checking conditions.
 
 **Rationale:**
+
 - Git's error messages are the definitive source of truth
 - Pre-flight checks create maintenance burden and miss edge cases
 - Simpler code with fewer branches
 - Better performance for the common case (no error)
 
 **Alternatives Considered:**
+
 1. **Pre-flight checks only**: Rejected - incomplete coverage, missed the mid-rebase case
 2. **Hybrid (pre-flight + fallback)**: Rejected - adds complexity without benefit
 3. **Probe git internals**: Rejected - tight coupling to implementation details
@@ -92,6 +96,7 @@ Don't use when:
 **Decision:** Parse git errors and throw typed exceptions in the adapter layer (`SimpleGitAdapter`), not in operation code.
 
 **Rationale:**
+
 - Centralizes error parsing logic
 - Operation code uses `instanceof` checks, not string parsing
 - Single place to update when git error formats change
@@ -102,6 +107,7 @@ Don't use when:
 **Decision:** Typed error classes should include the original error as a `cause` property.
 
 **Rationale:**
+
 - Enables debugging with full stack trace
 - Original error message may contain useful details
 - Follows JavaScript Error cause convention (ES2022)
@@ -113,6 +119,7 @@ Don't use when:
 ### Step 1: Identify Operations Using Pre-Flight Checks (1 hour)
 
 Audit codebase for patterns like:
+
 ```typescript
 // Look for these patterns:
 const worktrees = await listWorktrees(...)
@@ -121,6 +128,7 @@ const worktrees = await listWorktrees(...)
 ```
 
 Candidates:
+
 - `BranchOperation.deleteBranch()`
 - `BranchOperation.rename()`
 - `WorktreeOperation.checkout()`
@@ -140,23 +148,17 @@ interface ParsedWorktreeConflict {
  * Parses git error messages for worktree conflicts.
  * Example: "cannot delete branch 'X' used by worktree at 'Y'"
  */
-export function parseWorktreeConflictFromError(
-  error: unknown
-): ParsedWorktreeConflict | null {
+export function parseWorktreeConflictFromError(error: unknown): ParsedWorktreeConflict | null {
   const message = extractErrorMessage(error)
 
   // Pattern: "cannot delete branch 'X' used by worktree at 'Y'"
-  const deleteMatch = message.match(
-    /cannot delete branch '([^']+)' used by worktree at '([^']+)'/
-  )
+  const deleteMatch = message.match(/cannot delete branch '([^']+)' used by worktree at '([^']+)'/)
   if (deleteMatch) {
     return { branch: deleteMatch[1], worktreePath: deleteMatch[2] }
   }
 
   // Pattern: "'X' is already used by worktree at 'Y'"
-  const checkoutMatch = message.match(
-    /'([^']+)' is already used by worktree at '([^']+)'/
-  )
+  const checkoutMatch = message.match(/'([^']+)' is already used by worktree at '([^']+)'/)
   if (checkoutMatch) {
     return { branch: checkoutMatch[1], worktreePath: checkoutMatch[2] }
   }
@@ -239,8 +241,9 @@ describe('deleteBranch', () => {
     // Setup: create worktree with branch checked out
     await git.worktree(['add', worktreePath, branchName])
 
-    await expect(adapter.deleteBranch(repoPath, branchName))
-      .rejects.toBeInstanceOf(WorktreeConflictError)
+    await expect(adapter.deleteBranch(repoPath, branchName)).rejects.toBeInstanceOf(
+      WorktreeConflictError
+    )
   })
 
   it('includes worktree path in error', async () => {
@@ -260,8 +263,9 @@ describe('deleteBranch', () => {
     await git.worktree(['add', worktreePath, branchName])
     await startConflictingRebase(worktreePath)
 
-    await expect(adapter.deleteBranch(repoPath, branchName))
-      .rejects.toBeInstanceOf(WorktreeConflictError)
+    await expect(adapter.deleteBranch(repoPath, branchName)).rejects.toBeInstanceOf(
+      WorktreeConflictError
+    )
   })
 })
 ```
@@ -301,9 +305,9 @@ Add to coding guidelines:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Git error message format changes | Centralized parsing; tests catch regressions |
-| Error parsing regex too strict | Use permissive patterns, log unparsed errors |
-| Performance of retry after error | Only retry when error is recoverable |
-| Missing error patterns | Log unparsed errors for discovery, add patterns iteratively |
+| Risk                             | Mitigation                                                  |
+| -------------------------------- | ----------------------------------------------------------- |
+| Git error message format changes | Centralized parsing; tests catch regressions                |
+| Error parsing regex too strict   | Use permissive patterns, log unparsed errors                |
+| Performance of retry after error | Only retry when error is recoverable                        |
+| Missing error patterns           | Log unparsed errors for discovery, add patterns iteratively |

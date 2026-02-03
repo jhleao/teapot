@@ -69,7 +69,7 @@ async function validateNoWorktreeConflicts(
     return {
       blocked: true,
       reason: 'branches checked out in other worktrees',
-      conflicts: conflicts.map(c => ({
+      conflicts: conflicts.map((c) => ({
         branch: c.branch,
         worktreePath: c.worktreePath
       }))
@@ -104,6 +104,7 @@ Please switch these worktrees to a different branch before rebasing.
 - Slightly more friction for the "quick rebase" use case
 
 These trade-offs are acceptable because:
+
 - Switching branches is a quick operation
 - User is made aware of what's happening
 - Prevents confusion and unexpected state
@@ -117,12 +118,14 @@ These trade-offs are acceptable because:
 **Decision:** Block rebase when any branch is checked out in another worktree. Do not auto-detach worktrees.
 
 **Rationale:**
+
 - Principle of least surprise: user's worktrees are not modified without consent
 - Simpler implementation: no need to track `autoDetachedWorktrees` or attempt re-checkout
 - Avoids orphaned detached HEAD states
 - Error message clearly tells user what to do
 
 **Alternatives Considered:**
+
 1. **Auto-detach with notification**: Rejected - still modifies worktrees without consent
 2. **Ask before detaching**: Rejected - interrupts flow, adds UI complexity
 3. **Auto re-checkout after rebase**: Rejected - fails when branch is checked out elsewhere
@@ -132,6 +135,7 @@ These trade-offs are acceptable because:
 **Decision:** Remove all code related to `autoDetachedWorktrees`, including session storage, cleanup logic, and re-checkout attempts.
 
 **Rationale:**
+
 - Dead code if we're not using it
 - Reduces maintenance burden
 - Removes potential source of bugs
@@ -141,6 +145,7 @@ These trade-offs are acceptable because:
 **Decision:** Error messages should list all conflicting branches and their worktree paths.
 
 **Rationale:**
+
 - User can fix all issues at once
 - No guessing about which worktree needs attention
 - Actionable: user knows exactly what to do
@@ -174,9 +179,7 @@ export async function validateNoWorktreeConflicts(
   const conflicts: WorktreeConflict[] = []
 
   for (const branch of branches) {
-    const conflict = worktrees.find(
-      wt => wt.branch === branch && wt.path !== activeWorktreePath
-    )
+    const conflict = worktrees.find((wt) => wt.branch === branch && wt.path !== activeWorktreePath)
     if (conflict) {
       conflicts.push({
         branch,
@@ -199,10 +202,7 @@ export async function validateNoWorktreeConflicts(
 // src/node/rebase/RebaseOperation.ts
 
 function formatWorktreeConflictError(conflicts: WorktreeConflict[]): string {
-  const lines = [
-    'Cannot rebase: The following branches are checked out in other worktrees:',
-    ''
-  ]
+  const lines = ['Cannot rebase: The following branches are checked out in other worktrees:', '']
 
   for (const { branch, worktreePath } of conflicts) {
     lines.push(`  • ${branch} → ${worktreePath}`)
@@ -218,6 +218,7 @@ function formatWorktreeConflictError(conflicts: WorktreeConflict[]): string {
 ### Step 3: Remove Auto-Detach Logic (2 hours)
 
 Remove from `RebaseOperation.ts`:
+
 - `detachCleanWorktrees()` method
 - `mergeDetachedWorktrees()` method
 - `autoDetachedWorktrees` parameter passing
@@ -240,10 +241,12 @@ if (conflicts.length > 0) {
 ### Step 4: Remove Session State (1 hour)
 
 Remove from `SessionService.ts`:
+
 - `autoDetachedWorktrees` field in session interface
 - `clearAutoDetachedWorktrees()` function
 
 Remove from `store.ts`:
+
 - `DetachedWorktree` type
 - `autoDetachedWorktrees` field in `StoredRebaseSession`
 
@@ -252,7 +255,7 @@ Remove from `store.ts`:
 interface StoredRebaseSession {
   queue: RebaseQueue
   activeJobId?: string
-  autoDetachedWorktrees?: DetachedWorktree[]  // Remove this
+  autoDetachedWorktrees?: DetachedWorktree[] // Remove this
   // ...
 }
 
@@ -286,7 +289,6 @@ async function finalizeRebase(): Promise<void> {
 // After: Clean finalization
 async function finalizeRebase(): Promise<void> {
   // ... rebase complete logic ...
-
   // No re-checkout needed - branches were never detached
 }
 ```
@@ -299,11 +301,7 @@ async function finalizeRebase(): Promise<void> {
 describe('validateNoWorktreeConflicts', () => {
   it('blocks when branch is checked out in another worktree', async () => {
     // Setup: branch checked out in different worktree
-    const result = await validateNoWorktreeConflicts(
-      repoPath,
-      activeWorktreePath,
-      ['feature']
-    )
+    const result = await validateNoWorktreeConflicts(repoPath, activeWorktreePath, ['feature'])
 
     expect(result.valid).toBe(false)
     expect(result.conflicts).toHaveLength(1)
@@ -313,7 +311,7 @@ describe('validateNoWorktreeConflicts', () => {
   it('allows rebase when branch is only in active worktree', async () => {
     const result = await validateNoWorktreeConflicts(
       repoPath,
-      worktreeWithFeature,  // Active worktree has the branch
+      worktreeWithFeature, // Active worktree has the branch
       ['feature']
     )
 
@@ -329,24 +327,29 @@ describe('validateNoWorktreeConflicts', () => {
 ## Code Cleanup Checklist
 
 ### In `RebaseOperation.ts`:
+
 - [ ] Remove `detachCleanWorktrees()` method
 - [ ] Remove `mergeDetachedWorktrees()` method
 - [ ] Remove `autoDetachedWorktrees` parameter passing
 - [ ] Remove logic that partitions conflicts into clean/dirty
 
 ### In `SessionService.ts`:
+
 - [ ] Remove `autoDetachedWorktrees` field in session
 - [ ] Remove `clearAutoDetachedWorktrees()` function
 
 ### In `RebaseValidator.ts`:
+
 - [ ] Remove `partitionWorktreeConflicts()` method
 - [ ] Simplify to only return conflicts (no clean/dirty distinction)
 
 ### In `store.ts`:
+
 - [ ] Remove `DetachedWorktree` type
 - [ ] Remove `autoDetachedWorktrees` from `StoredRebaseSession`
 
 ### In tests:
+
 - [ ] Update tests that verify auto-detach behavior
 - [ ] Add tests for blocking behavior
 
@@ -354,9 +357,9 @@ describe('validateNoWorktreeConflicts', () => {
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| User friction (must switch branches) | Clear error message with actionable instructions |
-| Breaking existing workflows | Behavior change is intentional; document in release notes |
+| Risk                                        | Mitigation                                                |
+| ------------------------------------------- | --------------------------------------------------------- |
+| User friction (must switch branches)        | Clear error message with actionable instructions          |
+| Breaking existing workflows                 | Behavior change is intentional; document in release notes |
 | Partial migration (old sessions have field) | Ignore `autoDetachedWorktrees` in old sessions if present |
-| Stack rebases more disruptive | Consider future "switch and rebase" feature if needed |
+| Stack rebases more disruptive               | Consider future "switch and rebase" feature if needed     |

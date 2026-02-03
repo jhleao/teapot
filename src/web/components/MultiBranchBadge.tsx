@@ -99,7 +99,9 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
             className="min-w-[12rem] p-2"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            {hasLocalBranches && <BranchSection title="Local branches" branches={additionalLocal} />}
+            {hasLocalBranches && (
+              <BranchSection title="Local branches" branches={additionalLocal} />
+            )}
             {hasLocalBranches && hasRemoteBranches && <div className="bg-border my-2 h-px" />}
             {hasRemoteBranches && (
               <BranchSection title="Remote branches" branches={additionalRemote} />

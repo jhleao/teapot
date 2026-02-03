@@ -6,7 +6,7 @@ import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig } from 'eslint/config'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', '.history/**'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', '.history/**', 'tests/e2e/**'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

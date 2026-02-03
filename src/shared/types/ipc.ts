@@ -73,6 +73,32 @@ export type SyncTrunkResponse = {
 }
 
 /**
+ * Result of pulling a single branch in a stack
+ */
+export type BranchPullResult = {
+  branchName: string
+  status: 'success' | 'skipped' | 'error'
+  message?: string
+}
+
+/**
+ * Response type for pull stack operations
+ */
+export type PullStackResponse = {
+  uiState: UiState | null
+  /** Overall status of the pull operation */
+  status: 'success' | 'partial' | 'error'
+  /** Message to display to user */
+  message: string
+  /** Number of branches that were actually pulled */
+  pulledCount: number
+  /** Per-branch results */
+  branchResults: BranchPullResult[]
+  /** List of branches that failed to pull */
+  failedBranches: string[]
+}
+
+/**
  * Response type for submitRebaseIntent.
  * Returns either the rebase preview or worktree conflicts that block the rebase.
  */
@@ -157,7 +183,8 @@ export const IPC_CHANNELS = {
   readClipboardText: 'readClipboardText',
   checkCloneFolderName: 'checkCloneFolderName',
   checkTargetPath: 'checkTargetPath',
-  getRebaseExecutionPath: 'getRebaseExecutionPath'
+  getRebaseExecutionPath: 'getRebaseExecutionPath',
+  pullStack: 'pullStack'
 } as const
 
 export const IPC_EVENTS = {
@@ -442,6 +469,10 @@ export interface IpcContract {
   [IPC_CHANNELS.getRebaseExecutionPath]: {
     request: { repoPath: string }
     response: { path: string | null; isTemporary: boolean }
+  }
+  [IPC_CHANNELS.pullStack]: {
+    request: { repoPath: string; branchNames: string[] }
+    response: PullStackResponse
   }
 }
 

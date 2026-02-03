@@ -13,6 +13,7 @@ import {
   IpcHandlerOf,
   type CheckoutResponse,
   type DetachedWorktree,
+  type PullStackResponse,
   type RebaseOperationResponse,
   type RebaseStatusResponse,
   type ShipItResponse,
@@ -34,6 +35,7 @@ import {
   RebaseOperation,
   retryWithPrune,
   SquashOperation,
+  StackPullOperation,
   UiStateOperation,
   WorkingTreeOperation,
   WorktreeOperation
@@ -405,6 +407,23 @@ const syncTrunk: IpcHandlerOf<'syncTrunk'> = async (
   }
 }
 
+const pullStack: IpcHandlerOf<'pullStack'> = async (
+  _event,
+  { repoPath, branchNames }
+): Promise<PullStackResponse> => {
+  const result = await StackPullOperation.pullStack(repoPath, branchNames)
+  const uiState = await UiStateOperation.getUiState(repoPath)
+
+  return {
+    uiState,
+    status: result.status,
+    message: result.message,
+    pulledCount: result.branchResults.filter((r) => r.status === 'success').length,
+    branchResults: result.branchResults,
+    failedBranches: result.failedBranches
+  }
+}
+
 // ============================================================================
 // Pull Request Handlers
 // ============================================================================
@@ -575,6 +594,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.watchRepo, watchRepo)
   ipcMain.handle(IPC_CHANNELS.unwatchRepo, unwatchRepo)
   ipcMain.handle(IPC_CHANNELS.syncTrunk, syncTrunk)
+  ipcMain.handle(IPC_CHANNELS.pullStack, pullStack)
 
   // Rebase planning
   ipcMain.handle(IPC_CHANNELS.submitRebaseIntent, submitRebaseIntent)

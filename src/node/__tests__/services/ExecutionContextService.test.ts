@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 let mockActiveWorktree: string | null = null
 vi.mock('../../store', () => ({
   configStore: {
-    getActiveWorktree: () => mockActiveWorktree
+    getActiveWorktree: () => mockActiveWorktree,
+    getUseParallelWorktree: vi.fn().mockReturnValue(true)
   }
 }))
 

@@ -38,6 +38,7 @@ vi.mock('../../store', () => ({
       mockActiveWorktree = path
     },
     getGithubPat: () => null,
+    getUseParallelWorktree: () => true,
     getRebaseSession: (key: string) => mockRebaseSessions.get(key) ?? null,
     setRebaseSession: (key: string, session: unknown) => mockRebaseSessions.set(key, session),
     deleteRebaseSession: (key: string) => mockRebaseSessions.delete(key),
@@ -75,7 +76,11 @@ interface TestRepo {
 }
 
 async function createTestRepo(): Promise<TestRepo> {
-  const repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rebase-e2e-'))
+  // Use realpath to resolve symlinks (e.g., /var -> /private/var on macOS)
+  // so paths match what git returns
+  const repoPath = await fs.promises.realpath(
+    await fs.promises.mkdtemp(path.join(os.tmpdir(), 'rebase-e2e-'))
+  )
 
   const run = (cmd: string) => execSync(cmd, { cwd: repoPath, encoding: 'utf-8' }).trim()
 

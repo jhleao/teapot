@@ -34,6 +34,7 @@ interface StoreSchema {
   mergeStrategy?: MergeStrategy
   lastClonePath?: string
   fileLogLevel?: FileLogLevel
+  useParallelWorktree?: boolean
   // Legacy field - migrated to fileLogLevel on first read
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
@@ -123,6 +124,14 @@ export class ConfigStore {
     if (this.store.get('debugLoggingEnabled') !== undefined) {
       this.store.delete('debugLoggingEnabled')
     }
+  }
+
+  getUseParallelWorktree(): boolean {
+    return this.store.get('useParallelWorktree', false)
+  }
+
+  setUseParallelWorktree(enabled: boolean): void {
+    this.store.set('useParallelWorktree', enabled)
   }
 
   /**

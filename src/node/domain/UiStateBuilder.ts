@@ -605,6 +605,8 @@ export class UiStateBuilder {
           status = 'stale'
         } else if (worktreeInfo.path === state.currentWorktreePath) {
           status = 'active'
+        } else if (worktreeInfo.isRebasing && worktreeInfo.conflictedFiles.length > 0) {
+          status = 'conflicted'
         } else if (worktreeInfo.isDirty) {
           status = 'dirty'
         } else {

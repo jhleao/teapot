@@ -16,7 +16,8 @@ import { UtilityModalsProvider } from './contexts/UtilityModalsContext'
 // eslint-disable-next-line react-refresh/only-export-components
 function AppWithProviders(): React.JSX.Element {
   const { selectedRepo } = useLocalStateContext()
-  const repoPath = selectedRepo?.path ?? null
+  // Use activeWorktreePath when in a worktree, otherwise use the main repo path
+  const repoPath = selectedRepo?.activeWorktreePath ?? selectedRepo?.path ?? null
 
   return (
     <ForgeStateProvider repoPath={repoPath}>

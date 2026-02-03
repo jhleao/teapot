@@ -480,6 +480,8 @@ export class RebaseExecutor {
 
           try {
             SessionService.updateState(repoPath, newState)
+            // Transition to conflicted phase - UI should show conflict resolution dialog
+            SessionService.setPhase(repoPath, 'conflicted')
           } catch (error) {
             // Session may have been cleared externally - log and continue with conflict response
             log.warn(
@@ -506,6 +508,12 @@ export class RebaseExecutor {
 
         // Store context for next continue attempt
         await ExecutionContextService.storeContext(repoPath, context)
+        // Set phase to conflicted even without active job (recovery mode)
+        try {
+          SessionService.setPhase(repoPath, 'conflicted')
+        } catch {
+          // Session may not exist in recovery mode - ignore
+        }
         return {
           status: 'conflict',
           job: this.createRecoveryJob(),
@@ -650,6 +658,14 @@ export class RebaseExecutor {
     if (!result.success && result.conflicts.length > 0) {
       // Store context for next skip/continue attempt
       await ExecutionContextService.storeContext(repoPath, context)
+      // Set phase to conflicted if session exists
+      if (session) {
+        try {
+          SessionService.setPhase(repoPath, 'conflicted')
+        } catch {
+          // Session may have been cleared - ignore
+        }
+      }
       return {
         status: 'conflict',
         job: session?.state.queue.activeJobId
@@ -908,6 +924,8 @@ export class RebaseExecutor {
             activeJobId: session.state.queue.activeJobId,
             jobStatus: activeJob.status
           })
+          // Ensure phase is 'conflicted' (may be missing in migrated sessions)
+          SessionService.setPhase(repoPath, 'conflicted')
           // Return the conflict state - user needs to resolve and call continue()
           const workingTreeStatus = await git.getWorkingTreeStatus(executionPath)
           return {

@@ -13,28 +13,29 @@ Services layer uses module-level global state that causes test pollution, preven
 
 **ExecutionContextService.ts** has 5 global variables:
 
-| Variable | Line | Type | Impact |
-|----------|------|------|--------|
-| `contextEvents` | 115 | `EventEmitter` | Shared across all tests |
-| `contextTtlMs` | 130 | `number` | Mutable, affects staleness checks |
-| `lockQueues` | 145 | `Map<string, Promise>` | Lock state leaks between tests |
-| `activeContexts` | 151 | `Map<string, string>` | Worktree tracking leaks |
-| `exitHandlerRegistered` | 154 | `boolean` | Process handler accumulation |
+| Variable                | Line | Type                   | Impact                            |
+| ----------------------- | ---- | ---------------------- | --------------------------------- |
+| `contextEvents`         | 115  | `EventEmitter`         | Shared across all tests           |
+| `contextTtlMs`          | 130  | `number`               | Mutable, affects staleness checks |
+| `lockQueues`            | 145  | `Map<string, Promise>` | Lock state leaks between tests    |
+| `activeContexts`        | 151  | `Map<string, string>`  | Worktree tracking leaks           |
+| `exitHandlerRegistered` | 154  | `boolean`              | Process handler accumulation      |
 
 **SessionService.ts** has module-level singleton:
 
-| Variable | Line | Type | Impact |
-|----------|------|------|--------|
-| `sessionStore` | 47 | `SessionStore` | In-memory Map accumulates state |
+| Variable       | Line | Type           | Impact                          |
+| -------------- | ---- | -------------- | ------------------------------- |
+| `sessionStore` | 47   | `SessionStore` | In-memory Map accumulates state |
 
 **Date.now() direct usage** (prevents time-based testing):
 
-| File | Lines | Usage |
-|------|-------|-------|
+| File                       | Lines                                  | Usage                                     |
+| -------------------------- | -------------------------------------- | ----------------------------------------- |
 | ExecutionContextService.ts | 286, 326, 416, 611, 666, 677, 788, 876 | Staleness detection, timestamps, lock age |
-| SessionService.ts | 74, 81, 111, 137 | Session timestamps |
+| SessionService.ts          | 74, 81, 111, 137                       | Session timestamps                        |
 
 **Test cleanup is incomplete** (`ExecutionContextService.test.ts` lines 44-50):
+
 ```typescript
 afterEach(async () => {
   await ExecutionContextService.clearStoredContext(repoPath)
@@ -43,6 +44,7 @@ afterEach(async () => {
 ```
 
 **Git history confirms ongoing issues:**
+
 - `dcf8813`: "fix: handle stale worktree references causing checkout failures"
 - `2102d06`: "fix: prevent race condition in rapid rebase operations"
 - `8f16a11`: "fix: prevent lock queue chain breakage on error"
@@ -217,8 +219,12 @@ export class ExecutionContextService {
   }
 
   // Delegate all existing static methods
-  static async acquire(...args) { return getDefaultInstance().acquire(...args) }
-  static async release(...args) { return getDefaultInstance().release(...args) }
+  static async acquire(...args) {
+    return getDefaultInstance().acquire(...args)
+  }
+  static async release(...args) {
+    return getDefaultInstance().release(...args)
+  }
   // ... etc
 }
 ```
@@ -228,6 +234,7 @@ export class ExecutionContextService {
 **File:** `src/node/__tests__/services/ExecutionContextService.test.ts`
 
 Update from:
+
 ```typescript
 afterEach(async () => {
   await ExecutionContextService.clearStoredContext(repoPath)
@@ -235,6 +242,7 @@ afterEach(async () => {
 ```
 
 To:
+
 ```typescript
 let service: ExecutionContextServiceInstance
 let mockClock: MockClock
@@ -242,13 +250,13 @@ let mockClock: MockClock
 beforeEach(() => {
   mockClock = createMockClock()
   service = ExecutionContextService.createInstance({
-    clock: mockClock,
+    clock: mockClock
     // ... other mock deps
   })
 })
 
 afterEach(() => {
-  service.reset()  // Complete cleanup guaranteed
+  service.reset() // Complete cleanup guaranteed
 })
 ```
 
@@ -267,7 +275,9 @@ export function createMockClock(initialTime = Date.now()) {
   let time = initialTime
   return {
     now: () => time,
-    advance: (ms: number) => { time += ms }
+    advance: (ms: number) => {
+      time += ms
+    }
   }
 }
 ```
@@ -285,7 +295,7 @@ describe('ExecutionContextService', () => {
   })
 
   afterEach(() => {
-    service.reset()  // Complete cleanup guaranteed
+    service.reset() // Complete cleanup guaranteed
   })
 
   it('detects stale contexts using injected clock', async () => {
@@ -293,7 +303,7 @@ describe('ExecutionContextService', () => {
     await service.storeContext(repoPath, context)
 
     // Advance clock past TTL
-    mockClock.advance(25 * 60 * 60 * 1000)  // 25 hours
+    mockClock.advance(25 * 60 * 60 * 1000) // 25 hours
 
     // Staleness should be detected
     const newContext = await service.acquire(repoPath)
@@ -309,14 +319,17 @@ describe('ExecutionContextService', () => {
 ### Idea #18: Decouple Execution Context Lifecycle
 
 Idea #18 proposes a phase model for ExecutionContext:
+
 - `acquired` -> `preparing_release` -> `released`
 
 **Integration points:**
+
 1. Instance-based architecture should track phase as instance state
 2. `reset()` method should also reset phase to initial state
 3. Phase assertions benefit from dependency injection (testable guards)
 
 **Combined implementation benefit:**
+
 - Instance isolation + phase model = fully testable lifecycle
 - Mock clock enables testing phase timeouts
 - Reset clears both instance state and phase state
@@ -324,6 +337,7 @@ Idea #18 proposes a phase model for ExecutionContext:
 ### Recommended Approach
 
 Implement Idea #02 first, then Idea #18:
+
 1. Instance-based refactoring provides clean foundation
 2. Phase model adds on top of instance architecture
 3. Both share same dependency injection infrastructure
@@ -337,12 +351,14 @@ Implement Idea #02 first, then Idea #18:
 **Decision:** Keep static API via facade that delegates to a singleton instance. Tests create isolated instances directly.
 
 **Rationale:**
+
 - Zero breaking changes to existing callers
 - Tests get full isolation without module mocking
 - Production uses same code path as before
 - Gradual migration possible (one caller at a time)
 
 **Alternative Rejected:** Simple `resetForTesting()` method on static class
+
 - Doesn't solve parallel test isolation (tests still share state)
 - Clock injection still impossible
 - Band-aid rather than proper architecture
@@ -352,6 +368,7 @@ Implement Idea #02 first, then Idea #18:
 **Decision:** Inject `clock: { now(): number }` rather than mocking `Date.now()`.
 
 **Rationale:**
+
 - Explicit dependency makes time-based logic obvious
 - No global pollution from Date mocks
 - Easy to advance time in tests
@@ -362,6 +379,7 @@ Implement Idea #02 first, then Idea #18:
 **Decision:** Only inject dependencies that actually need mocking. Use real `fs`, `path`, `crypto`, `process`.
 
 **Rationale:**
+
 - Node.js built-ins are stable and reliable
 - Tests already use real temp directories
 - Reduces interface complexity
@@ -371,11 +389,11 @@ Implement Idea #02 first, then Idea #18:
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                        | Mitigation                                               |
+| --------------------------- | -------------------------------------------------------- |
 | Subtle behavior differences | Run existing tests against both static and instance APIs |
-| Performance regression | Singleton is cached, no overhead per call |
-| Incomplete reset | Add assertions in test afterEach to verify clean state |
+| Performance regression      | Singleton is cached, no overhead per call                |
+| Incomplete reset            | Add assertions in test afterEach to verify clean state   |
 
 ---
 
@@ -392,6 +410,7 @@ Implement Idea #02 first, then Idea #18:
 ### Step 1: Define Dependencies Interface
 
 Add to `ExecutionContextService.ts`:
+
 ```typescript
 export interface ExecutionContextDependencies {
   clock: { now(): number }

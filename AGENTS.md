@@ -80,7 +80,41 @@ Use `@shared` to import from `src/shared/` (configured in tsconfig and vitest).
 
 Tests are co-located with source code in `__tests__` directories. Domain and operation logic have the most comprehensive test coverage since they contain core business logic.
 
+### Unit Tests
+
+```bash
+pnpm test             # Run all unit tests
+pnpm test:watch       # Watch mode
+pnpm test -- src/node/domain/__tests__/BranchUtils.test.ts  # Single file
+```
+
+### E2E Tests (Playwright)
+
+E2E tests use Playwright with Electron to test the full application.
+
+```bash
+pnpm build            # Required: build the app first
+pnpm e2e              # Run all E2E tests
+pnpm e2e -- --headed  # Run with visible window (for debugging)
+pnpm e2e:clean        # Clean temp repos and artifacts
+```
+
+See `docs/testing/playwright.md` for full documentation.
+
+### Agent-Assisted Test Development
+
+Claude agents can help write and maintain E2E tests using the Playwright MCP server:
+
+| Agent | Purpose |
+|-------|---------|
+| `playwright-test-planner` | Create test plans from requirements |
+| `playwright-test-generator` | Generate tests by driving the browser |
+| `playwright-test-healer` | Fix broken tests using traces |
+
+Agents are defined in `.claude/agents/` with prompts in `.claude/prompts/`.
+
 ## Additional Documentation
 
 - `src/node/README.md` - Backend architecture details
 - `src/node/REBASING.md` - Rebase algorithm and state machine
+- `docs/testing/playwright.md` - E2E testing guide

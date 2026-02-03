@@ -255,10 +255,7 @@ export class RebaseOperation {
       return { success: true, uiState }
     } catch (error) {
       // Don't clear session for dirty worktree errors
-      if (
-        error instanceof RebaseOperationError &&
-        error.errorCode === 'DIRTY_WORKTREE'
-      ) {
+      if (error instanceof RebaseOperationError && error.errorCode === 'DIRTY_WORKTREE') {
         throw error
       }
       await SessionService.clearSession(repoPath)

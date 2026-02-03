@@ -272,7 +272,10 @@ export class SquashOperation {
     // Done after validation so invalid squash attempts return instantly.
     const forgeStateResult = await gitForgeService.getStateWithStatus(repoPath)
     if (forgeStateResult.status === 'error') {
-      log.warn('[SquashOperation.execute] Forge state unavailable, PR cleanup may be skipped:', forgeStateResult.error)
+      log.warn(
+        '[SquashOperation.execute] Forge state unavailable, PR cleanup may be skipped:',
+        forgeStateResult.error
+      )
     }
     const forgeState = forgeStateResult.state
 

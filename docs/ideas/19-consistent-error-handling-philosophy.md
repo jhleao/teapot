@@ -17,7 +17,7 @@ Some operations throw errors that bubble up and require user action:
 // Example: Dirty worktree blocks rebase entirely
 async function validateWorktreeClean(worktreePath: string): Promise<void> {
   if (await isWorktreeDirty(worktreePath)) {
-    throw new DirtyWorktreeError(worktreePath)  // Blocks operation
+    throw new DirtyWorktreeError(worktreePath) // Blocks operation
   }
 }
 ```
@@ -33,7 +33,7 @@ async function finalizeRebase(): Promise<void> {
     try {
       await git.checkout(worktreePath, branch)
     } catch (error) {
-      log.warn(`Failed to re-checkout ${branch}`)  // Continue anyway
+      log.warn(`Failed to re-checkout ${branch}`) // Continue anyway
     }
   }
   // Rebase considered "successful" even if re-checkout failed
@@ -42,14 +42,15 @@ async function finalizeRebase(): Promise<void> {
 
 ### Inconsistency Creates Confusion
 
-| Operation | Philosophy | Behavior |
-|-----------|------------|----------|
-| Detaching dirty worktree | Fail-fast | Blocks rebase entirely |
-| Re-attaching worktree | Best-effort | Warning, continues |
-| Temp worktree cleanup | Silent | Logged, ignored |
-| Prune stale worktrees | Best-effort | Returns result, doesn't throw |
+| Operation                | Philosophy  | Behavior                      |
+| ------------------------ | ----------- | ----------------------------- |
+| Detaching dirty worktree | Fail-fast   | Blocks rebase entirely        |
+| Re-attaching worktree    | Best-effort | Warning, continues            |
+| Temp worktree cleanup    | Silent      | Logged, ignored               |
+| Prune stale worktrees    | Best-effort | Returns result, doesn't throw |
 
 This inconsistency makes behavior unpredictable:
+
 - Users don't know which errors are blocking vs. warnings
 - Developers don't know which philosophy to use for new code
 - Testing becomes harder (what's the expected behavior?)
@@ -70,10 +71,10 @@ Pre-conditions that would make the operation invalid or dangerous must fail:
 // Always throw for pre-condition failures
 async function validateRebasePreConditions(): Promise<void> {
   if (await isWorktreeDirty(targetPath)) {
-    throw new DirtyWorktreeError(targetPath)  // MUST fail
+    throw new DirtyWorktreeError(targetPath) // MUST fail
   }
   if (await hasWorktreeConflicts(branches)) {
-    throw new WorktreeConflictError(conflicts)  // MUST fail
+    throw new WorktreeConflictError(conflicts) // MUST fail
   }
 }
 ```
@@ -87,7 +88,7 @@ The main operation must succeed for the overall operation to succeed:
 async function executeRebase(): Promise<void> {
   const result = await git.rebase(onto)
   if (result.status === 'conflict') {
-    throw new RebaseConflictError(result.conflicts)  // MUST fail
+    throw new RebaseConflictError(result.conflicts) // MUST fail
   }
 }
 ```
@@ -138,12 +139,14 @@ async function finalizeRebase(options: FinalizeOptions): Promise<void> {
 ### ADR-001: Categorize All Operations
 
 **Decision:** Every operation must be categorized as:
+
 - **Pre-condition**: Fail-fast, throws
 - **Core**: Fail-fast, throws
 - **Cleanup**: Best-effort, logs
 - **Enhancement**: Opt-in, handles own errors
 
 **Rationale:**
+
 - Clear expectations for each operation type
 - Developers know which pattern to use
 - Users can predict behavior
@@ -163,6 +166,7 @@ async function deleteBranch(ref: string): Promise<void>
 ```
 
 **Rationale:**
+
 - Self-documenting code
 - Callers know what to catch
 - IDE tooltips show error info
@@ -170,10 +174,12 @@ async function deleteBranch(ref: string): Promise<void>
 ### ADR-003: No Silent Swallowing
 
 **Decision:** Errors should never be silently swallowed. At minimum:
+
 - Cleanup errors: `log.warn()`
 - Enhancement errors: `log.info()`
 
 **Rationale:**
+
 - Enables debugging
 - Creates audit trail
 - Reveals systemic issues
@@ -183,6 +189,7 @@ async function deleteBranch(ref: string): Promise<void>
 **Decision:** When in doubt, fail-fast. It's easier to relax error handling than to add it later.
 
 **Rationale:**
+
 - Bugs surface early
 - Users report issues promptly
 - Prevents data corruption
@@ -208,7 +215,7 @@ const errorHandlingAudit = [
     location: 'finalizeRebase (re-checkout)',
     behavior: 'logs warning, continues',
     category: 'enhancement',
-    consistent: false,  // Should be opt-in or removed
+    consistent: false, // Should be opt-in or removed
     recommendation: 'Remove with idea #16'
   },
   {
@@ -216,14 +223,14 @@ const errorHandlingAudit = [
     behavior: 'logs, ignores',
     category: 'cleanup',
     consistent: true
-  },
+  }
   // ...
 ]
 ```
 
 ### Step 2: Define Category Guidelines (1 hour)
 
-```typescript
+````typescript
 // src/docs/ERROR_HANDLING.md
 
 /**
@@ -271,7 +278,7 @@ const errorHandlingAudit = [
  * Optional features that don't affect core functionality.
  * Make opt-in via explicit options, handle own errors.
  */
-```
+````
 
 ### Step 3: Create Helper Functions (1 hour)
 
@@ -281,10 +288,7 @@ const errorHandlingAudit = [
 /**
  * Wraps a cleanup function to log errors but not throw.
  */
-export async function runCleanup(
-  name: string,
-  fn: () => Promise<void>
-): Promise<void> {
+export async function runCleanup(name: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn()
     log.debug(`[Cleanup] ${name} completed`)
@@ -315,16 +319,10 @@ async function finalizeRebase(): Promise<void> {
   await updateSession()
 
   // Cleanup - logs but doesn't throw
-  await runCleanup('remove temp worktree', () =>
-    removeTempWorktree()
-  )
+  await runCleanup('remove temp worktree', () => removeTempWorktree())
 
   // Enhancement - returns fallback on failure
-  const reattached = await runEnhancement(
-    'reattach worktrees',
-    () => reattachWorktrees(),
-    false
-  )
+  const reattached = await runEnhancement('reattach worktrees', () => reattachWorktrees(), false)
 }
 ```
 
@@ -349,9 +347,7 @@ interface OperationWarning {
 }
 
 // Usage
-async function deleteMultipleBranches(
-  branches: string[]
-): Promise<OperationResult<string[]>> {
+async function deleteMultipleBranches(branches: string[]): Promise<OperationResult<string[]>> {
   const deleted: string[] = []
   const warnings: OperationWarning[] = []
 
@@ -368,7 +364,7 @@ async function deleteMultipleBranches(
         })
         // Continue with other branches
       } else {
-        throw error  // Unexpected error - fail fast
+        throw error // Unexpected error - fail fast
       }
     }
   }
@@ -393,7 +389,7 @@ async function finalizeRebase(): Promise<void> {
     try {
       await git.checkout(wt.path, wt.branch)
     } catch {
-      log.warn('Re-checkout failed')  // What does user do with this?
+      log.warn('Re-checkout failed') // What does user do with this?
     }
   }
 }
@@ -432,8 +428,7 @@ describe('Error Handling Consistency', () => {
     it('throws on dirty worktree', async () => {
       await createDirtyWorktree(worktreePath)
 
-      await expect(validatePreConditions())
-        .rejects.toBeInstanceOf(DirtyWorktreeError)
+      await expect(validatePreConditions()).rejects.toBeInstanceOf(DirtyWorktreeError)
     })
   })
 
@@ -448,10 +443,7 @@ describe('Error Handling Consistency', () => {
       await expect(executeOperation()).resolves.not.toThrow()
 
       // But failure was logged
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Cleanup]'),
-        expect.anything()
-      )
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[Cleanup]'), expect.anything())
     })
   })
 
@@ -474,23 +466,23 @@ describe('Error Handling Consistency', () => {
 
 ## Decision Matrix
 
-| Scenario | Category | Behavior | Example |
-|----------|----------|----------|---------|
-| Dirty worktree before rebase | Pre-condition | Throw | `DirtyWorktreeError` |
-| Branch checked out elsewhere | Pre-condition | Throw | `WorktreeConflictError` |
-| Rebase conflict | Core | Throw | `RebaseConflictError` |
-| Git command timeout | Core | Throw | `TimeoutError` |
-| Remove temp worktree fails | Cleanup | Log, continue | `log.warn()` |
-| Prune stale worktrees fails | Cleanup | Log, continue | `log.warn()` |
-| Re-attach worktree fails | Enhancement | Log, report in result | Opt-in feature |
+| Scenario                     | Category      | Behavior              | Example                 |
+| ---------------------------- | ------------- | --------------------- | ----------------------- |
+| Dirty worktree before rebase | Pre-condition | Throw                 | `DirtyWorktreeError`    |
+| Branch checked out elsewhere | Pre-condition | Throw                 | `WorktreeConflictError` |
+| Rebase conflict              | Core          | Throw                 | `RebaseConflictError`   |
+| Git command timeout          | Core          | Throw                 | `TimeoutError`          |
+| Remove temp worktree fails   | Cleanup       | Log, continue         | `log.warn()`            |
+| Prune stale worktrees fails  | Cleanup       | Log, continue         | `log.warn()`            |
+| Re-attach worktree fails     | Enhancement   | Log, report in result | Opt-in feature          |
 
 ---
 
 ## Risks and Mitigations
 
-| Risk | Mitigation |
-|------|------------|
-| Breaking existing error handling | Audit first, migrate incrementally |
-| Over-strict fail-fast | Start strict, relax based on user feedback |
-| Verbose logging | Use appropriate log levels (warn vs info vs debug) |
-| Result type complexity | Only use for batch operations; single ops just throw |
+| Risk                             | Mitigation                                           |
+| -------------------------------- | ---------------------------------------------------- |
+| Breaking existing error handling | Audit first, migrate incrementally                   |
+| Over-strict fail-fast            | Start strict, relax based on user feedback           |
+| Verbose logging                  | Use appropriate log levels (warn vs info vs debug)   |
+| Result type complexity           | Only use for batch operations; single ops just throw |

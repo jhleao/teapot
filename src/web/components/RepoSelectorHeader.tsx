@@ -51,62 +51,127 @@ export function RepoSelectorHeader({
   }
 
   if (!repo) {
-    return <div className="text-muted-foreground text-sm">No repository selected</div>
+    return (
+      <div className="flex items-center gap-2" data-testid="topbar">
+        <div data-testid="repo-selector">
+          <Popover open={isOpen} onOpenChange={setIsOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className="hover:bg-muted -ml-2 flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors"
+                data-testid="repo-selector-button"
+              >
+                <span className="text-muted-foreground text-sm" data-testid="no-repo-message">
+                  No repository selected
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'text-muted-foreground h-3.5 w-3.5 transition-transform',
+                    isOpen && 'rotate-180'
+                  )}
+                />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-80 overflow-hidden p-0"
+              onMouseDown={(e) => e.stopPropagation()}
+              data-testid="repo-dropdown"
+            >
+              <div className="max-h-96 overflow-y-auto py-1">
+                <div className="text-muted-foreground px-4 py-3 text-sm">No repositories found</div>
+              </div>
+              <div className="border-border border-t">
+                <button
+                  onClick={handleAddRepo}
+                  className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+                  data-testid="add-repo-button"
+                >
+                  <Plus className="text-muted-foreground h-4 w-4" />
+                  <span>Add Repository</span>
+                </button>
+                <button
+                  onClick={handleCloneRepo}
+                  className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+                  data-testid="clone-repo-button"
+                >
+                  <Download className="text-muted-foreground h-4 w-4" />
+                  <span>Clone Repository</span>
+                </button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+        <ForgeStatusIndicator />
+      </div>
+    )
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <Tooltip content={repo.path} side="bottom">
-          <PopoverTrigger asChild>
-            <button className="hover:bg-muted -ml-2 flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors">
-              <span className="text-foreground text-sm font-medium">{folderName}</span>
-              <ChevronDown
-                className={cn(
-                  'text-muted-foreground h-3.5 w-3.5 transition-transform',
-                  isOpen && 'rotate-180'
-                )}
-              />
-            </button>
-          </PopoverTrigger>
-        </Tooltip>
-        <PopoverContent
-          align="start"
-          className="w-80 overflow-hidden p-0"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <div className="max-h-96 overflow-y-auto py-1">
-            {repos.length === 0 ? (
-              <div className="text-muted-foreground px-4 py-3 text-sm">No repositories found</div>
-            ) : (
-              repos.map((r) => (
-                <RepoItem
-                  key={r.path}
-                  repo={r}
-                  onSelect={handleSelectRepo}
-                  onRemove={handleRemoveRepo}
+    <div className="flex items-center gap-2" data-testid="topbar">
+      <div data-testid="repo-selector">
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <Tooltip content={repo.path} side="bottom">
+            <PopoverTrigger asChild>
+              <button
+                className="hover:bg-muted -ml-2 flex items-center gap-1.5 rounded-md px-2 py-1 transition-colors"
+                data-testid="repo-selector-button"
+              >
+                <span
+                  className="text-foreground text-sm font-medium"
+                  data-testid="repo-metadata-container"
+                >
+                  {folderName}
+                </span>
+                <ChevronDown
+                  className={cn(
+                    'text-muted-foreground h-3.5 w-3.5 transition-transform',
+                    isOpen && 'rotate-180'
+                  )}
                 />
-              ))
-            )}
-          </div>
-          <div className="border-border border-t">
-            <button
-              onClick={handleAddRepo}
-              className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
-            >
-              <Plus className="text-muted-foreground h-4 w-4" />
-              <span>Add Repository</span>
-            </button>
-            <button
-              onClick={handleCloneRepo}
-              className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
-            >
-              <Download className="text-muted-foreground h-4 w-4" />
-              <span>Clone Repository</span>
-            </button>
-          </div>
-        </PopoverContent>
-      </Popover>
+              </button>
+            </PopoverTrigger>
+          </Tooltip>
+          <PopoverContent
+            align="start"
+            className="w-80 overflow-hidden p-0"
+            onMouseDown={(e) => e.stopPropagation()}
+            data-testid="repo-dropdown"
+          >
+            <div className="max-h-96 overflow-y-auto py-1">
+              {repos.length === 0 ? (
+                <div className="text-muted-foreground px-4 py-3 text-sm">No repositories found</div>
+              ) : (
+                repos.map((r) => (
+                  <RepoItem
+                    key={r.path}
+                    repo={r}
+                    onSelect={handleSelectRepo}
+                    onRemove={handleRemoveRepo}
+                  />
+                ))
+              )}
+            </div>
+            <div className="border-border border-t">
+              <button
+                onClick={handleAddRepo}
+                className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+                data-testid="add-repo-button"
+              >
+                <Plus className="text-muted-foreground h-4 w-4" />
+                <span>Add Repository</span>
+              </button>
+              <button
+                onClick={handleCloneRepo}
+                className="hover:bg-muted text-foreground flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition-colors"
+                data-testid="clone-repo-button"
+              >
+                <Download className="text-muted-foreground h-4 w-4" />
+                <span>Clone Repository</span>
+              </button>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
 
       {isInWorktree && activeWorktree && (
         <WorktreeBadge

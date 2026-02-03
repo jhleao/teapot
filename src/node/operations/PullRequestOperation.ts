@@ -21,8 +21,8 @@ import { canFastForward, getGitAdapter, supportsMerge, type GitAdapter } from '.
 import { PrTargetResolver, ShipItNavigator } from '../domain'
 import { RepoModelService } from '../services'
 import { ExecutionContextService } from '../services/ExecutionContextService'
-import { GitWatcher } from '../services/GitWatcherService'
 import { gitForgeService } from '../services/ForgeService'
+import { GitWatcher } from '../services/GitWatcherService'
 import { getMergedBranchNames } from '../services/MergedBranchesService'
 import { configStore } from '../store'
 
@@ -373,7 +373,9 @@ export class PullRequestOperation {
     for (const dependentPr of dependentPrs) {
       try {
         await gitForgeService.updatePullRequestBase(repoPath, dependentPr.number, newBase)
-        log.info(`[PullRequestOperation] Retargeted PR #${dependentPr.number} from ${mergedBranch} to ${newBase}`)
+        log.info(
+          `[PullRequestOperation] Retargeted PR #${dependentPr.number} from ${mergedBranch} to ${newBase}`
+        )
       } catch (error) {
         log.warn(`[PullRequestOperation] Failed to retarget PR #${dependentPr.number}:`, error)
       }

@@ -9,5 +9,8 @@ export default defineConfig({
     alias: {
       '@shared': path.resolve(__dirname, './src/shared')
     }
+  },
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**']
   }
 })

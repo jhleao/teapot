@@ -406,8 +406,8 @@ async function buildBranchesFromDescriptors(
   const refs = branchDescriptors.map((d) => d.fullRef)
   const shaMap = await git.resolveRefs(dir, refs)
 
-  // Build branch objects using the resolved SHAs
-  const branches = branchDescriptors.map((descriptor) => {
+  // Build initial branch objects using the resolved SHAs
+  const branches: Branch[] = branchDescriptors.map((descriptor) => {
     const headSha = shaMap.get(descriptor.fullRef) ?? ''
     const normalizedRef = getBranchName(descriptor)
     const isTrunk =
@@ -419,6 +419,44 @@ async function buildBranchesFromDescriptors(
       headSha
     }
   })
+
+  // Compute ahead/behind counts for local non-trunk branches with remote tracking branches
+  // Check if the adapter supports getAheadBehind
+  if ('getAheadBehind' in git && typeof git.getAheadBehind === 'function') {
+    // Build a set of remote branch refs for quick lookup
+    const remoteBranchRefs = new Set<string>()
+    for (const branch of branches) {
+      if (branch.isRemote) {
+        // Extract the branch name from remote ref (e.g., "origin/feature" -> "feature")
+        const slashIndex = branch.ref.indexOf('/')
+        if (slashIndex >= 0) {
+          remoteBranchRefs.add(branch.ref.slice(slashIndex + 1))
+        }
+      }
+    }
+
+    // Compute ahead/behind in parallel for all eligible branches
+    await Promise.all(
+      branches.map(async (branch) => {
+        // Only compute for local, non-trunk branches
+        if (branch.isRemote || branch.isTrunk) {
+          return
+        }
+
+        // Check if a corresponding remote tracking branch exists
+        if (!remoteBranchRefs.has(branch.ref)) {
+          return
+        }
+
+        const remoteRef = `origin/${branch.ref}`
+        const aheadBehind = await git.getAheadBehind!(dir, branch.ref, remoteRef)
+        if (aheadBehind) {
+          branch.commitsAhead = aheadBehind.ahead
+          branch.commitsBehind = aheadBehind.behind
+        }
+      })
+    )
+  }
 
   return branches
 }

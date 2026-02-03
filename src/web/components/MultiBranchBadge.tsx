@@ -80,6 +80,10 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
             <button
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+              }}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(
                 'inline-flex w-[1.625rem] items-center justify-center rounded-lg py-1 text-xs font-medium transition-colors',

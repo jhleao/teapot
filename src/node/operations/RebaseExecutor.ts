@@ -170,8 +170,7 @@ async function acquireContext(
         error: {
           status: 'error',
           errorCode: 'WORKTREE_CREATION_FAILED',
-          message:
-            'Could not create temporary worktree for rebase. Please commit or stash your changes and try again.'
+          message: error.message
         }
       }
     }

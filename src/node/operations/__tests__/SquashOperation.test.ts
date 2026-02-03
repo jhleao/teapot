@@ -29,6 +29,7 @@ vi.mock('../../store', () => ({
     getActiveWorktree: () => mockActiveWorktree,
     setActiveWorktree: vi.fn(),
     getGithubPat: vi.fn().mockReturnValue(null),
+    getUseParallelWorktree: vi.fn().mockReturnValue(true),
     // Session storage methods
     getRebaseSession: (key: string) => mockRebaseSessions.get(key) ?? null,
     setRebaseSession: (key: string, session: unknown) => mockRebaseSessions.set(key, session),
@@ -64,7 +65,11 @@ describe('SquashOperation', () => {
     resetGitAdapter()
 
     // Create temp directory and repo
-    tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'squash-test-'))
+    // Use realpath to resolve symlinks (e.g., /var -> /private/var on macOS)
+    // so paths match what git returns
+    tempDir = await fs.promises.realpath(
+      await fs.promises.mkdtemp(path.join(os.tmpdir(), 'squash-test-'))
+    )
     repoPath = path.join(tempDir, 'repo')
     await fs.promises.mkdir(repoPath)
 

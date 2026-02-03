@@ -1,16 +1,21 @@
 import { getDeleteBranchPermission } from '@shared/permissions'
-import type { BranchChoice, SquashPreview, UiBranch } from '@shared/types'
+import type { BranchChoice, SquashPreview, UiBranch, UiStack } from '@shared/types'
+import { ArrowDown, ArrowUp, Download, Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
+import { cn } from '../utils/cn'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
 import { RenameBranchDialog } from './RenameBranchDialog'
+import { Tooltip } from './Tooltip'
 import { SquashConfirmDialog } from './SquashConfirmDialog'
 
 export const BranchBadge = memo(function BranchBadge({
-  data
+  data,
+  stack
 }: {
   data: UiBranch
+  stack?: UiStack
 }): React.JSX.Element {
   const {
     checkout,
@@ -20,7 +25,8 @@ export const BranchBadge = memo(function BranchBadge({
     getSquashPreview,
     squashIntoParent,
     repoPath,
-    createPullRequest
+    createPullRequest,
+    pullStack
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
@@ -29,6 +35,7 @@ export const BranchBadge = memo(function BranchBadge({
   const [isLoadingSquashPreview, setIsLoadingSquashPreview] = useState(false)
   const [isSquashing, setIsSquashing] = useState(false)
   const [isRecreatingPr, setIsRecreatingPr] = useState(false)
+  const [isForcePulling, setIsForcePulling] = useState(false)
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -110,6 +117,21 @@ export const BranchBadge = memo(function BranchBadge({
       setIsRecreatingPr(false)
     }
   }, [createPullRequest, data.name, isRecreatingPr])
+
+  const handlePullStack = useCallback(async () => {
+    if (isForcePulling || !stack) return
+    setIsForcePulling(true)
+    try {
+      const branchNames = collectBranchesFromStack(data.name, stack)
+      if (branchNames.length === 0) {
+        toast.warning('No branches to pull')
+        return
+      }
+      await pullStack({ branchNames })
+    } finally {
+      setIsForcePulling(false)
+    }
+  }, [data.name, isForcePulling, pullStack, stack])
 
   const handleOpenSquashDialog = useCallback(async () => {
     // Only block dirty worktree if this is the current branch
@@ -217,6 +239,32 @@ export const BranchBadge = memo(function BranchBadge({
                 </ContextMenuItem>
               </>
             )}
+            {!data.isRemote && !data.isTrunk && stack && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={handlePullStack}
+                  disabled={isForcePulling || (data.isCurrent && isWorkingTreeDirty)}
+                  disabledReason={
+                    data.isCurrent && isWorkingTreeDirty
+                      ? 'Cannot pull with uncommitted changes'
+                      : undefined
+                  }
+                >
+                  {isForcePulling ? (
+                    <>
+                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      Pulling...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-1 h-3 w-3" />
+                      Pull from here up
+                    </>
+                  )}
+                </ContextMenuItem>
+              </>
+            )}
             {data.canRecreatePr && (
               <>
                 <ContextMenuSeparator />
@@ -249,6 +297,7 @@ export const BranchBadge = memo(function BranchBadge({
             </svg>
           )}
           {data.name}
+          <AheadBehindIndicator ahead={data.commitsAhead} behind={data.commitsBehind} isRemote={data.isRemote} />
         </span>
       </ContextMenu>
       <RenameBranchDialog
@@ -271,3 +320,102 @@ export const BranchBadge = memo(function BranchBadge({
     </>
   )
 })
+
+function getAheadBehindTooltip(ahead: number, behind: number): string {
+  const parts: string[] = []
+  if (ahead > 0) parts.push(`${ahead} ahead`)
+  if (behind > 0) parts.push(`${behind} behind`)
+  return parts.join(', ') + ' of remote'
+}
+
+function getAheadBehindColor(ahead: number, behind: number): string {
+  if (ahead > 0 && behind > 0) return 'text-red-600'
+  if (behind > 0) return 'text-amber-600'
+  return 'text-blue-600'
+}
+
+function formatCount(count: number): string {
+  return count > 9 ? '9+' : String(count)
+}
+
+function AheadBehindIndicator({
+  ahead = 0,
+  behind = 0,
+  isRemote
+}: {
+  ahead?: number
+  behind?: number
+  isRemote?: boolean
+}): React.JSX.Element | null {
+  if (isRemote || (ahead === 0 && behind === 0)) return null
+
+  return (
+    <Tooltip content={getAheadBehindTooltip(ahead, behind)}>
+      <span className={cn('ml-1 flex items-center gap-0.5 text-[10px] font-medium', getAheadBehindColor(ahead, behind))}>
+        {ahead > 0 && (
+          <>
+            <ArrowUp className="h-3 w-3" />
+            {formatCount(ahead)}
+          </>
+        )}
+        {behind > 0 && (
+          <>
+            <ArrowDown className="h-3 w-3" />
+            {formatCount(behind)}
+          </>
+        )}
+      </span>
+    </Tooltip>
+  )
+}
+
+/**
+ * Collects all local branch names from the selected branch upward through ancestor branches.
+ * Walks up the stack structure to find all branches that would be affected by a pull operation.
+ * Excludes remote and trunk branches.
+ */
+function collectBranchesFromStack(startBranchName: string, stack: UiStack): string[] {
+  const branchNames: string[] = []
+
+  // Find the commit containing the start branch and collect branches from there up
+  function findAndCollect(s: UiStack): boolean {
+    for (const commit of s.commits) {
+      // Check if this commit has the target branch
+      const hasBranch = commit.branches.some((b) => b.name === startBranchName)
+      if (hasBranch) {
+        // Found the start branch - collect all local non-trunk branches from here up
+        collectFromCommitUp(s, commit)
+        return true
+      }
+
+      // Search in spinoffs
+      for (const spinoff of commit.spinoffs) {
+        if (findAndCollect(spinoff)) {
+          // Found in spinoff - also collect branches from this level up
+          collectFromCommitUp(s, commit)
+          return true
+        }
+      }
+    }
+    return false
+  }
+
+  // Collect all local non-trunk branches from a commit position upward
+  function collectFromCommitUp(s: UiStack, startCommit: { sha: string }): void {
+    const startIdx = s.commits.findIndex((c) => c.sha === startCommit.sha)
+    if (startIdx === -1) return
+
+    // Walk from start commit to the top of this stack (higher index = children)
+    for (let i = startIdx; i < s.commits.length; i++) {
+      const commit = s.commits[i]
+      for (const branch of commit.branches) {
+        if (!branch.isRemote && !branch.isTrunk && !branchNames.includes(branch.name)) {
+          branchNames.push(branch.name)
+        }
+      }
+    }
+  }
+
+  findAndCollect(stack)
+  return branchNames
+}

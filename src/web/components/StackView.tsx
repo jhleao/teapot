@@ -386,7 +386,7 @@ export const CommitView = memo(function CommitView({
         <div className="flex items-center gap-2">
           {data.branches.length > 0 && (
             <div onMouseDown={onCommitDotMouseDown}>
-              <MultiBranchBadge branches={data.branches} />
+              <MultiBranchBadge branches={data.branches} stack={stack} />
             </div>
           )}
           {data.branches.length === 0 && !stack.isTrunk && (

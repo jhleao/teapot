@@ -40,8 +40,7 @@ describe('GitForgeClient', () => {
       closePullRequest: vi.fn(),
       updatePullRequestBase: vi.fn(),
       deleteRemoteBranch: vi.fn(),
-      mergePullRequest: vi.fn(),
-      fetchPrDetails: vi.fn()
+      mergePullRequest: vi.fn()
     }
     client = new GitForgeClient(mockAdapter)
   })

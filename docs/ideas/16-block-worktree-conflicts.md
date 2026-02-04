@@ -1,9 +1,10 @@
 # Idea: Block All Worktree Conflicts During Rebase
 
 **Source:** `worktree-rebase-conflicts.md` (user stories document)
-**Status:** Proposed
+**Status:** Implemented
 **Priority:** High (UX, reliability)
 **Effort:** Medium (1 week)
+**Implementation Date:** 2026-02-04
 
 ## Problem
 

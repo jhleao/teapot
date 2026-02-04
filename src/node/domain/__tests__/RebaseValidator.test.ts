@@ -414,53 +414,6 @@ describe('RebaseValidator', () => {
     })
   })
 
-  describe('partitionWorktreeConflicts', () => {
-    it('partitions conflicts into clean and dirty', () => {
-      const conflicts: WorktreeConflict[] = [
-        { branch: 'clean-1', worktreePath: '/wt1', isDirty: false },
-        { branch: 'dirty-1', worktreePath: '/wt2', isDirty: true },
-        { branch: 'clean-2', worktreePath: '/wt3', isDirty: false },
-        { branch: 'dirty-2', worktreePath: '/wt4', isDirty: true }
-      ]
-
-      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts(conflicts)
-
-      expect(clean).toHaveLength(2)
-      expect(dirty).toHaveLength(2)
-      expect(clean.every((c) => !c.isDirty)).toBe(true)
-      expect(dirty.every((c) => c.isDirty)).toBe(true)
-    })
-
-    it('handles all clean conflicts', () => {
-      const conflicts: WorktreeConflict[] = [
-        { branch: 'clean', worktreePath: '/wt', isDirty: false }
-      ]
-
-      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts(conflicts)
-
-      expect(clean).toHaveLength(1)
-      expect(dirty).toHaveLength(0)
-    })
-
-    it('handles all dirty conflicts', () => {
-      const conflicts: WorktreeConflict[] = [
-        { branch: 'dirty', worktreePath: '/wt', isDirty: true }
-      ]
-
-      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts(conflicts)
-
-      expect(clean).toHaveLength(0)
-      expect(dirty).toHaveLength(1)
-    })
-
-    it('handles empty array', () => {
-      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts([])
-
-      expect(clean).toHaveLength(0)
-      expect(dirty).toHaveLength(0)
-    })
-  })
-
   describe('formatWorktreeConflictMessage', () => {
     it('formats single conflict message', () => {
       const conflicts: WorktreeConflict[] = [

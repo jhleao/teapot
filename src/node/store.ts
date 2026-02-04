@@ -1,10 +1,4 @@
-import type {
-  DetachedWorktree,
-  FileLogLevel,
-  LocalRepo,
-  RebaseIntent,
-  RebaseState
-} from '@shared/types'
+import type { FileLogLevel, LocalRepo, RebaseIntent, RebaseState } from '@shared/types'
 import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
 import Store from 'electron-store'
 
@@ -16,7 +10,6 @@ export type StoredRebaseSession = {
   createdAtMs: number
   updatedAtMs: number
   originalBranch: string
-  autoDetachedWorktrees?: DetachedWorktree[]
 }
 
 /**

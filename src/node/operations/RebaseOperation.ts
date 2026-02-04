@@ -13,12 +13,10 @@
 import { log } from '@shared/logger'
 import type {
   Configuration,
-  DetachedWorktree,
   RebaseOperationResponse,
   RebaseStatusResponse,
   SubmitRebaseIntentResponse,
-  UiState,
-  WorktreeConflict
+  UiState
 } from '@shared/types'
 import { getGitAdapter, supportsGetRebaseState } from '../adapters/git'
 import {
@@ -33,7 +31,6 @@ import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { RebaseExecutor, type RebaseErrorCode } from './RebaseExecutor'
 import { UiStateOperation } from './UiStateOperation'
-import { WorktreeOperation } from './WorktreeOperation'
 
 /**
  * Custom error class for rebase operation failures that preserves error codes
@@ -103,18 +100,20 @@ export class RebaseOperation {
    * Build a rebase plan, store it in session, and return the preview UI payload.
    * Returns null when no rebase intent can be built (e.g., invalid head/base).
    * Returns worktree conflicts if any branches are checked out in other worktrees.
+   *
+   * NOTE: We block ALL worktree conflicts (both clean and dirty). We do NOT auto-detach
+   * worktrees because that silently modifies the user's workspace state. Users must
+   * manually switch branches in conflicting worktrees before rebasing.
    */
   static async submitRebaseIntent(
     repoPath: string,
     headSha: string,
-    baseSha: string,
-    options: { preDetachedWorktrees?: DetachedWorktree[] } = {}
+    baseSha: string
   ): Promise<SubmitRebaseIntentResponse> {
     log.debug('[RebaseOperation] submitRebaseIntent() called', {
       repoPath,
       headSha: headSha?.slice(0, 8),
-      baseSha: baseSha?.slice(0, 8),
-      preDetachedWorktreeCount: options.preDetachedWorktrees?.length ?? 0
+      baseSha: baseSha?.slice(0, 8)
     })
 
     const config: Configuration = { repoPath }
@@ -131,7 +130,8 @@ export class RebaseOperation {
       return null
     }
 
-    // Check for worktree conflicts before proceeding
+    // Check for worktree conflicts before proceeding.
+    // Block ALL conflicts - do NOT auto-detach worktrees.
     const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
     const worktreeValidation = RebaseValidator.validateNoWorktreeConflicts(
       rebaseIntent,
@@ -139,38 +139,13 @@ export class RebaseOperation {
       activeWorktreePath
     )
 
-    let autoDetachedWorktrees = [...(options.preDetachedWorktrees ?? [])]
-
     if (!worktreeValidation.valid) {
-      const { clean, dirty } = RebaseValidator.partitionWorktreeConflicts(
-        worktreeValidation.conflicts
-      )
-
-      if (dirty.length > 0) {
-        return {
-          success: false,
-          error: 'WORKTREE_CONFLICT',
-          worktreeConflicts: dirty,
-          message: RebaseValidator.formatWorktreeConflictMessage(dirty)
-        }
+      return {
+        success: false,
+        error: 'WORKTREE_CONFLICT',
+        worktreeConflicts: worktreeValidation.conflicts,
+        message: worktreeValidation.message
       }
-
-      const { detached, failures } = await RebaseOperation.detachCleanWorktrees(clean)
-
-      if (failures.length > 0) {
-        const conflicts = [...dirty, ...failures]
-        return {
-          success: false,
-          error: 'WORKTREE_CONFLICT',
-          worktreeConflicts: conflicts,
-          message: RebaseValidator.formatWorktreeConflictMessage(conflicts)
-        }
-      }
-
-      autoDetachedWorktrees = RebaseOperation.mergeDetachedWorktrees(
-        autoDetachedWorktrees,
-        detached
-      )
     }
 
     const plan = RebaseStateMachine.createRebasePlan({
@@ -180,9 +155,7 @@ export class RebaseOperation {
     })
 
     await SessionService.clearSession(repoPath)
-    const storedSession = SessionService.createStoredSession(plan, currentBranch ?? 'HEAD', {
-      autoDetachedWorktrees
-    })
+    const storedSession = SessionService.createStoredSession(plan, currentBranch ?? 'HEAD')
     const createResult = await SessionService.rebaseSessionStore.createSession(
       repoPath,
       storedSession
@@ -480,45 +453,5 @@ export class RebaseOperation {
   static async dismissRebaseQueue(repoPath: string): Promise<UiState | null> {
     await SessionService.clearSession(repoPath)
     return UiStateOperation.getUiState(repoPath)
-  }
-
-  private static async detachCleanWorktrees(
-    conflicts: WorktreeConflict[]
-  ): Promise<{ detached: DetachedWorktree[]; failures: WorktreeConflict[] }> {
-    if (conflicts.length === 0) return { detached: [], failures: [] }
-
-    const conflictsByPath = new Map<string, WorktreeConflict>()
-    for (const conflict of conflicts) {
-      if (!conflictsByPath.has(conflict.worktreePath)) {
-        conflictsByPath.set(conflict.worktreePath, conflict)
-      }
-    }
-
-    const detached: DetachedWorktree[] = []
-    const failures: WorktreeConflict[] = []
-
-    for (const conflict of conflictsByPath.values()) {
-      const result = await WorktreeOperation.detachHead(conflict.worktreePath)
-      if (!result.success) {
-        failures.push({ ...conflict, isDirty: true })
-        continue
-      }
-      detached.push({ worktreePath: conflict.worktreePath, branch: conflict.branch })
-    }
-
-    return { detached, failures }
-  }
-
-  private static mergeDetachedWorktrees(
-    existing: DetachedWorktree[],
-    next: DetachedWorktree[]
-  ): DetachedWorktree[] {
-    if (!next.length) return existing
-
-    const byPath = new Map<string, DetachedWorktree>()
-    for (const entry of [...existing, ...next]) {
-      byPath.set(entry.worktreePath, entry)
-    }
-    return Array.from(byPath.values())
   }
 }

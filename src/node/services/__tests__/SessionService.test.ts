@@ -84,19 +84,6 @@ describe('SessionService', () => {
       expect(getSession(pathWithSlash)).not.toBeNull()
     })
 
-    it('stores auto-detached worktrees', () => {
-      const plan = createPlan()
-      const autoDetached = [
-        { worktreePath: '/wt1', branch: 'branch1' },
-        { worktreePath: '/wt2', branch: 'branch2' }
-      ]
-
-      createSession(testRepoPath, plan, 'feature', autoDetached)
-
-      const session = getSession(testRepoPath)
-      expect(session!.autoDetachedWorktrees).toEqual(autoDetached)
-    })
-
     it('sets timestamps on creation', () => {
       const plan = createPlan()
       const before = Date.now()
@@ -237,18 +224,6 @@ describe('SessionService', () => {
       expect(stored.intent).toBe(plan.intent)
       expect(stored.state).toBe(plan.state)
       expect(stored.originalBranch).toBe('feature')
-      expect(stored.autoDetachedWorktrees).toBeUndefined()
-    })
-
-    it('includes auto-detached worktrees when provided', () => {
-      const plan = createPlan()
-      const worktrees = [{ worktreePath: '/wt', branch: 'branch' }]
-
-      const stored = createStoredSession(plan, 'feature', {
-        autoDetachedWorktrees: worktrees
-      })
-
-      expect(stored.autoDetachedWorktrees).toEqual(worktrees)
     })
   })
 
@@ -332,19 +307,6 @@ describe('SessionService', () => {
       expect(job.conflicts![0]!.path).toBe('file.ts')
     })
 
-    it('recovers auto-detached worktree information', () => {
-      const storedSession = createStoredSessionData()
-      storedSession.autoDetachedWorktrees = [
-        { worktreePath: '/wt1', branch: 'feature-2' },
-        { worktreePath: '/wt2', branch: 'feature-3' }
-      ]
-      mockDiskStore.set(testRepoPath, storedSession)
-
-      const session = getSession(testRepoPath)
-
-      expect(session!.autoDetachedWorktrees).toHaveLength(2)
-      expect(session!.autoDetachedWorktrees![0]!.branch).toBe('feature-2')
-    })
   })
 
   describe('Queue State Management', () => {

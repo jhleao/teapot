@@ -68,20 +68,6 @@ export class GitHubAdapter implements GitForgeAdapter {
    * Returns extended state including rate limit information.
    */
   async fetchState(): Promise<GitForgeStateWithRateLimit> {
-    try {
-      return await this.fetchStateGraphQL()
-    } catch (error) {
-      // Log the error and fall back to REST if GraphQL fails
-      log.warn('[GitHubAdapter] GraphQL fetch failed, falling back to REST:', error)
-      return this.fetchStateREST()
-    }
-  }
-
-  /**
-   * Fetches PR state using GitHub GraphQL API.
-   * Single request gets all PR data including check status.
-   */
-  private async fetchStateGraphQL(): Promise<GitForgeStateWithRateLimit> {
     const response = await this.graphqlClient.query<GraphQLPullRequestsResponse>(FETCH_PRS_QUERY, {
       owner: this.owner,
       repo: this.repo,
@@ -156,13 +142,22 @@ export class GitHubAdapter implements GitForgeAdapter {
     }
 
     const contexts = lastCommit.commit.statusCheckRollup.contexts.nodes
-    return contexts.map((ctx) => {
+    const allChecks = contexts.map((ctx) => {
       if (ctx.__typename === 'CheckRun') {
         return this.mapGraphQLCheckRun(ctx)
       } else {
         return this.mapGraphQLStatusContext(ctx)
       }
     })
+
+    // Deduplicate by name — GitHub can return multiple CheckRun entries for
+    // the same check (e.g. re-runs). Contexts are returned in chronological
+    // order, so the last entry for a given name is the most recent.
+    const byName = new Map<string, StatusCheck>()
+    for (const check of allChecks) {
+      byName.set(check.name, check)
+    }
+    return [...byName.values()]
   }
 
   /**
@@ -413,6 +408,11 @@ export class GitHubAdapter implements GitForgeAdapter {
       blockers.push('conflicts')
     }
 
+    // Review decision from GitHub (direct signal, works with both classic branch protection and rulesets)
+    if (pr.reviewDecision === 'REVIEW_REQUIRED' || pr.reviewDecision === 'CHANGES_REQUESTED') {
+      blockers.push('reviews_required')
+    }
+
     // Map mergeStateStatus to blockers
     switch (pr.mergeStateStatus) {
       case 'BLOCKED':
@@ -420,7 +420,9 @@ export class GitHubAdapter implements GitForgeAdapter {
           blockers.push('checks_failed')
         } else if (checks.some((c) => c.status === 'pending')) {
           blockers.push('checks_pending')
-        } else {
+        } else if (!blockers.includes('reviews_required')) {
+          // BLOCKED with no failing/pending checks and no review requirement detected —
+          // likely a branch protection rule we can't identify specifically
           blockers.push('reviews_required')
         }
         break
@@ -451,115 +453,7 @@ export class GitHubAdapter implements GitForgeAdapter {
       blockers.push('checks_pending')
     }
 
-    // Add reviews_required if branch protection requires approving reviews
-    // and we haven't already added it from BLOCKED state
-    if (
-      protectionRule?.requiresApprovingReviews &&
-      !blockers.includes('reviews_required') &&
-      pr.mergeStateStatus !== 'CLEAN'
-    ) {
-      blockers.push('reviews_required')
-    }
-
     return blockers
-  }
-
-  /**
-   * Fallback REST implementation.
-   * Used when GraphQL fails or for testing.
-   */
-  private async fetchStateREST(): Promise<GitForgeState> {
-    // Fetch PRs with all states (open, closed, merged)
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls?state=all&per_page=100&sort=updated&direction=desc`
-
-    const { body, statusCode } = await request(url, {
-      dispatcher: githubAgent,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: {
-        Authorization: `Bearer ${this.pat}`,
-        'User-Agent': 'Teapot-Git-Client',
-        Accept: 'application/vnd.github.v3+json'
-      }
-    })
-
-    if (statusCode !== 200) {
-      const text = await body.text()
-      throw new Error(`GitHub API failed with status ${statusCode}: ${text}`)
-    }
-
-    const data = (await body.json()) as GitHubPullRequest[]
-
-    // Separate open PRs that need details fetched
-    const openPrs = data.filter((pr) => this.mapPrState(pr) === 'open')
-
-    // Fetch details for open PRs in parallel with concurrency limit
-    const CONCURRENCY = 5
-    const detailsMap = new Map<
-      number,
-      { mergeable: boolean | null; mergeable_state: string; mergeReadiness: MergeReadiness }
-    >()
-
-    for (let i = 0; i < openPrs.length; i += CONCURRENCY) {
-      const batch = openPrs.slice(i, i + CONCURRENCY)
-      const results = await Promise.all(
-        batch.map((pr) =>
-          this.fetchPrDetailsWithChecks(pr.number).catch((error) => {
-            log.debug(`[GitHubAdapter] fetchPrDetailsWithChecks() failed for PR #${pr.number}`, {
-              message: error instanceof Error ? error.message : String(error)
-            })
-            return null
-          })
-        )
-      )
-      batch.forEach((pr, idx) => {
-        const result = results[idx]
-        if (result) {
-          detailsMap.set(pr.number, result)
-        }
-      })
-    }
-
-    // Build pull request objects
-    const pullRequests: ForgePullRequest[] = data.map((pr) => {
-      const state = this.mapPrState(pr)
-      const details = detailsMap.get(pr.number)
-
-      // Determine isMergeable from details or default to false
-      const isMergeable = details
-        ? details.mergeable === true && details.mergeable_state === 'clean'
-        : false
-
-      return {
-        number: pr.number,
-        title: pr.title,
-        url: pr.html_url,
-        state,
-        headRefName: pr.head.ref,
-        headSha: pr.head.sha,
-        baseRefName: pr.base.ref,
-        createdAt: pr.created_at,
-        isMergeable,
-        mergeReadiness: details?.mergeReadiness
-      }
-    })
-
-    return { pullRequests }
-  }
-
-  /**
-   * Maps GitHub PR state to our internal state.
-   *
-   * GitHub API returns state='closed' for both closed and merged PRs.
-   * We distinguish merged PRs by checking `merged_at` field.
-   */
-  private mapPrState(pr: GitHubPullRequest): ForgePullRequest['state'] {
-    if (pr.draft) {
-      return 'draft'
-    }
-    if (pr.state === 'closed' && pr.merged_at !== null) {
-      return 'merged'
-    }
-    return pr.state
   }
 
   async createPullRequest(
@@ -664,181 +558,6 @@ export class GitHubAdapter implements GitForgeAdapter {
   }
 
   /**
-   * Fetches detailed information about a specific pull request.
-   * Used to get mergeable state which is not included in the list endpoint.
-   *
-   * Docs: https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request
-   */
-  async fetchPrDetails(
-    number: number
-  ): Promise<{ mergeable: boolean | null; mergeable_state: string; headSha: string }> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/pulls/${number}`
-
-    const { body, statusCode } = await request(url, {
-      dispatcher: githubAgent,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: {
-        Authorization: `Bearer ${this.pat}`,
-        'User-Agent': 'Teapot-Git-Client',
-        Accept: 'application/vnd.github.v3+json'
-      }
-    })
-
-    if (statusCode !== 200) {
-      const text = await body.text()
-      throw new Error(`GitHub API failed with status ${statusCode}: ${text}`)
-    }
-
-    const data = (await body.json()) as GitHubPullRequestDetails
-
-    return {
-      mergeable: data.mergeable,
-      mergeable_state: data.mergeable_state,
-      headSha: data.head.sha
-    }
-  }
-
-  /**
-   * Fetches check runs for a specific commit SHA.
-   * Uses GitHub Check Runs API (includes GitHub Actions and external checks).
-   *
-   * Docs: https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference
-   */
-  async fetchCheckRuns(ref: string): Promise<StatusCheck[]> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/commits/${ref}/check-runs`
-
-    try {
-      const { body, statusCode } = await request(url, {
-        dispatcher: githubAgent,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: {
-          Authorization: `Bearer ${this.pat}`,
-          'User-Agent': 'Teapot-Git-Client',
-          Accept: 'application/vnd.github.v3+json'
-        }
-      })
-
-      if (statusCode !== 200) {
-        // Return empty array on error - don't fail the whole fetch
-        return []
-      }
-
-      const data = (await body.json()) as GitHubCheckRunsResponse
-
-      return data.check_runs.map((run) => ({
-        name: run.name,
-        status: this.mapCheckRunStatus(run),
-        description: run.output.summary ?? undefined,
-        detailsUrl: run.html_url
-      }))
-    } catch {
-      // Return empty array on error for graceful degradation
-      return []
-    }
-  }
-
-  /**
-   * Fetches commit statuses for a specific commit SHA.
-   * Uses GitHub Commit Status API (legacy CI systems like Travis, CircleCI legacy).
-   *
-   * Docs: https://docs.github.com/en/rest/commits/statuses#get-the-combined-status-for-a-specific-reference
-   */
-  async fetchCommitStatuses(ref: string): Promise<StatusCheck[]> {
-    const url = `https://api.github.com/repos/${this.owner}/${this.repo}/commits/${ref}/status`
-
-    try {
-      const { body, statusCode } = await request(url, {
-        dispatcher: githubAgent,
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        headers: {
-          Authorization: `Bearer ${this.pat}`,
-          'User-Agent': 'Teapot-Git-Client',
-          Accept: 'application/vnd.github.v3+json'
-        }
-      })
-
-      if (statusCode !== 200) {
-        return []
-      }
-
-      const data = (await body.json()) as GitHubCombinedStatus
-
-      return data.statuses.map((status) => ({
-        name: status.context,
-        status: this.mapCommitStatusState(status.state),
-        description: status.description ?? undefined,
-        detailsUrl: status.target_url ?? undefined
-      }))
-    } catch {
-      return []
-    }
-  }
-
-  /**
-   * Maps GitHub commit status state to our CheckStatus type.
-   */
-  private mapCommitStatusState(state: GitHubCommitStatus['state']): CheckStatus {
-    switch (state) {
-      case 'success':
-        return 'success'
-      case 'failure':
-      case 'error':
-        return 'failure'
-      case 'pending':
-        return 'pending'
-      default:
-        return 'pending'
-    }
-  }
-
-  /**
-   * Merges check runs and commit statuses, preferring check runs when names match.
-   * Check Runs API is the modern standard, so we prefer it over legacy statuses.
-   */
-  private mergeChecksAndStatuses(
-    checkRuns: StatusCheck[],
-    commitStatuses: StatusCheck[]
-  ): StatusCheck[] {
-    // Use a Map to deduplicate by name, preferring check runs
-    const checksMap = new Map<string, StatusCheck>()
-
-    // Add commit statuses first (will be overwritten by check runs if name matches)
-    for (const status of commitStatuses) {
-      checksMap.set(status.name.toLowerCase(), status)
-    }
-
-    // Add check runs (overwrites any matching commit statuses)
-    for (const run of checkRuns) {
-      checksMap.set(run.name.toLowerCase(), run)
-    }
-
-    return Array.from(checksMap.values())
-  }
-
-  /**
-   * Maps GitHub check run status/conclusion to our CheckStatus type.
-   */
-  private mapCheckRunStatus(run: GitHubCheckRun): CheckStatus {
-    if (run.status !== 'completed') {
-      return 'pending'
-    }
-    switch (run.conclusion) {
-      case 'success':
-        return 'success'
-      case 'failure':
-      case 'timed_out':
-      case 'action_required':
-        return 'failure'
-      case 'neutral':
-      case 'skipped':
-      case 'cancelled':
-        return 'neutral'
-      default:
-        return 'pending'
-    }
-  }
-
-  /**
    * Derives the overall checks status from individual check results.
    */
   private deriveChecksStatus(checks: StatusCheck[]): MergeReadiness['checksStatus'] {
@@ -847,120 +566,6 @@ export class GitHubAdapter implements GitForgeAdapter {
     if (checks.some((c) => c.status === 'pending')) return 'pending'
     if (checks.some((c) => c.status === 'expected')) return 'expected'
     return 'success'
-  }
-
-  /**
-   * Derives merge blockers from PR state and check results.
-   */
-  private deriveBlockers(
-    mergeable: boolean | null,
-    mergeable_state: string,
-    checks: StatusCheck[]
-  ): MergeBlocker[] {
-    const blockers: MergeBlocker[] = []
-
-    // GitHub still computing mergeable state
-    if (mergeable === null) {
-      blockers.push('computing')
-    }
-
-    // Merge conflicts
-    if (mergeable_state === 'dirty') {
-      blockers.push('conflicts')
-    }
-
-    // Branch protection blocking (reviews or other rules)
-    if (mergeable_state === 'blocked') {
-      // Check if it's due to failed checks or reviews
-      if (checks.some((c) => c.status === 'failure')) {
-        blockers.push('checks_failed')
-      } else if (checks.some((c) => c.status === 'pending')) {
-        blockers.push('checks_pending')
-      } else {
-        // Likely reviews or other branch protection
-        blockers.push('reviews_required')
-      }
-    }
-
-    // Unstable means checks are failing/pending
-    if (mergeable_state === 'unstable') {
-      if (!blockers.includes('checks_pending')) {
-        blockers.push('checks_pending')
-      }
-    }
-
-    // Add check-based blockers if not already added
-    if (checks.some((c) => c.status === 'failure') && !blockers.includes('checks_failed')) {
-      blockers.push('checks_failed')
-    }
-    if (
-      checks.some((c) => c.status === 'pending') &&
-      !blockers.includes('checks_pending') &&
-      !blockers.includes('computing')
-    ) {
-      blockers.push('checks_pending')
-    }
-
-    return blockers
-  }
-
-  /**
-   * Builds a complete MergeReadiness object from PR details and check runs.
-   */
-  private buildMergeReadiness(
-    mergeable: boolean | null,
-    mergeable_state: string,
-    checks: StatusCheck[]
-  ): MergeReadiness {
-    const canMerge = mergeable === true && mergeable_state === 'clean'
-    const blockers = this.deriveBlockers(mergeable, mergeable_state, checks)
-    const checksStatus = this.deriveChecksStatus(checks)
-
-    return {
-      canMerge,
-      blockers,
-      checksStatus,
-      checks
-    }
-  }
-
-  /**
-   * Fetches PR details including check runs and builds MergeReadiness.
-   * Returns both the raw mergeable state and the enriched MergeReadiness.
-   *
-   * Fetches PR details and check runs/statuses in parallel for better performance.
-   */
-  async fetchPrDetailsWithChecks(number: number): Promise<{
-    mergeable: boolean | null
-    mergeable_state: string
-    mergeReadiness: MergeReadiness
-  }> {
-    // First fetch PR details to get mergeable state and head SHA
-    const prDetails = await this.fetchPrDetails(number)
-
-    // Fetch both check runs and commit statuses in parallel
-    // Check Runs: GitHub Actions, modern CI
-    // Commit Statuses: Legacy CI systems (Travis, CircleCI legacy, etc.)
-    const [checkRuns, commitStatuses] = await Promise.all([
-      this.fetchCheckRuns(prDetails.headSha),
-      this.fetchCommitStatuses(prDetails.headSha)
-    ])
-
-    // Merge both into a single checks array, deduplicating by name
-    const checks = this.mergeChecksAndStatuses(checkRuns, commitStatuses)
-
-    // Build the complete merge readiness object
-    const mergeReadiness = this.buildMergeReadiness(
-      prDetails.mergeable,
-      prDetails.mergeable_state,
-      checks
-    )
-
-    return {
-      mergeable: prDetails.mergeable,
-      mergeable_state: prDetails.mergeable_state,
-      mergeReadiness
-    }
   }
 
   /**
@@ -1201,67 +806,3 @@ type GitHubPullRequest = {
   created_at: string
 }
 
-/**
- * Extended PR details from the single PR endpoint.
- * Includes mergeable fields not available in the list endpoint.
- */
-type GitHubPullRequestDetails = {
-  mergeable: boolean | null
-  /** Undocumented but stable. Values: 'clean', 'dirty', 'blocked', 'unstable', 'unknown' */
-  mergeable_state: string
-  head: {
-    sha: string
-  }
-}
-
-/**
- * GitHub Check Run from the Check Runs API.
- * Docs: https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference
- */
-type GitHubCheckRun = {
-  id: number
-  name: string
-  status: 'queued' | 'in_progress' | 'completed'
-  conclusion:
-    | 'success'
-    | 'failure'
-    | 'neutral'
-    | 'cancelled'
-    | 'skipped'
-    | 'timed_out'
-    | 'action_required'
-    | null
-  html_url: string
-  output: {
-    title: string | null
-    summary: string | null
-  }
-}
-
-/**
- * Response from GitHub Check Runs API.
- */
-type GitHubCheckRunsResponse = {
-  total_count: number
-  check_runs: GitHubCheckRun[]
-}
-
-/**
- * GitHub Commit Status from the legacy Status API.
- * Docs: https://docs.github.com/en/rest/commits/statuses
- */
-type GitHubCommitStatus = {
-  state: 'error' | 'failure' | 'pending' | 'success'
-  context: string
-  description: string | null
-  target_url: string | null
-}
-
-/**
- * Combined status response from GitHub.
- * Docs: https://docs.github.com/en/rest/commits/statuses#get-the-combined-status-for-a-specific-reference
- */
-type GitHubCombinedStatus = {
-  state: 'failure' | 'pending' | 'success'
-  statuses: GitHubCommitStatus[]
-}

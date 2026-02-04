@@ -5,7 +5,15 @@ import type {
   GitForgeState,
   RateLimitInfo
 } from '@shared/types/git-forge'
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react'
 import { useRequestVersioning } from '../hooks/use-request-versioning'
 
 interface ForgeStateContextValue {
@@ -53,6 +61,16 @@ export function ForgeStateProvider({
   const [forgeError, setForgeError] = useState<string | null>(null)
   const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<number | null>(null)
   const [rateLimit, setRateLimit] = useState<RateLimitInfo | null>(null)
+
+  const forgeStateRef = useRef(forgeState)
+  const rateLimitRef = useRef(rateLimit)
+
+  useEffect(() => {
+    forgeStateRef.current = forgeState
+  }, [forgeState])
+  useEffect(() => {
+    rateLimitRef.current = rateLimit
+  }, [rateLimit])
 
   /**
    * Optimistically marks a PR as merged by branch name.
@@ -120,7 +138,7 @@ export function ForgeStateProvider({
       }
 
       const version = acquireVersion()
-      setForgeStatus('fetching')
+      setForgeStatus((prev) => (prev === 'success' ? prev : 'fetching'))
 
       try {
         const result: ForgeStateResult = await window.api.getForgeState({ repoPath, forceRefresh })
@@ -130,7 +148,12 @@ export function ForgeStateProvider({
           return
         }
 
-        setForgeState(result.state)
+        setForgeState((prev) => {
+          if (prev && JSON.stringify(prev) === JSON.stringify(result.state)) {
+            return prev
+          }
+          return result.state
+        })
         setForgeStatus(result.status)
         setForgeError(result.error ?? null)
         if (result.lastSuccessfulFetch) {
@@ -177,36 +200,32 @@ export function ForgeStateProvider({
   // - 5s when CI checks are pending (need to show status changes quickly)
   // - 15s when active (default)
   // - 30s when background tab or rate limit is low
+  // Reads forgeState/rateLimit from refs to avoid restarting the effect on every poll.
   useEffect(() => {
     if (!repoPath) return
 
-    const getPollingInterval = (): number => {
-      // Slow down polling if rate limit is low
-      if (rateLimit && rateLimit.remaining < rateLimit.limit * 0.1) {
-        return 60_000 // 1 minute when rate limited
-      }
+    let isCancelled = false
 
-      // Poll faster when CI checks are pending
-      const hasPendingChecks = forgeState?.pullRequests.some(
+    const getPollingInterval = (): number => {
+      const currentRateLimit = rateLimitRef.current
+      if (currentRateLimit && currentRateLimit.remaining < currentRateLimit.limit * 0.1) {
+        return 60_000
+      }
+      const hasPendingChecks = forgeStateRef.current?.pullRequests.some(
         (pr) => pr.mergeReadiness?.checksStatus === 'pending'
       )
-      if (hasPendingChecks) {
-        return 5_000 // 5s for pending checks
-      }
-
-      // Slow down polling when tab is in background
-      if (document.visibilityState === 'hidden') {
-        return 30_000 // 30s when hidden
-      }
-
-      return 15_000 // Default 15s
+      if (hasPendingChecks) return 5_000
+      if (document.visibilityState === 'hidden') return 30_000
+      return 15_000
     }
 
     let timeoutId: ReturnType<typeof setTimeout>
 
     const scheduleNext = (): void => {
+      if (isCancelled) return
       const interval = getPollingInterval()
       timeoutId = setTimeout(async () => {
+        if (isCancelled) return
         if (document.visibilityState === 'visible') {
           await refreshForge()
         }
@@ -216,8 +235,11 @@ export function ForgeStateProvider({
 
     scheduleNext()
 
-    return () => clearTimeout(timeoutId)
-  }, [repoPath, refreshForge, forgeState, rateLimit])
+    return () => {
+      isCancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [repoPath, refreshForge])
 
   return (
     <ForgeStateContext.Provider

@@ -19,7 +19,6 @@ import { getMergedBranchToCleanup } from '../utils/get-merged-branch-to-cleanup'
 import { getPrStateStyles } from '../utils/pr-state-styles'
 import { Tooltip } from './Tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { ScrollArea } from './ui/scroll-area'
 
 const SECONDARY_BUTTON_CLASS =
   'text-muted-foreground bg-muted border-border hover:bg-muted-foreground/30 cursor-pointer rounded-md border px-2 py-1 text-xs transition-colors disabled:opacity-50'
@@ -234,7 +233,9 @@ export const GitForgeSection = memo(function GitForgeSection({
     const prIsMerged = pr.state === 'merged'
     const prIsClosed = pr.state === 'closed'
     const hasChecks =
-      ((checks.length > 0 || checksStatus === 'expected') && !hasConflicts) || !branchCanShip
+      ((checks.length > 0 || checksStatus === 'expected') && !hasConflicts) ||
+      reviewsRequired ||
+      !branchCanShip
 
     if (!prIsActive) {
       return (
@@ -727,45 +728,41 @@ function ChecksPopoverContent({
 
   return (
     <>
-      <ScrollArea className="max-h-[200px]">
-        <div className="flex w-[216px] flex-col gap-1.5">
-          {[...checks]
-            .sort((a, b) => {
-              const order: Record<string, number> = {
-                success: 0,
-                failure: 1,
-                neutral: 2,
-                skipped: 2,
-                pending: 3,
-                expected: 3
-              }
-              return (order[a.status] ?? 3) - (order[b.status] ?? 3)
-            })
-            .map((check, index) => (
-              <CheckItemRow key={index} check={check} />
-            ))}
-          {reviewsRequired && (
-            <div className="flex items-center gap-2 py-0.5">
-              <div className="shrink-0">
-                <CircleDotIcon className="h-4 w-4 text-yellow-500" />
-              </div>
-              <div className="truncate text-sm">Waiting for review</div>
-            </div>
-          )}
-          {additionalBlockers.map((reason) => (
-            <div key={reason} className="flex cursor-pointer items-center gap-2 py-0.5">
-              <div className="shrink-0">
-                {reason === 'not_off_trunk' ? (
-                  <CircleSlashIcon className="text-muted-foreground h-4 w-4" />
-                ) : (
-                  <XCircleIcon className="h-4 w-4 text-red-500" />
-                )}
-              </div>
-              <div className="truncate text-sm">{getBlockReasonLabel(reason)}</div>
-            </div>
+      <div className="flex w-[216px] flex-col gap-1.5">
+        {[...checks]
+          .sort((a, b) => {
+            const alpha = a.name.localeCompare(b.name)
+            if (alpha !== 0) return alpha
+            const len = a.name.length - b.name.length
+            if (len !== 0) return len
+            const descA = a.description ? 1 : 0
+            const descB = b.description ? 1 : 0
+            return descA - descB
+          })
+          .map((check, index) => (
+            <CheckItemRow key={index} check={check} />
           ))}
-        </div>
-      </ScrollArea>
+        {reviewsRequired && (
+          <div className="flex items-center gap-2 py-0.5">
+            <div className="shrink-0">
+              <CircleDotIcon className="h-4 w-4 text-yellow-500" />
+            </div>
+            <div className="truncate text-sm">Waiting for review</div>
+          </div>
+        )}
+        {additionalBlockers.map((reason) => (
+          <div key={reason} className="flex cursor-pointer items-center gap-2 py-0.5">
+            <div className="shrink-0">
+              {reason === 'not_off_trunk' ? (
+                <CircleSlashIcon className="text-muted-foreground h-4 w-4" />
+              ) : (
+                <XCircleIcon className="h-4 w-4 text-red-500" />
+              )}
+            </div>
+            <div className="truncate text-sm">{getBlockReasonLabel(reason)}</div>
+          </div>
+        ))}
+      </div>
       <div className="border-border mt-2 border-t pt-2">
         {canMerge && onMerge ? (
           <button

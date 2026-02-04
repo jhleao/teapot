@@ -16,15 +16,20 @@ vi.mock('../../store', () => ({
 import {
   ContextNotFoundError,
   ExecutionContextService,
+  ExecutionContextServiceInstance,
   LockAcquisitionError,
   WorktreeCreationError
 } from '../../services/ExecutionContextService'
+import { createMockClock, TIME } from '../../services/__tests__/test-utils'
 
 describe('ExecutionContextService', () => {
   let repoPath: string
   let tempDir: string
 
   beforeEach(async () => {
+    // Reset the default instance to ensure clean state between tests
+    ExecutionContextService.resetDefaultInstance()
+
     // Create a temp directory for tests
     tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-exec-test-'))
 
@@ -45,6 +50,9 @@ describe('ExecutionContextService', () => {
   afterEach(async () => {
     // Clear any stored contexts
     await ExecutionContextService.clearStoredContext(repoPath)
+
+    // Reset the default instance to clean up global state
+    ExecutionContextService.resetDefaultInstance()
 
     // Clean up temp directory
     await fs.promises.rm(tempDir, { recursive: true, force: true })
@@ -704,6 +712,166 @@ describe('ExecutionContextService', () => {
       await expect(ExecutionContextService.acquire(nonGitDir)).rejects.toThrow(
         'Not a git repository'
       )
+    })
+  })
+
+  describe('instance-based architecture', () => {
+    it('createInstance returns isolated instances', () => {
+      const instance1 = ExecutionContextService.createInstance()
+      const instance2 = ExecutionContextService.createInstance()
+
+      expect(instance1).not.toBe(instance2)
+      expect(instance1).toBeInstanceOf(ExecutionContextServiceInstance)
+    })
+
+    it('instances have independent TTL configuration', () => {
+      const instance1 = ExecutionContextService.createInstance()
+      const instance2 = ExecutionContextService.createInstance()
+
+      instance1.setContextTTL(5000)
+      instance2.setContextTTL(10000)
+
+      expect(instance1.getContextTTL()).toBe(5000)
+      expect(instance2.getContextTTL()).toBe(10000)
+    })
+
+    it('instances have independent event emitters', () => {
+      const instance1 = ExecutionContextService.createInstance()
+      const instance2 = ExecutionContextService.createInstance()
+
+      const events1: string[] = []
+      const events2: string[] = []
+
+      instance1.events.on('test', () => events1.push('event'))
+      instance2.events.on('test', () => events2.push('event'))
+
+      instance1.events.emit('test')
+
+      expect(events1).toHaveLength(1)
+      expect(events2).toHaveLength(0)
+    })
+
+    it('reset() clears all instance state', () => {
+      const instance = ExecutionContextService.createInstance()
+
+      instance.setContextTTL(5000)
+      instance.events.on('test', () => {})
+
+      const diagBefore = instance.getDiagnostics()
+      expect(diagBefore.ttlMs).toBe(5000)
+
+      instance.reset()
+
+      const diagAfter = instance.getDiagnostics()
+      expect(diagAfter.ttlMs).toBe(24 * 60 * 60 * 1000) // Default TTL
+      expect(diagAfter.lockQueueCount).toBe(0)
+      expect(diagAfter.activeContextCount).toBe(0)
+    })
+
+    it('getDefaultInstance returns singleton', () => {
+      const instance1 = ExecutionContextService.getDefaultInstance()
+      const instance2 = ExecutionContextService.getDefaultInstance()
+
+      expect(instance1).toBe(instance2)
+    })
+
+    it('resetDefaultInstance clears and nullifies default instance', () => {
+      const instance1 = ExecutionContextService.getDefaultInstance()
+      instance1.setContextTTL(5000)
+
+      ExecutionContextService.resetDefaultInstance()
+
+      const instance2 = ExecutionContextService.getDefaultInstance()
+      expect(instance2).not.toBe(instance1)
+      expect(instance2.getContextTTL()).toBe(24 * 60 * 60 * 1000) // Default TTL
+    })
+  })
+
+  describe('mock clock integration', () => {
+    it('uses injected clock for staleness detection', async () => {
+      const clock = createMockClock(1000000)
+
+      const instance = ExecutionContextService.createInstance({ clock })
+      instance.setContextTTL(TIME.HOUR) // 1 hour TTL
+
+      // Make worktree dirty
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
+
+      // Acquire context
+      const context = await instance.acquire(repoPath, 'rebase')
+      expect(context.isTemporary).toBe(true)
+      expect(context.createdAt).toBe(1000000)
+
+      // Store context
+      await instance.storeContext(repoPath, context)
+
+      // Advance time past TTL
+      clock.advance(TIME.HOUR + TIME.MINUTE) // 61 minutes
+
+      // Verify stale detection is triggered when acquiring again
+      let staleEventFired = false
+      instance.events.on('staleCleared', () => {
+        staleEventFired = true
+      })
+
+      // Next acquire should clear stale context
+      const newContext = await instance.acquire(repoPath)
+
+      // Since original context is now stale, it should have been cleared
+      // and a new temp worktree created
+      expect(staleEventFired).toBe(true)
+      expect(newContext.executionPath).not.toBe(context.executionPath)
+
+      // Clean up
+      await instance.release(newContext)
+      instance.reset()
+    })
+
+    it('healthCheck reports correct staleness with mock clock', async () => {
+      const clock = createMockClock(1000000)
+      const instance = ExecutionContextService.createInstance({ clock })
+      instance.setContextTTL(TIME.DAY) // 24 hour TTL
+
+      // Make worktree dirty
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'modified')
+
+      const context = await instance.acquire(repoPath, 'rebase')
+      await instance.storeContext(repoPath, context)
+
+      // Check health before staleness
+      const healthBefore = await instance.healthCheck(repoPath)
+      expect(healthBefore.hasStoredContext).toBe(true)
+      expect(healthBefore.isStoredContextStale).toBe(false)
+      expect(healthBefore.storedContextAge).toBe(0) // Same timestamp
+
+      // Advance time past TTL
+      clock.advance(TIME.DAY + TIME.HOUR)
+
+      const healthAfter = await instance.healthCheck(repoPath)
+      expect(healthAfter.hasStoredContext).toBe(true)
+      expect(healthAfter.isStoredContextStale).toBe(true)
+      expect(healthAfter.storedContextAge).toBe(TIME.DAY + TIME.HOUR)
+
+      // Clean up
+      await instance.clearStoredContext(repoPath)
+      instance.reset()
+    })
+  })
+
+  describe('getDiagnostics', () => {
+    it('returns service state for debugging', () => {
+      const instance = ExecutionContextService.createInstance()
+
+      const diagnostics = instance.getDiagnostics()
+
+      expect(diagnostics).toHaveProperty('lockQueueCount')
+      expect(diagnostics).toHaveProperty('activeContextCount')
+      expect(diagnostics).toHaveProperty('ttlMs')
+      expect(diagnostics).toHaveProperty('hasExitHandler')
+      expect(typeof diagnostics.lockQueueCount).toBe('number')
+      expect(typeof diagnostics.activeContextCount).toBe('number')
+      expect(typeof diagnostics.ttlMs).toBe('number')
+      expect(typeof diagnostics.hasExitHandler).toBe('boolean')
     })
   })
 })

@@ -1,5 +1,5 @@
-import type { RebaseIntent, RebaseState } from '@shared/types'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RebaseIntent, RebasePlan, RebaseState } from '@shared/types'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock electron-store with in-memory implementation
 const mockSessions = new Map<string, unknown>()
@@ -19,17 +19,27 @@ import {
   getSession,
   hasSession,
   rebaseSessionStore,
+  SessionService,
+  SessionServiceInstance,
   updateState,
   type StoredRebaseSession
 } from '../../services/SessionService'
+import { createMockClock, createMockConfigStore } from '../../services/__tests__/test-utils'
 
 describe('SessionService', () => {
   beforeEach(() => {
+    // Reset the default instance to ensure clean state between tests
+    SessionService.resetDefaultInstance()
     mockSessions.clear()
     const sessions = getAllSessions()
     for (const path of sessions.keys()) {
       clearSession(path)
     }
+  })
+
+  afterEach(() => {
+    // Reset the default instance after each test
+    SessionService.resetDefaultInstance()
   })
 
   describe('getSession', () => {
@@ -167,6 +177,168 @@ describe('SessionService', () => {
       expect(hasSession('/path/to/repo')).toBe(true)
     })
   })
+
+  describe('instance-based architecture', () => {
+    it('createInstance returns isolated instances', () => {
+      const instance1 = SessionService.createInstance()
+      const instance2 = SessionService.createInstance()
+
+      expect(instance1).not.toBe(instance2)
+      expect(instance1).toBeInstanceOf(SessionServiceInstance)
+    })
+
+    it('instances have independent session stores', () => {
+      const mockStore1 = createMockConfigStore<StoredRebaseSession>()
+      const mockStore2 = createMockConfigStore<StoredRebaseSession>()
+
+      const instance1 = SessionService.createInstance({ configStore: mockStore1 })
+      const instance2 = SessionService.createInstance({ configStore: mockStore2 })
+
+      const plan = createPlan()
+      instance1.createSession('/repo', plan, 'main')
+
+      expect(instance1.hasSession('/repo')).toBe(true)
+      expect(instance2.hasSession('/repo')).toBe(false)
+    })
+
+    it('reset() clears all instance state', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      instance.createSession('/repo', createPlan(), 'main')
+      expect(instance.hasSession('/repo')).toBe(true)
+
+      instance.reset()
+
+      // In-memory cache is cleared, but the mock store still has it
+      // This is expected behavior - reset only clears in-memory state
+      expect(mockStore.hasRebaseSession('/repo')).toBe(true)
+    })
+
+    it('getDefaultInstance returns singleton', () => {
+      const instance1 = SessionService.getDefaultInstance()
+      const instance2 = SessionService.getDefaultInstance()
+
+      expect(instance1).toBe(instance2)
+    })
+
+    it('resetDefaultInstance clears and nullifies default instance', () => {
+      const instance1 = SessionService.getDefaultInstance()
+      SessionService.resetDefaultInstance()
+
+      const instance2 = SessionService.getDefaultInstance()
+      expect(instance2).not.toBe(instance1)
+    })
+  })
+
+  describe('mock clock integration', () => {
+    it('uses injected clock for timestamps', () => {
+      const clock = createMockClock(1000000)
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+
+      const instance = SessionService.createInstance({ clock, configStore: mockStore })
+
+      instance.createSession('/repo', createPlan(), 'main')
+
+      const session = instance.getSession('/repo')
+      expect(session?.createdAtMs).toBe(1000000)
+      expect(session?.updatedAtMs).toBe(1000000)
+    })
+
+    it('updates timestamp on state changes', () => {
+      const clock = createMockClock(1000000)
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+
+      const instance = SessionService.createInstance({ clock, configStore: mockStore })
+
+      instance.createSession('/repo', createPlan(), 'main')
+
+      // Advance clock
+      clock.advance(5000)
+
+      instance.updateState('/repo', createState())
+
+      const session = instance.getSession('/repo')
+      expect(session?.createdAtMs).toBe(1000000)
+      expect(session?.updatedAtMs).toBe(1005000)
+    })
+  })
+
+  describe('createSession (instance method)', () => {
+    it('creates session from plan', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      const plan = createPlan()
+      instance.createSession('/repo', plan, 'feature-branch')
+
+      const session = instance.getSession('/repo')
+      expect(session).not.toBeNull()
+      expect(session?.originalBranch).toBe('feature-branch')
+      expect(session?.version).toBe(1)
+    })
+
+    it('throws if session already exists', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      instance.createSession('/repo', createPlan(), 'main')
+
+      expect(() => instance.createSession('/repo', createPlan(), 'main')).toThrow(
+        'Session already exists'
+      )
+    })
+  })
+
+  describe('markJobCompleted', () => {
+    it('marks job as completed with new SHA', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      const plan = createPlanWithJob('job-1')
+      instance.createSession('/repo', plan, 'main')
+
+      instance.markJobCompleted('/repo', 'job-1', 'newsha123')
+
+      const session = instance.getSession('/repo')
+      const job = session?.state.jobsById['job-1']
+      expect(job?.status).toBe('completed')
+      expect(job?.rebasedHeadSha).toBe('newsha123')
+    })
+
+    it('increments version', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      const plan = createPlanWithJob('job-1')
+      instance.createSession('/repo', plan, 'main')
+
+      instance.markJobCompleted('/repo', 'job-1', 'newsha123')
+
+      const session = instance.getSession('/repo')
+      expect(session?.version).toBe(2)
+    })
+
+    it('throws if session not found', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      expect(() => instance.markJobCompleted('/repo', 'job-1', 'newsha123')).toThrow(
+        'Session not found'
+      )
+    })
+
+    it('throws if job not found', () => {
+      const mockStore = createMockConfigStore<StoredRebaseSession>()
+      const instance = SessionService.createInstance({ configStore: mockStore })
+
+      instance.createSession('/repo', createPlan(), 'main')
+
+      expect(() => instance.markJobCompleted('/repo', 'nonexistent-job', 'newsha123')).toThrow(
+        'Job not found'
+      )
+    })
+  })
 })
 
 // ============================================================================
@@ -211,5 +383,29 @@ function createState(
     queue: {
       pendingJobIds: []
     }
+  }
+}
+
+function createPlan(): RebasePlan {
+  return {
+    intent: createIntent(),
+    state: createState()
+  }
+}
+
+function createPlanWithJob(jobId: string): RebasePlan {
+  const state = createState()
+  state.jobsById[jobId] = {
+    id: jobId,
+    branch: 'feature',
+    originalBaseSha: 'abc123',
+    originalHeadSha: 'def456',
+    targetBaseSha: 'ghi789',
+    status: 'queued',
+    createdAtMs: Date.now()
+  }
+  return {
+    intent: createIntent(),
+    state
   }
 }

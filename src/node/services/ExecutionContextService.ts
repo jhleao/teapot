@@ -10,6 +10,7 @@
  * - Mutex locking (prevents race conditions)
  * - Stale context detection with TTL
  * - Observability (metadata, timestamps, operation tracking)
+ * - Instance-based architecture for testability
  *
  * Strategy:
  * 1. If rebase is in progress in active worktree -> use it (legacy/continue support)
@@ -29,10 +30,10 @@ import * as path from 'path'
 
 import { log } from '@shared/logger'
 
-import { getGitAdapter } from '../adapters/git'
+import { getGitAdapter, type GitAdapter } from '../adapters/git'
 import { WorktreeOperation } from '../operations/WorktreeOperation'
 import { resolveGitDir, resolveGitDirSync } from '../operations/WorktreeUtils'
-import { configStore } from '../store'
+import { configStore, type ConfigStore } from '../store'
 
 /** Supported operations for tracking */
 export type ExecutionOperation = 'rebase' | 'sync-trunk' | 'ship-it' | 'squash' | 'unknown'
@@ -103,18 +104,49 @@ type PersistedContext = {
   repoPath: string
 }
 
+// =============================================================================
+// Dependencies Interface (for testability)
+// =============================================================================
+
 /**
- * Event emitter for context lifecycle events.
- *
- * Emitted events:
- * - 'acquired': (context: ExecutionContext, repoPath: string) - New context acquired
- * - 'released': (context: ExecutionContext, repoPath: string) - Context released/cleaned up
- * - 'stored': (context: ExecutionContext, repoPath: string) - Context stored for conflict resolution
- * - 'cleared': (repoPath: string) - Stored context cleared
- * - 'staleCleared': (repoPath: string, ageMs: number) - Stale context detected and cleared
- * - 'orphansCleanedUp': (repoPath: string, count: number) - Orphan cleanup completed
+ * Clock abstraction for time-based operations.
+ * Enables deterministic testing of staleness detection and TTL logic.
  */
-const contextEvents = new EventEmitter()
+export interface Clock {
+  now(): number
+}
+
+/**
+ * Dependencies that can be injected for testing.
+ * Only includes dependencies that need mocking - Node.js built-ins like fs/path
+ * don't need injection since tests use real temp directories.
+ */
+export interface ExecutionContextDependencies {
+  /** Clock for time-based operations (staleness detection, TTL) */
+  clock: Clock
+  /** Git adapter for repository operations */
+  gitAdapter: GitAdapter
+  /** Config store for worktree settings */
+  configStore: Pick<ConfigStore, 'getActiveWorktree' | 'getUseParallelWorktree'>
+  /** Worktree operations */
+  worktreeOps: typeof WorktreeOperation
+}
+
+/**
+ * Create default dependencies using production singletons.
+ */
+function createDefaultDependencies(): ExecutionContextDependencies {
+  return {
+    clock: { now: () => Date.now() },
+    gitAdapter: getGitAdapter(),
+    configStore,
+    worktreeOps: WorktreeOperation
+  }
+}
+
+// =============================================================================
+// Instance-based Service Implementation
+// =============================================================================
 
 /** Context file name stored in .git */
 const CONTEXT_FILE = 'teapot-exec-context.json'
@@ -128,9 +160,6 @@ const LOCK_FILE = 'teapot-exec.lock'
 /** Default TTL for stale context detection (24 hours) */
 const DEFAULT_CONTEXT_TTL_MS = 24 * 60 * 60 * 1000
 
-/** Configurable TTL - can be set via setContextTTL() */
-let contextTtlMs = DEFAULT_CONTEXT_TTL_MS
-
 /** Lock file staleness threshold (5 minutes) */
 const LOCK_STALE_MS = 5 * 60 * 1000
 
@@ -141,78 +170,87 @@ const MAX_WORKTREE_RETRIES = 3
 const WORKTREE_RETRY_DELAY = 500
 
 /**
- * Queue-based mutex for in-memory async locking.
- * Each repo gets its own promise chain ensuring serialized access.
+ * Service diagnostics for testing and debugging.
  */
-const lockQueues: Map<string, Promise<void>> = new Map()
+export interface ServiceDiagnostics {
+  lockQueueCount: number
+  activeContextCount: number
+  ttlMs: number
+  hasExitHandler: boolean
+}
 
 /**
- * Track active temp worktrees for emergency cleanup on process exit.
- * Maps repoPath -> tempWorktreePath
- */
-const activeContexts: Map<string, string> = new Map()
-
-/** Whether exit handler has been registered */
-let exitHandlerRegistered = false
-
-/**
- * Perform synchronous cleanup of file locks before process exits.
- * Worktrees are left for orphan cleanup on next startup since git operations are async.
+ * Instance-based ExecutionContext service.
+ * All state is encapsulated as instance properties for test isolation.
  *
- * Note: We cannot do async cleanup in exit handlers. The worktrees will be cleaned up
- * by cleanupOrphans() on next startup when the app initializes.
+ * Use `ExecutionContextService.createInstance()` to create isolated instances for testing.
+ * Production code uses the static facade which delegates to a shared default instance.
  */
-function cleanupOnExit(): void {
-  for (const [repoPath, tempPath] of activeContexts) {
-    try {
-      const gitDir = resolveGitDirSync(repoPath)
-      const lockPath = path.join(gitDir, LOCK_FILE)
-      fs.unlinkSync(lockPath)
-    } catch {
-      // Ignore - best effort
-    }
-    // Log so the next startup knows to clean up this orphan
-    log.warn(
-      `[ExecutionContextService] Process exiting with orphaned temp worktree (will be cleaned on next startup): ${tempPath}`,
-      { repoPath, tempPath }
-    )
-  }
-  if (activeContexts.size > 0) {
-    log.info(
-      `[ExecutionContextService] ${activeContexts.size} orphaned worktree(s) will be cleaned up on next app startup via cleanupOrphans()`
-    )
-  }
-}
-
-/**
- * Register exit handler for cleanup.
- * Uses 'exit' event instead of signal handlers to avoid interfering with Electron's shutdown.
- * Called automatically when first temp worktree is created.
- */
-function registerExitHandler(): void {
-  if (exitHandlerRegistered) return
-  exitHandlerRegistered = true
-
-  // Use 'exit' event for cleanup - this fires during process shutdown
-  // and doesn't interfere with Electron's graceful shutdown.
-  // Note: 'beforeExit' is not needed since it doesn't fire on explicit exit() or crashes.
-  process.on('exit', cleanupOnExit)
-}
-
-export class ExecutionContextService {
+export class ExecutionContextServiceInstance {
   /**
-   * Event emitter for observability.
-   * Subscribe to events like 'acquired', 'released', 'stored', 'cleared'.
+   * Event emitter for context lifecycle events.
    */
-  static get events(): EventEmitter {
-    return contextEvents
+  readonly events = new EventEmitter()
+
+  /** Configurable TTL - contexts older than this are stale */
+  private contextTtlMs = DEFAULT_CONTEXT_TTL_MS
+
+  /**
+   * Queue-based mutex for in-memory async locking.
+   * Each repo gets its own promise chain ensuring serialized access.
+   */
+  private readonly lockQueues = new Map<string, Promise<void>>()
+
+  /**
+   * Track active temp worktrees for emergency cleanup on process exit.
+   * Maps repoPath -> tempWorktreePath
+   */
+  private readonly activeContexts = new Map<string, string>()
+
+  /** Whether exit handler has been registered */
+  private exitHandlerRegistered = false
+
+  /** Bound exit handler for proper removal */
+  private readonly boundExitHandler: () => void
+
+  constructor(private readonly deps: ExecutionContextDependencies) {
+    this.boundExitHandler = this.cleanupOnExit.bind(this)
+  }
+
+  /**
+   * Reset all instance state for testing.
+   * Clears all in-memory state and resets TTL to default.
+   */
+  reset(): void {
+    this.lockQueues.clear()
+    this.activeContexts.clear()
+    this.contextTtlMs = DEFAULT_CONTEXT_TTL_MS
+    this.events.removeAllListeners()
+
+    // Unregister exit handler if registered
+    if (this.exitHandlerRegistered) {
+      process.removeListener('exit', this.boundExitHandler)
+      this.exitHandlerRegistered = false
+    }
+  }
+
+  /**
+   * Get diagnostics for testing and debugging.
+   */
+  getDiagnostics(): ServiceDiagnostics {
+    return {
+      lockQueueCount: this.lockQueues.size,
+      activeContextCount: this.activeContexts.size,
+      ttlMs: this.contextTtlMs,
+      hasExitHandler: this.exitHandlerRegistered
+    }
   }
 
   /**
    * Get the current context TTL in milliseconds.
    */
-  static getContextTTL(): number {
-    return contextTtlMs
+  getContextTTL(): number {
+    return this.contextTtlMs
   }
 
   /**
@@ -220,18 +258,18 @@ export class ExecutionContextService {
    * Contexts older than this are considered stale and will be cleared.
    * Default is 24 hours.
    */
-  static setContextTTL(ttlMs: number): void {
+  setContextTTL(ttlMs: number): void {
     if (ttlMs <= 0) {
       throw new Error('TTL must be a positive number')
     }
-    contextTtlMs = ttlMs
+    this.contextTtlMs = ttlMs
   }
 
   /**
    * Reset the context TTL to its default value (24 hours).
    */
-  static resetContextTTL(): void {
-    contextTtlMs = DEFAULT_CONTEXT_TTL_MS
+  resetContextTTL(): void {
+    this.contextTtlMs = DEFAULT_CONTEXT_TTL_MS
   }
 
   /**
@@ -246,7 +284,7 @@ export class ExecutionContextService {
    * @param repoPath - Path to the git repository
    * @param operationOrOptions - Either an operation string (legacy) or options object
    */
-  static async acquire(
+  async acquire(
     repoPath: string,
     operationOrOptions:
       | ExecutionOperation
@@ -284,19 +322,19 @@ export class ExecutionContextService {
       const persistedContext = await this.loadPersistedContext(repoPath)
       if (persistedContext) {
         // Check if context is stale
-        const age = Date.now() - persistedContext.createdAt
-        if (age > contextTtlMs) {
+        const age = this.deps.clock.now() - persistedContext.createdAt
+        if (age > this.contextTtlMs) {
           log.warn(
             `[ExecutionContextService] Clearing stale context (${Math.round(age / 1000 / 60 / 60)}h old)`
           )
           await this.clearPersistedContext(repoPath)
-          contextEvents.emit('staleCleared', repoPath, age)
+          this.events.emit('staleCleared', repoPath, age)
         } else {
           log.debug('[ExecutionContextService] acquire() reusing persisted context', {
             executionPath: persistedContext.executionPath,
             isTemporary: persistedContext.isTemporary,
             operation: persistedContext.operation,
-            ageMs: Date.now() - persistedContext.createdAt
+            ageMs: this.deps.clock.now() - persistedContext.createdAt
           })
           return {
             executionPath: persistedContext.executionPath,
@@ -309,15 +347,15 @@ export class ExecutionContextService {
         }
       }
 
-      const git = getGitAdapter()
-      const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+      const git = this.deps.gitAdapter
+      const activeWorktreePath = this.deps.configStore.getActiveWorktree(repoPath) ?? repoPath
 
       const activeStatus = await git.getWorkingTreeStatus(activeWorktreePath)
 
       // Use active worktree directly if:
       // 1. Rebase already in progress (legacy/continue support), OR
       // 2. Parallel worktree mode is disabled (feature flag)
-      if (activeStatus.isRebasing || !configStore.getUseParallelWorktree()) {
+      if (activeStatus.isRebasing || !this.deps.configStore.getUseParallelWorktree()) {
         log.debug('[ExecutionContextService] Using active worktree', {
           reason: activeStatus.isRebasing ? 'rebase-in-progress' : 'parallel-disabled',
           activeWorktreePath,
@@ -327,11 +365,11 @@ export class ExecutionContextService {
           executionPath: activeWorktreePath,
           isTemporary: false,
           requiresCleanup: false,
-          createdAt: Date.now(),
+          createdAt: this.deps.clock.now(),
           operation,
           repoPath
         }
-        contextEvents.emit('acquired', context, repoPath)
+        this.events.emit('acquired', context, repoPath)
         return context
       }
 
@@ -363,7 +401,7 @@ export class ExecutionContextService {
       if (needsDetach && currentBranch) {
         originalBranch = currentBranch
 
-        const detachResult = await WorktreeOperation.detachHead(activeWorktreePath)
+        const detachResult = await this.deps.worktreeOps.detachHead(activeWorktreePath)
         if (!detachResult.success) {
           throw new WorktreeCreationError(
             `Failed to detach HEAD in active worktree: ${detachResult.error}`,
@@ -384,7 +422,7 @@ export class ExecutionContextService {
             `[ExecutionContextService] Temp worktree creation failed, rolling back HEAD detach`,
             { repoPath, originalBranch, error }
           )
-          const rollbackResult = await WorktreeOperation.checkoutBranchInWorktree(
+          const rollbackResult = await this.deps.worktreeOps.checkoutBranchInWorktree(
             activeWorktreePath,
             originalBranch
           )
@@ -409,14 +447,14 @@ export class ExecutionContextService {
       }
 
       // Track for emergency cleanup and register exit handler
-      activeContexts.set(repoPath, tempWorktree)
-      registerExitHandler()
+      this.activeContexts.set(repoPath, tempWorktree)
+      this.registerExitHandler()
 
       const context: ExecutionContext = {
         executionPath: tempWorktree,
         isTemporary: true,
         requiresCleanup: true,
-        createdAt: Date.now(),
+        createdAt: this.deps.clock.now(),
         operation,
         repoPath
       }
@@ -425,7 +463,7 @@ export class ExecutionContextService {
         isTemporary: context.isTemporary,
         operation: context.operation
       })
-      contextEvents.emit('acquired', context, repoPath)
+      this.events.emit('acquired', context, repoPath)
       return context
     } finally {
       await releaseLock()
@@ -436,7 +474,7 @@ export class ExecutionContextService {
    * Store the execution context for later use (e.g., during conflict resolution).
    * Persists to disk for crash recovery.
    */
-  static async storeContext(repoPath: string, context: ExecutionContext): Promise<void> {
+  async storeContext(repoPath: string, context: ExecutionContext): Promise<void> {
     log.debug('[ExecutionContextService] storeContext() called', {
       repoPath,
       executionPath: context.executionPath,
@@ -455,7 +493,7 @@ export class ExecutionContextService {
       log.debug(
         `[ExecutionContextService] Stored context for ${repoPath}: ${context.executionPath} (${context.operation})`
       )
-      contextEvents.emit('stored', context, repoPath)
+      this.events.emit('stored', context, repoPath)
     }
   }
 
@@ -463,7 +501,7 @@ export class ExecutionContextService {
    * Clear the stored context and release the temp worktree.
    * Call this when a rebase completes or is aborted.
    */
-  static async clearStoredContext(repoPath: string): Promise<void> {
+  async clearStoredContext(repoPath: string): Promise<void> {
     log.debug('[ExecutionContextService] clearStoredContext() called', { repoPath })
     // Acquire lock to prevent race conditions when multiple processes
     // try to clear the context simultaneously
@@ -473,7 +511,7 @@ export class ExecutionContextService {
       const persistedContext = await this.loadPersistedContext(repoPath)
       if (persistedContext) {
         await this.clearPersistedContext(repoPath)
-        contextEvents.emit('cleared', repoPath)
+        this.events.emit('cleared', repoPath)
         if (persistedContext.isTemporary) {
           await this.release({
             executionPath: persistedContext.executionPath,
@@ -493,7 +531,7 @@ export class ExecutionContextService {
   /**
    * Check if there's a stored context for a repo (active conflict session).
    */
-  static async hasStoredContext(repoPath: string): Promise<boolean> {
+  async hasStoredContext(repoPath: string): Promise<boolean> {
     const context = await this.loadPersistedContext(repoPath)
     return context !== null
   }
@@ -501,7 +539,7 @@ export class ExecutionContextService {
   /**
    * Get the stored execution path for a repo, if any.
    */
-  static async getStoredExecutionPath(repoPath: string): Promise<string | undefined> {
+  async getStoredExecutionPath(repoPath: string): Promise<string | undefined> {
     const context = await this.loadPersistedContext(repoPath)
     return context?.executionPath
   }
@@ -509,7 +547,7 @@ export class ExecutionContextService {
   /**
    * Get full stored context info for observability.
    */
-  static async getStoredContext(repoPath: string): Promise<PersistedContext | null> {
+  async getStoredContext(repoPath: string): Promise<PersistedContext | null> {
     return this.loadPersistedContext(repoPath)
   }
 
@@ -517,7 +555,7 @@ export class ExecutionContextService {
    * Get the stored context, throwing if not found.
    * Use this when a context is expected to exist.
    */
-  static async getStoredContextOrThrow(repoPath: string): Promise<PersistedContext> {
+  async getStoredContextOrThrow(repoPath: string): Promise<PersistedContext> {
     const context = await this.loadPersistedContext(repoPath)
     if (!context) {
       throw new ContextNotFoundError(`No stored context found for repository`, repoPath)
@@ -528,7 +566,7 @@ export class ExecutionContextService {
   /**
    * Release an execution context, cleaning up temporary worktrees.
    */
-  static async release(context: ExecutionContext): Promise<void> {
+  async release(context: ExecutionContext): Promise<void> {
     if (!context.requiresCleanup || !context.isTemporary) {
       return
     }
@@ -566,12 +604,12 @@ export class ExecutionContextService {
     }
 
     // Remove from active contexts tracking
-    activeContexts.delete(context.repoPath)
+    this.activeContexts.delete(context.repoPath)
 
     try {
-      await WorktreeOperation.remove(context.repoPath, context.executionPath, true)
+      await this.deps.worktreeOps.remove(context.repoPath, context.executionPath, true)
       log.info(`[ExecutionContextService] Removed temporary worktree: ${context.executionPath}`)
-      contextEvents.emit('released', context, context.repoPath)
+      this.events.emit('released', context, context.repoPath)
     } catch (error) {
       // Log warning but don't fail - cleanup is best-effort
       log.warn(`[ExecutionContextService] Failed to remove temporary worktree:`, error)
@@ -582,7 +620,7 @@ export class ExecutionContextService {
    * Clean up orphaned temporary worktrees from previous runs.
    * Call this on startup to prevent accumulation of temp directories.
    */
-  static async cleanupOrphans(repoPath: string): Promise<void> {
+  async cleanupOrphans(repoPath: string): Promise<void> {
     // Acquire lock to prevent race conditions when multiple processes
     // try to cleanup simultaneously
     const releaseLock = await this.acquireLock(repoPath)
@@ -594,7 +632,7 @@ export class ExecutionContextService {
       }
 
       const entries = await fs.promises.readdir(teapotWorktreeDir)
-      const git = getGitAdapter()
+      const git = this.deps.gitAdapter
       const worktrees = await git.listWorktrees(repoPath)
       const worktreePaths = new Set(worktrees.map((wt) => wt.path))
 
@@ -611,7 +649,7 @@ export class ExecutionContextService {
         if (!worktreePaths.has(resolvedPath)) {
           try {
             // Try to remove via git first (in case it's still registered but with different path)
-            await WorktreeOperation.remove(repoPath, fullPath, true)
+            await this.deps.worktreeOps.remove(repoPath, fullPath, true)
           } catch {
             // Fall back to direct removal
             await fs.promises.rm(fullPath, { recursive: true, force: true })
@@ -624,18 +662,18 @@ export class ExecutionContextService {
       // Also check for stale context file
       const context = await this.loadPersistedContext(repoPath)
       if (context) {
-        const age = Date.now() - context.createdAt
-        if (age > contextTtlMs) {
+        const age = this.deps.clock.now() - context.createdAt
+        if (age > this.contextTtlMs) {
           log.info(
             `[ExecutionContextService] Clearing stale context file (${Math.round(age / 1000 / 60 / 60)}h old)`
           )
           await this.clearPersistedContext(repoPath)
-          contextEvents.emit('staleCleared', repoPath, age)
+          this.events.emit('staleCleared', repoPath, age)
         }
       }
 
       if (orphansRemoved > 0) {
-        contextEvents.emit('orphansCleanedUp', repoPath, orphansRemoved)
+        this.events.emit('orphansCleanedUp', repoPath, orphansRemoved)
       }
     } catch (error) {
       // Log warning but don't fail - cleanup is best-effort
@@ -648,9 +686,9 @@ export class ExecutionContextService {
   /**
    * Check if the active worktree is dirty.
    */
-  static async isActiveWorktreeDirty(repoPath: string): Promise<boolean> {
-    const git = getGitAdapter()
-    const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+  async isActiveWorktreeDirty(repoPath: string): Promise<boolean> {
+    const git = this.deps.gitAdapter
+    const activeWorktreePath = this.deps.configStore.getActiveWorktree(repoPath) ?? repoPath
     const status = await git.getWorkingTreeStatus(activeWorktreePath)
 
     return (
@@ -665,7 +703,7 @@ export class ExecutionContextService {
    * Health check for diagnostics and monitoring.
    * Returns the current state of the execution context service for a repo.
    */
-  static async healthCheck(repoPath: string): Promise<{
+  async healthCheck(repoPath: string): Promise<{
     hasStoredContext: boolean
     storedContext: PersistedContext | null
     storedContextAge: number | null
@@ -679,7 +717,7 @@ export class ExecutionContextService {
     ttlMs: number
   }> {
     const storedContext = await this.loadPersistedContext(repoPath)
-    const storedContextAge = storedContext ? Date.now() - storedContext.createdAt : null
+    const storedContextAge = storedContext ? this.deps.clock.now() - storedContext.createdAt : null
 
     // Check lock file
     const lockPath = await this.getLockFilePath(repoPath)
@@ -690,7 +728,7 @@ export class ExecutionContextService {
       lockFileExists = true
       try {
         const lockInfo = JSON.parse(content)
-        lockFileAge = Date.now() - lockInfo.timestamp
+        lockFileAge = this.deps.clock.now() - lockInfo.timestamp
       } catch {
         // Corrupted lock file - age unknown
         lockFileAge = null
@@ -715,15 +753,63 @@ export class ExecutionContextService {
       hasStoredContext: storedContext !== null,
       storedContext,
       storedContextAge,
-      isStoredContextStale: storedContextAge !== null && storedContextAge > contextTtlMs,
-      activeContextInMemory: activeContexts.get(repoPath) ?? null,
+      isStoredContextStale: storedContextAge !== null && storedContextAge > this.contextTtlMs,
+      activeContextInMemory: this.activeContexts.get(repoPath) ?? null,
       lockFileExists,
       lockFileAge,
       tempWorktreeDir,
       tempWorktreeDirExists,
       tempWorktreeCount,
-      ttlMs: contextTtlMs
+      ttlMs: this.contextTtlMs
     }
+  }
+
+  // ===========================================================================
+  // Private: Exit handler
+  // ===========================================================================
+
+  /**
+   * Perform synchronous cleanup of file locks before process exits.
+   * Worktrees are left for orphan cleanup on next startup since git operations are async.
+   *
+   * Note: We cannot do async cleanup in exit handlers. The worktrees will be cleaned up
+   * by cleanupOrphans() on next startup when the app initializes.
+   */
+  private cleanupOnExit(): void {
+    for (const [repoPath, tempPath] of this.activeContexts) {
+      try {
+        const gitDir = resolveGitDirSync(repoPath)
+        const lockPath = path.join(gitDir, LOCK_FILE)
+        fs.unlinkSync(lockPath)
+      } catch {
+        // Ignore - best effort
+      }
+      // Log so the next startup knows to clean up this orphan
+      log.warn(
+        `[ExecutionContextService] Process exiting with orphaned temp worktree (will be cleaned on next startup): ${tempPath}`,
+        { repoPath, tempPath }
+      )
+    }
+    if (this.activeContexts.size > 0) {
+      log.info(
+        `[ExecutionContextService] ${this.activeContexts.size} orphaned worktree(s) will be cleaned up on next app startup via cleanupOrphans()`
+      )
+    }
+  }
+
+  /**
+   * Register exit handler for cleanup.
+   * Uses 'exit' event instead of signal handlers to avoid interfering with Electron's shutdown.
+   * Called automatically when first temp worktree is created.
+   */
+  private registerExitHandler(): void {
+    if (this.exitHandlerRegistered) return
+    this.exitHandlerRegistered = true
+
+    // Use 'exit' event for cleanup - this fires during process shutdown
+    // and doesn't interfere with Electron's graceful shutdown.
+    // Note: 'beforeExit' is not needed since it doesn't fire on explicit exit() or crashes.
+    process.on('exit', this.boundExitHandler)
   }
 
   // ===========================================================================
@@ -741,7 +827,7 @@ export class ExecutionContextService {
    * throws - without this, a rejection would propagate and hang all subsequent
    * operations waiting on the chain.
    */
-  private static async acquireLock(repoPath: string): Promise<() => Promise<void>> {
+  private async acquireLock(repoPath: string): Promise<() => Promise<void>> {
     // Create the release mechanism for this operation
     let releaseFn: () => void
     const operationComplete = new Promise<void>((resolve) => {
@@ -750,9 +836,9 @@ export class ExecutionContextService {
 
     // Chain this operation after any existing operations
     // The .catch() prevents a rejected promise from breaking the chain
-    const previousChain = lockQueues.get(repoPath) ?? Promise.resolve()
+    const previousChain = this.lockQueues.get(repoPath) ?? Promise.resolve()
     const newChain = previousChain.catch(() => {}).then(() => operationComplete)
-    lockQueues.set(repoPath, newChain)
+    this.lockQueues.set(repoPath, newChain)
 
     // Wait for all previous operations in the queue (ignore their errors)
     await previousChain.catch(() => {})
@@ -771,8 +857,8 @@ export class ExecutionContextService {
       releaseFn!()
 
       // Clean up the queue entry if this was the last operation
-      if (lockQueues.get(repoPath) === newChain) {
-        lockQueues.delete(repoPath)
+      if (this.lockQueues.get(repoPath) === newChain) {
+        this.lockQueues.delete(repoPath)
       }
     }
   }
@@ -789,7 +875,7 @@ export class ExecutionContextService {
    * This approach eliminates the race condition where two processes could both
    * delete a stale lock and then both succeed in creating a new one.
    */
-  private static async acquireFileLock(repoPath: string): Promise<void> {
+  private async acquireFileLock(repoPath: string): Promise<void> {
     const lockPath = await this.getLockFilePath(repoPath)
     const lockId = crypto.randomUUID()
     const maxAttempts = 10
@@ -801,7 +887,7 @@ export class ExecutionContextService {
         const lockContent = JSON.stringify({
           pid: process.pid,
           lockId,
-          timestamp: Date.now()
+          timestamp: this.deps.clock.now()
         })
         await fs.promises.writeFile(lockPath, lockContent, { flag: 'wx' })
 
@@ -882,10 +968,7 @@ export class ExecutionContextService {
    * - The lock is older than LOCK_STALE_MS
    * - The process that created the lock no longer exists (PID check)
    */
-  private static async checkAndBreakStaleLock(
-    lockPath: string,
-    repoPath: string
-  ): Promise<boolean> {
+  private async checkAndBreakStaleLock(lockPath: string, repoPath: string): Promise<boolean> {
     try {
       const content = await fs.promises.readFile(lockPath, 'utf-8')
       let lockInfo: { pid: number; lockId?: string; timestamp: number }
@@ -902,7 +985,7 @@ export class ExecutionContextService {
         return true
       }
 
-      const age = Date.now() - lockInfo.timestamp
+      const age = this.deps.clock.now() - lockInfo.timestamp
 
       // Check if lock is stale by age
       if (age > LOCK_STALE_MS) {
@@ -946,7 +1029,7 @@ export class ExecutionContextService {
    * Safely unlink a file, ignoring ENOENT errors.
    * Used for lock cleanup where the file may have been deleted by another process.
    */
-  private static async safeUnlink(filePath: string): Promise<void> {
+  private async safeUnlink(filePath: string): Promise<void> {
     try {
       await fs.promises.unlink(filePath)
     } catch (err) {
@@ -957,7 +1040,7 @@ export class ExecutionContextService {
     }
   }
 
-  private static async releaseFileLock(repoPath: string): Promise<void> {
+  private async releaseFileLock(repoPath: string): Promise<void> {
     try {
       const lockPath = await this.getLockFilePath(repoPath)
       await fs.promises.unlink(lockPath)
@@ -966,7 +1049,7 @@ export class ExecutionContextService {
     }
   }
 
-  private static async getLockFilePath(repoPath: string): Promise<string> {
+  private async getLockFilePath(repoPath: string): Promise<string> {
     const gitDir = await resolveGitDir(repoPath)
     return path.join(gitDir, LOCK_FILE)
   }
@@ -975,12 +1058,12 @@ export class ExecutionContextService {
   // Private: Persistent storage
   // ===========================================================================
 
-  private static async getContextFilePath(repoPath: string): Promise<string> {
+  private async getContextFilePath(repoPath: string): Promise<string> {
     const gitDir = await resolveGitDir(repoPath)
     return path.join(gitDir, CONTEXT_FILE)
   }
 
-  private static async getWorktreeDir(repoPath: string): Promise<string> {
+  private async getWorktreeDir(repoPath: string): Promise<string> {
     const gitDir = await resolveGitDir(repoPath)
     return path.join(gitDir, WORKTREE_DIR)
   }
@@ -989,10 +1072,7 @@ export class ExecutionContextService {
    * Validates that a parsed object has the required PersistedContext shape.
    * Returns null if validation fails, with structured logging for debugging.
    */
-  private static validatePersistedContext(
-    parsed: unknown,
-    repoPath: string
-  ): PersistedContext | null {
+  private validatePersistedContext(parsed: unknown, repoPath: string): PersistedContext | null {
     if (!parsed || typeof parsed !== 'object') {
       log.warn('[ExecutionContextService] Invalid context: not an object', { repoPath })
       return null
@@ -1036,7 +1116,7 @@ export class ExecutionContextService {
     }
 
     // Validate operation field (optional but should be valid type if present)
-    const validOperations = ['rebase', 'sync-trunk', 'ship-it', 'unknown']
+    const validOperations = ['rebase', 'sync-trunk', 'ship-it', 'squash', 'unknown']
     if (obj.operation !== undefined && !validOperations.includes(obj.operation as string)) {
       log.warn('[ExecutionContextService] Invalid context: invalid operation', {
         repoPath,
@@ -1054,7 +1134,7 @@ export class ExecutionContextService {
     }
   }
 
-  private static async loadPersistedContext(repoPath: string): Promise<PersistedContext | null> {
+  private async loadPersistedContext(repoPath: string): Promise<PersistedContext | null> {
     try {
       const filePath = await this.getContextFilePath(repoPath)
       const content = await fs.promises.readFile(filePath, 'utf-8')
@@ -1079,7 +1159,7 @@ export class ExecutionContextService {
 
       // Validate the temp worktree is registered with git
       if (context.isTemporary) {
-        const git = getGitAdapter()
+        const git = this.deps.gitAdapter
         const worktrees = await git.listWorktrees(repoPath)
         const resolvedPath = await fs.promises
           .realpath(context.executionPath)
@@ -1106,7 +1186,7 @@ export class ExecutionContextService {
    * Persist context using atomic write (temp file + rename).
    * This prevents corruption if the process crashes mid-write.
    */
-  private static async persistContext(repoPath: string, context: PersistedContext): Promise<void> {
+  private async persistContext(repoPath: string, context: PersistedContext): Promise<void> {
     const filePath = await this.getContextFilePath(repoPath)
     const tempPath = `${filePath}.${process.pid}.tmp`
 
@@ -1126,7 +1206,7 @@ export class ExecutionContextService {
     }
   }
 
-  private static async clearPersistedContext(repoPath: string): Promise<void> {
+  private async clearPersistedContext(repoPath: string): Promise<void> {
     try {
       const filePath = await this.getContextFilePath(repoPath)
       await fs.promises.unlink(filePath)
@@ -1145,14 +1225,14 @@ export class ExecutionContextService {
    *
    * @param repoPath - Path to the git repository
    */
-  private static async createTemporaryWorktree(repoPath: string): Promise<string> {
+  private async createTemporaryWorktree(repoPath: string): Promise<string> {
     const baseDir = await this.getWorktreeDir(repoPath)
     let lastError: Error | null = null
     let finalAttempt = 0
 
     for (let attempt = 1; attempt <= MAX_WORKTREE_RETRIES; attempt++) {
       finalAttempt = attempt
-      const result = await WorktreeOperation.createTemporary(repoPath, baseDir)
+      const result = await this.deps.worktreeOps.createTemporary(repoPath, baseDir)
 
       if (result.success && result.worktreePath) {
         return result.worktreePath
@@ -1182,5 +1262,201 @@ export class ExecutionContextService {
       finalAttempt,
       lastError ?? undefined
     )
+  }
+}
+
+// =============================================================================
+// Static Facade (backward-compatible API)
+// =============================================================================
+
+/** Lazily-created default instance for production use */
+let defaultInstance: ExecutionContextServiceInstance | null = null
+
+/**
+ * Get the default instance, creating it if necessary.
+ */
+function getDefaultInstance(): ExecutionContextServiceInstance {
+  if (!defaultInstance) {
+    defaultInstance = new ExecutionContextServiceInstance(createDefaultDependencies())
+  }
+  return defaultInstance
+}
+
+/**
+ * Static facade for ExecutionContextService.
+ * Provides backward-compatible static API that delegates to the default instance.
+ *
+ * For testing, use `ExecutionContextService.createInstance()` to create isolated instances
+ * with custom dependencies (e.g., mock clock for deterministic time testing).
+ */
+export class ExecutionContextService {
+  /**
+   * Create a new isolated instance with custom dependencies.
+   * Use this for testing to get full isolation between tests.
+   *
+   * @example
+   * ```typescript
+   * const mockClock = createMockClock()
+   * const service = ExecutionContextService.createInstance({ clock: mockClock })
+   *
+   * // Use the instance directly for isolated testing
+   * const context = await service.acquire(repoPath)
+   *
+   * // Advance time to test staleness
+   * mockClock.advance(25 * 60 * 60 * 1000)
+   * ```
+   */
+  static createInstance(
+    deps: Partial<ExecutionContextDependencies> = {}
+  ): ExecutionContextServiceInstance {
+    return new ExecutionContextServiceInstance({
+      ...createDefaultDependencies(),
+      ...deps
+    })
+  }
+
+  /**
+   * Reset the default instance.
+   * Clears all state and creates a fresh instance on next use.
+   * Primarily for testing cleanup.
+   */
+  static resetDefaultInstance(): void {
+    if (defaultInstance) {
+      defaultInstance.reset()
+      defaultInstance = null
+    }
+  }
+
+  /**
+   * Get the default instance.
+   * Exposed for cases where the instance is needed directly.
+   */
+  static getDefaultInstance(): ExecutionContextServiceInstance {
+    return getDefaultInstance()
+  }
+
+  /**
+   * Event emitter for observability.
+   * Subscribe to events like 'acquired', 'released', 'stored', 'cleared'.
+   */
+  static get events(): EventEmitter {
+    return getDefaultInstance().events
+  }
+
+  /**
+   * Get the current context TTL in milliseconds.
+   */
+  static getContextTTL(): number {
+    return getDefaultInstance().getContextTTL()
+  }
+
+  /**
+   * Set the context TTL in milliseconds.
+   * Contexts older than this are considered stale and will be cleared.
+   * Default is 24 hours.
+   */
+  static setContextTTL(ttlMs: number): void {
+    getDefaultInstance().setContextTTL(ttlMs)
+  }
+
+  /**
+   * Reset the context TTL to its default value (24 hours).
+   */
+  static resetContextTTL(): void {
+    getDefaultInstance().resetContextTTL()
+  }
+
+  /**
+   * Acquire an execution context for Git operations.
+   */
+  static async acquire(
+    repoPath: string,
+    operationOrOptions:
+      | ExecutionOperation
+      | { operation?: ExecutionOperation; targetBranch?: string } = 'unknown'
+  ): Promise<ExecutionContext> {
+    return getDefaultInstance().acquire(repoPath, operationOrOptions)
+  }
+
+  /**
+   * Store the execution context for later use (e.g., during conflict resolution).
+   */
+  static async storeContext(repoPath: string, context: ExecutionContext): Promise<void> {
+    return getDefaultInstance().storeContext(repoPath, context)
+  }
+
+  /**
+   * Clear the stored context and release the temp worktree.
+   */
+  static async clearStoredContext(repoPath: string): Promise<void> {
+    return getDefaultInstance().clearStoredContext(repoPath)
+  }
+
+  /**
+   * Check if there's a stored context for a repo.
+   */
+  static async hasStoredContext(repoPath: string): Promise<boolean> {
+    return getDefaultInstance().hasStoredContext(repoPath)
+  }
+
+  /**
+   * Get the stored execution path for a repo, if any.
+   */
+  static async getStoredExecutionPath(repoPath: string): Promise<string | undefined> {
+    return getDefaultInstance().getStoredExecutionPath(repoPath)
+  }
+
+  /**
+   * Get full stored context info for observability.
+   */
+  static async getStoredContext(repoPath: string): Promise<PersistedContext | null> {
+    return getDefaultInstance().getStoredContext(repoPath)
+  }
+
+  /**
+   * Get the stored context, throwing if not found.
+   */
+  static async getStoredContextOrThrow(repoPath: string): Promise<PersistedContext> {
+    return getDefaultInstance().getStoredContextOrThrow(repoPath)
+  }
+
+  /**
+   * Release an execution context, cleaning up temporary worktrees.
+   */
+  static async release(context: ExecutionContext): Promise<void> {
+    return getDefaultInstance().release(context)
+  }
+
+  /**
+   * Clean up orphaned temporary worktrees from previous runs.
+   */
+  static async cleanupOrphans(repoPath: string): Promise<void> {
+    return getDefaultInstance().cleanupOrphans(repoPath)
+  }
+
+  /**
+   * Check if the active worktree is dirty.
+   */
+  static async isActiveWorktreeDirty(repoPath: string): Promise<boolean> {
+    return getDefaultInstance().isActiveWorktreeDirty(repoPath)
+  }
+
+  /**
+   * Health check for diagnostics and monitoring.
+   */
+  static async healthCheck(repoPath: string): Promise<{
+    hasStoredContext: boolean
+    storedContext: PersistedContext | null
+    storedContextAge: number | null
+    isStoredContextStale: boolean
+    activeContextInMemory: string | null
+    lockFileExists: boolean
+    lockFileAge: number | null
+    tempWorktreeDir: string
+    tempWorktreeDirExists: boolean
+    tempWorktreeCount: number
+    ttlMs: number
+  }> {
+    return getDefaultInstance().healthCheck(repoPath)
   }
 }

@@ -12,7 +12,6 @@ import {
   IPC_CHANNELS,
   IpcHandlerOf,
   type CheckoutResponse,
-  type DetachedWorktree,
   type RebaseOperationResponse,
   type RebaseStatusResponse,
   type ShipItResponse,
@@ -111,13 +110,19 @@ const cancelRebaseIntent: IpcHandlerOf<'cancelRebaseIntent'> = async (_event, { 
   return RebaseOperation.cancelRebaseIntent(workingPath)
 }
 
+/**
+ * Resolves worktree conflicts by applying user-chosen actions (stash+detach or delete)
+ * and then retries the rebase.
+ *
+ * NOTE: We no longer track detached worktrees for automatic re-checkout after rebase.
+ * Users are responsible for manually checking out branches in worktrees they detached.
+ */
 const resolveWorktreeConflictAndRebase: IpcHandlerOf<'resolveWorktreeConflictAndRebase'> = async (
   _event,
   { repoPath, headSha, baseSha, resolutions }
 ) => {
   const workingPath = resolveWorkingPath(repoPath)
   const git = getGitAdapter()
-  const detachedWorktrees: DetachedWorktree[] = []
 
   const existingWorktrees = await git.listWorktrees(repoPath)
   const worktreeByPath = new Map(existingWorktrees.map((wt) => [wt.path, wt]))
@@ -143,7 +148,6 @@ const resolveWorktreeConflictAndRebase: IpcHandlerOf<'resolveWorktreeConflictAnd
       )
       continue
     }
-    const branch = worktree.branch
 
     if (resolution.action === 'stash') {
       const stashResult = await WorktreeOperation.stash(resolution.worktreePath)
@@ -155,10 +159,6 @@ const resolveWorktreeConflictAndRebase: IpcHandlerOf<'resolveWorktreeConflictAnd
       if (!detachResult.success) {
         throw new Error(detachResult.error ?? 'Failed to detach worktree')
       }
-
-      if (branch) {
-        detachedWorktrees.push({ worktreePath: resolution.worktreePath, branch })
-      }
     } else {
       const removeResult = await WorktreeOperation.remove(repoPath, resolution.worktreePath, true)
       if (!removeResult.success) {
@@ -167,9 +167,8 @@ const resolveWorktreeConflictAndRebase: IpcHandlerOf<'resolveWorktreeConflictAnd
     }
   }
 
-  return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha, {
-    preDetachedWorktrees: detachedWorktrees
-  })
+  // Retry the rebase - if there are still conflicts, they will be returned
+  return RebaseOperation.submitRebaseIntent(workingPath, headSha, baseSha)
 }
 
 // ============================================================================

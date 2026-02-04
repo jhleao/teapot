@@ -290,27 +290,6 @@ export class RebaseValidator {
   }
 
   /**
-   * Partitions worktree conflicts into clean vs dirty worktrees.
-   */
-  static partitionWorktreeConflicts(conflicts: WorktreeConflict[]): {
-    clean: WorktreeConflict[]
-    dirty: WorktreeConflict[]
-  } {
-    const clean: WorktreeConflict[] = []
-    const dirty: WorktreeConflict[] = []
-
-    for (const conflict of conflicts) {
-      if (conflict.isDirty) {
-        dirty.push(conflict)
-      } else {
-        clean.push(conflict)
-      }
-    }
-
-    return { clean, dirty }
-  }
-
-  /**
    * Builds a user-facing message summarizing worktree conflicts.
    */
   static formatWorktreeConflictMessage(conflicts: WorktreeConflict[]): string {

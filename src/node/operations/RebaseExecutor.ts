@@ -14,7 +14,6 @@
 
 import { log } from '@shared/logger'
 import {
-  IPC_EVENTS,
   type Commit,
   type CommitRewrite,
   type RebaseIntent,
@@ -22,8 +21,6 @@ import {
   type RebasePlan,
   type RebaseState
 } from '@shared/types'
-import { BrowserWindow } from 'electron'
-import * as fs from 'fs'
 import type { GitAdapter } from '../adapters/git'
 import {
   getGitAdapter,
@@ -41,7 +38,6 @@ import type { StoredRebaseSession } from '../services/SessionService'
 import { createJobIdGenerator } from '../shared/job-id'
 import { configStore } from '../store'
 import { checkConflictResolution } from '../utils/conflict-markers'
-import { WorktreeOperation } from './WorktreeOperation'
 import { parseWorktreeConflictError } from './WorktreeUtils'
 
 /**
@@ -115,6 +111,7 @@ export type RebaseErrorCode =
   | 'BRANCH_NOT_FOUND'
   | 'CONTEXT_ACQUISITION_FAILED'
   | 'DIRTY_WORKTREE'
+  | 'WORKTREE_CONFLICT'
   | 'GENERIC'
 
 export type RebaseExecutionResult =
@@ -727,7 +724,8 @@ export class RebaseExecutor {
     const checks = [
       () => this.validateNoRebaseInProgress(repoPath, git),
       () => this.validateNoExistingSession(repoPath),
-      () => this.validateNotDetached(repoPath, git)
+      () => this.validateNotDetached(repoPath, git),
+      () => this.validateNoWorktreeConflicts(repoPath, intent, git)
     ]
 
     for (const check of checks) {
@@ -765,6 +763,37 @@ export class RebaseExecutor {
   ): Promise<ValidationResult> {
     const status = await git.getWorkingTreeStatus(repoPath)
     return RebaseValidator.validateNotDetached(status)
+  }
+
+  /**
+   * Validates that no branches in the rebase intent are checked out in other worktrees.
+   * This is a blocking check - we do NOT auto-detach worktrees to avoid silent modification
+   * of the user's workspace state.
+   */
+  private static async validateNoWorktreeConflicts(
+    repoPath: string,
+    intent: RebaseIntent,
+    git: GitAdapter
+  ): Promise<ValidationResult> {
+    const worktrees = await git.listWorktrees(repoPath)
+    const activeWorktreePath = configStore.getActiveWorktree(repoPath) ?? repoPath
+
+    const result = RebaseValidator.validateNoWorktreeConflicts(
+      intent,
+      worktrees,
+      activeWorktreePath
+    )
+
+    // Convert WorktreeValidationResult to ValidationResult
+    if (!result.valid) {
+      return {
+        valid: false,
+        code: 'WORKTREE_CONFLICT',
+        message: result.message
+      }
+    }
+
+    return { valid: true }
   }
 
   private static async validateTargetRefs(
@@ -1236,53 +1265,16 @@ export class RebaseExecutor {
       repoPath,
       executionPath,
       originalBranch: session.originalBranch,
-      autoDetachedWorktreeCount: session.autoDetachedWorktrees?.length ?? 0,
       completedJobCount: Object.values(session.state.jobsById).filter(
         (j) => j.status === 'completed'
       ).length
     })
 
-    const detachedWorktrees = session.autoDetachedWorktrees ?? []
-    const reattachFailures: { worktreePath: string; branch: string; error?: string }[] = []
-
-    for (const { worktreePath, branch } of detachedWorktrees) {
-      if (!fs.existsSync(worktreePath)) continue
-      const result = await WorktreeOperation.checkoutBranchInWorktree(worktreePath, branch)
-      if (!result.success) {
-        log.error(
-          `[RebaseExecutor] Failed to re-checkout ${branch} in worktree ${worktreePath}: ${result.error}`
-        )
-        reattachFailures.push({ worktreePath, branch, error: result.error })
-      }
-    }
-
-    // Only checkout to original branch in execution path (not the active worktree)
+    // Checkout to original branch in execution path (not the active worktree)
     try {
       await git.checkout(executionPath, session.originalBranch)
     } catch {
       // Original branch might not exist anymore; ignore checkout failure
-    }
-
-    if (reattachFailures.length > 0) {
-      SessionService.clearAutoDetachedWorktrees(repoPath)
-      const warning = reattachFailures
-        .map(
-          (failure) =>
-            `${failure.branch} @ ${failure.worktreePath}${failure.error ? ` (${failure.error})` : ''}`
-        )
-        .join(', ')
-
-      // Send warning to all windows - wrap in try-catch since windows may be destroyed
-      BrowserWindow.getAllWindows().forEach((win) => {
-        try {
-          win.webContents.send(
-            IPC_EVENTS.rebaseWarning,
-            `Rebase finished but could not re-checkout: ${warning}`
-          )
-        } catch {
-          // Window may have been destroyed between getAllWindows and send - ignore
-        }
-      })
     }
 
     const finalState: RebaseState = {

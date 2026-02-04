@@ -1,5 +1,5 @@
 import { log } from '@shared/logger'
-import type { DetachedWorktree, RebasePlan, RebaseState } from '@shared/types'
+import type { RebasePlan, RebaseState } from '@shared/types'
 import { configStore, type ConfigStore, type StoredRebaseSession } from '../store'
 
 export type { StoredRebaseSession }
@@ -71,8 +71,7 @@ export function getAllSessions(): Map<string, StoredRebaseSession> {
 export function createSession(
   repoPath: string,
   plan: RebasePlan,
-  originalBranch: string,
-  autoDetachedWorktrees?: DetachedWorktree[]
+  originalBranch: string
 ): void {
   const key = normalizePath(repoPath)
   log.debug('[SessionService] createSession() called', {
@@ -80,8 +79,7 @@ export function createSession(
     key,
     originalBranch,
     intentTargetCount: plan.intent.targets.length,
-    pendingJobCount: plan.state.queue.pendingJobIds.length,
-    autoDetachedWorktreeCount: autoDetachedWorktrees?.length ?? 0
+    pendingJobCount: plan.state.queue.pendingJobIds.length
   })
 
   if (sessionStore.has(key)) {
@@ -94,7 +92,6 @@ export function createSession(
     intent: plan.intent,
     state: plan.state,
     originalBranch,
-    autoDetachedWorktrees,
     version: 1,
     createdAtMs: now,
     updatedAtMs: now
@@ -107,13 +104,6 @@ export function clearSession(repoPath: string): void {
   const hadSession = sessionStore.has(key)
   sessionStore.delete(key)
   log.info('[SessionService] clearSession called', { repoPath, key, hadSession })
-}
-
-export function clearAutoDetachedWorktrees(repoPath: string): void {
-  const key = normalizePath(repoPath)
-  const existing = sessionStore.get(key)
-  if (!existing) return
-  sessionStore.set(key, { ...existing, autoDetachedWorktrees: [] })
 }
 
 export function updateState(repoPath: string, state: RebaseState): void {
@@ -219,13 +209,11 @@ export const rebaseSessionStore: IRebaseSessionStore = {
 
 export function createStoredSession(
   plan: RebasePlan,
-  originalBranch: string,
-  options: { autoDetachedWorktrees?: DetachedWorktree[] } = {}
+  originalBranch: string
 ): Omit<StoredRebaseSession, 'version' | 'createdAtMs' | 'updatedAtMs'> {
   return {
     intent: plan.intent,
     state: plan.state,
-    originalBranch,
-    autoDetachedWorktrees: options.autoDetachedWorktrees
+    originalBranch
   }
 }

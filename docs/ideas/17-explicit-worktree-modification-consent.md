@@ -1,9 +1,14 @@
 # Idea: Explicit User Consent for Worktree Modifications
 
 **Source:** `architecture-issues-rebase-worktree-lifecycle.md` (Issue 1: Implicit Assumptions About User Intent)
-**Status:** Proposed
+**Status:** Implemented (bundled with #16)
 **Priority:** High (UX, trust)
 **Effort:** Medium (1 week)
+**Implementation Date:** 2026-02-04
+
+> **Note:** This idea was implemented as part of idea #16 (Block All Worktree Conflicts).
+> The recommended Option 1 (Block and Inform) aligns with #16's approach. All three ADRs
+> (Never Auto-Modify, Clear Blocking Messages, Active Worktree Exemption) are satisfied.
 
 ## Problem
 

@@ -90,15 +90,15 @@ export function WorktreeConflictDialog({
         </div>
 
         <div className="text-muted-foreground space-y-1 text-xs">
-          <p>These worktrees have uncommitted changes. Choose how to unblock the rebase:</p>
+          <p>These branches are checked out in other worktrees. Choose how to proceed:</p>
           <p>
-            <span className="text-foreground font-medium">Stash and Proceed</span> will stash
-            changes, temporarily detach the branch, and continue. We&apos;ll re-checkout the branch
-            after rebasing.
+            <span className="text-foreground font-medium">Stash and Detach</span> will stash any
+            uncommitted changes and switch the worktree to detached HEAD, freeing the branch for
+            rebase. You&apos;ll need to manually checkout the branch again afterward.
           </p>
           <p>
             <span className="text-foreground font-medium">Delete Worktree</span> force-removes the
-            worktree (all changes in it will be lost).
+            worktree entirely (all uncommitted changes will be lost).
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export function WorktreeConflictDialog({
               )}
             >
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              Stash and Proceed
+              Stash and Detach
             </button>
             <button
               onClick={onDeleteAndProceed}

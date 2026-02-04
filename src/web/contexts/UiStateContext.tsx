@@ -60,6 +60,7 @@ interface UiStateContextValue {
   uncommit: (params: { commitSha: string }) => Promise<void>
   shipIt: (params: { branchName: string; canShip?: boolean }) => Promise<void>
   syncTrunk: () => Promise<void>
+  pullStack: (params: { branchNames: string[] }) => Promise<void>
   switchWorktree: (params: { worktreePath: string }) => Promise<void>
   createWorktree: (params: {
     branch: string
@@ -110,6 +111,7 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   uncommit: async () => {},
   shipIt: async () => {},
   syncTrunk: async () => {},
+  pullStack: async () => {},
   switchWorktree: async () => {},
   createWorktree: async () => ({ success: false }),
   removeWorktree: async () => ({ success: false }),
@@ -591,6 +593,45 @@ export function UiStateProvider({
     }
   }, [repoPath, refreshForge])
 
+  const pullStack = useCallback(
+    async (params: { branchNames: string[] }) => {
+      if (!repoPath) return
+      try {
+        const result = await window.api.pullStack({ repoPath, branchNames: params.branchNames })
+        if (result.uiState) setUiState(result.uiState)
+        if (result.status === 'success' && result.message) {
+          // Check if this is an informational "nothing to pull" message
+          const isInfoMessage =
+            result.message.includes('already up to date') ||
+            result.message.includes('No branches') ||
+            result.message.includes('needed pulling')
+          if (isInfoMessage) {
+            toast.info(result.message)
+          } else {
+            toast.success(result.message)
+          }
+        } else if (result.status === 'partial' && result.message) {
+          toast.warning(result.message, {
+            description: result.failedBranches?.length
+              ? `Failed: ${result.failedBranches.join(', ')}`
+              : undefined
+          })
+        } else if (result.status === 'error' && result.message) {
+          toast.error(result.message)
+        }
+        // Refresh forge state since we pulled from remote
+        refreshForge()
+      } catch (error) {
+        log.error('Pull stack failed:', error)
+        toast.error('Pull stack failed', {
+          description: error instanceof Error ? error.message : String(error)
+        })
+        throw error
+      }
+    },
+    [repoPath, refreshForge]
+  )
+
   const switchWorktree = useCallback(
     async (params: { worktreePath: string }) => {
       if (!repoPath) return
@@ -808,6 +849,7 @@ export function UiStateProvider({
       uncommit,
       shipIt,
       syncTrunk,
+      pullStack,
       switchWorktree,
       createWorktree,
       removeWorktree,
@@ -848,6 +890,7 @@ export function UiStateProvider({
       uncommit,
       shipIt,
       syncTrunk,
+      pullStack,
       switchWorktree,
       createWorktree,
       removeWorktree,

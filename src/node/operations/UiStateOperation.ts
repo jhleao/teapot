@@ -121,37 +121,20 @@ export class UiStateOperation {
     const stack = fullUiState.projectedStack ?? fullUiState.stack
     const workingTree = UiStateBuilder.buildUiWorkingTree(repo)
 
-    // If there's a temp worktree with conflicts, we need to show those conflicted files
-    // in the working tree list (they won't show from the active worktree)
-    if (storedContext?.isTemporary && workingTreeStatus.conflicted.length > 0) {
-      // Add conflicted files from temp worktree to the working tree list
-      const existingPaths = new Set(workingTree.map((f) => f.path))
-      for (const conflictPath of workingTreeStatus.conflicted) {
-        if (!existingPaths.has(conflictPath)) {
-          workingTree.push({
-            path: conflictPath,
-            stageStatus: 'unstaged',
-            status: 'conflicted',
-            resolved: false
-          })
-        } else {
-          // Update existing file to show as conflicted
-          const file = workingTree.find((f) => f.path === conflictPath)
-          if (file) {
-            file.status = 'conflicted'
-            file.resolved = false
-          }
-        }
-      }
-    }
+    // NOTE: We intentionally do NOT show temp worktree conflicts in the main worktree's
+    // Working Tree section. This was confusing because:
+    // 1. The Working Tree section should reflect the current worktree's state
+    // 2. The red banner already informs the user about conflicts in other worktrees
+    // 3. Mixing files from different worktrees creates confusion
+    // The ConflictResolutionDialog (shown when switching to the conflicted worktree)
+    // is the appropriate place to see and resolve those conflicts.
 
     // Check conflicted files for marker resolution (markers removed = resolved)
-    // Use the execution path (temp worktree if parallel mode) for conflict resolution check
-    const conflictCheckPath = storedContext?.executionPath ?? repoPath
+    // Only check files in the current worktree (not temp worktrees)
     const conflictedFiles = workingTree.filter((f) => f.status === 'conflicted')
     if (conflictedFiles.length > 0) {
       const resolutionStatus = await checkConflictResolution(
-        conflictCheckPath,
+        repoPath,
         conflictedFiles.map((f) => f.path)
       )
       for (const file of workingTree) {
@@ -228,6 +211,6 @@ export class UiStateOperation {
     }
 
     const trunkHeadSha = TrunkResolver.getTrunkHeadSha(repo.branches, repo.commits)
-    return { stack, workingTree, trunkHeadSha }
+    return { stack, workingTree, trunkHeadSha, worktrees: repo.worktrees }
   }
 }

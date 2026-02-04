@@ -13,11 +13,16 @@ export function ConflictResolutionDialog(): React.JSX.Element {
   const [executionPath, setExecutionPath] = useState<string | null>(null)
 
   // Fetch the execution path when dialog mounts
+  // For Teapot-initiated rebases, this returns the temp worktree path
+  // For external rebases, fall back to repoPath (the current worktree)
   useEffect(() => {
     if (!repoPath) return
     window.api.getRebaseExecutionPath({ repoPath }).then((result) => {
       if (result.path) {
         setExecutionPath(result.path)
+      } else {
+        // External rebase - use the current worktree path
+        setExecutionPath(repoPath)
       }
     })
   }, [repoPath])
@@ -43,6 +48,11 @@ export function ConflictResolutionDialog(): React.JSX.Element {
     setIsPending(true)
     try {
       await abortRebase()
+      toast.success('Rebase aborted', {
+        description: rebasingBranchName
+          ? `${rebasingBranchName} restored to its previous state`
+          : 'Branch restored to its previous state'
+      })
     } finally {
       setIsPending(false)
     }

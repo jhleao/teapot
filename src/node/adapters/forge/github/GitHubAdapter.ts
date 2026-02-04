@@ -353,6 +353,19 @@ export class GitHubAdapter implements GitForgeAdapter {
     // Combine existing checks with expected checks
     const allChecks = [...checks, ...expectedChecks]
 
+    // Surface review approval as a visible status check.
+    // The "review required" blocker (when reviewDecision is REVIEW_REQUIRED or
+    // CHANGES_REQUESTED) is handled separately by deriveGraphQLBlockers — don't
+    // duplicate that here. Only inject the approval state so it doesn't silently
+    // vanish from the checks list once the review is approved.
+    if (pr.reviewDecision === 'APPROVED') {
+      allChecks.push({
+        name: 'Review',
+        status: 'success',
+        description: 'Approved'
+      })
+    }
+
     const blockers = this.deriveGraphQLBlockers(pr, checks, protectionRule)
     let checksStatus = this.deriveChecksStatus(allChecks)
 

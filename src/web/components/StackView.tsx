@@ -1,4 +1,5 @@
 import { log } from '@shared/logger'
+import { getEditMessagePermission } from '@shared/permissions'
 import type { UiCommit, UiStack, UiWorkingTreeFile, UiWorktreeBadge } from '@shared/types'
 import { Loader2 } from 'lucide-react'
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -7,7 +8,6 @@ import { useLocalStateContext } from '../contexts/LocalStateContext'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { cn } from '../utils/cn'
 import { canHideCommit, computeCollapsibleBranches } from '../utils/collapse-commits'
-import { getEditMessageState } from '../utils/edit-message-state'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { CollapsedCommits } from './CollapsedCommits'
 import { ContextMenu, ContextMenuItem } from './ContextMenu'
@@ -223,7 +223,7 @@ export const CommitView = memo(function CommitView({
   isOwned
 }: CommitProps): React.JSX.Element {
   const isHead = data.isCurrent || data.branches.some((branch) => branch.isCurrent)
-  const editMessageState = getEditMessageState({ isHead, isTrunk: stack.isTrunk })
+  const editMessagePermission = getEditMessagePermission({ isHead, isTrunk: stack.isTrunk })
   const { handleCommitDotMouseDown, registerCommitRef, unregisterCommitRef } = useDragContext()
   const {
     confirmRebaseIntent,
@@ -393,8 +393,8 @@ export const CommitView = memo(function CommitView({
               <>
                 <ContextMenuItem
                   onClick={() => setIsEditMessageDialogOpen(true)}
-                  disabled={!editMessageState.canEdit}
-                  disabledReason={editMessageState.disabledReason}
+                  disabled={!editMessagePermission.allowed}
+                  disabledReason={editMessagePermission.deniedReason}
                 >
                   Amend message
                 </ContextMenuItem>

@@ -1,4 +1,8 @@
-import { getDeleteBranchPermission } from '@shared/permissions'
+import {
+  getCreateWorktreePermission,
+  getDeleteBranchPermission,
+  getRenameBranchPermission
+} from '@shared/permissions'
 import type { BranchChoice, SquashPreview, UiBranch } from '@shared/types'
 import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -167,6 +171,21 @@ export const BranchBadge = memo(function BranchBadge({
     [data.isTrunk, data.isCurrent]
   )
 
+  const renamePermission = useMemo(
+    () => getRenameBranchPermission({ isTrunk: data.isTrunk, isRemote: data.isRemote }),
+    [data.isTrunk, data.isRemote]
+  )
+
+  const worktreePermission = useMemo(
+    () =>
+      getCreateWorktreePermission({
+        isTrunk: data.isTrunk,
+        isRemote: data.isRemote,
+        hasWorktree
+      }),
+    [data.isTrunk, data.isRemote, hasWorktree]
+  )
+
   return (
     <>
       <ContextMenu
@@ -182,8 +201,14 @@ export const BranchBadge = memo(function BranchBadge({
                 <ContextMenuSeparator />
               </>
             )}
-            {data.canRename && (
-              <ContextMenuItem onClick={handleRename}>Rename branch</ContextMenuItem>
+            {!data.isRemote && (
+              <ContextMenuItem
+                onClick={handleRename}
+                disabled={!renamePermission.allowed}
+                disabledReason={renamePermission.deniedReason}
+              >
+                Rename branch
+              </ContextMenuItem>
             )}
             {!data.isRemote && (
               <ContextMenuItem
@@ -206,12 +231,13 @@ export const BranchBadge = memo(function BranchBadge({
                 </ContextMenuItem>
               </>
             )}
-            {data.canCreateWorktree && (
+            {!data.isRemote && (
               <>
                 <ContextMenuSeparator />
                 <ContextMenuItem
                   onClick={handleCreateWorktree}
-                  disabled={hasWorktree || isCreatingWorktree}
+                  disabled={!worktreePermission.allowed || isCreatingWorktree}
+                  disabledReason={worktreePermission.deniedReason}
                 >
                   {isCreatingWorktree ? 'Creating...' : 'New worktree here'}
                 </ContextMenuItem>

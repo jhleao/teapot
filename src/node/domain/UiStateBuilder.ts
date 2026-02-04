@@ -6,6 +6,11 @@
  */
 
 import { log } from '@shared/logger'
+import {
+  getCreateWorktreePermission,
+  getRenameBranchPermission,
+  getSquashPermission
+} from '@shared/permissions'
 import type {
   Branch,
   Commit as DomainCommit,
@@ -642,26 +647,34 @@ export class UiStateBuilder {
       }
 
       const isCurrent = branch.ref === state.currentBranch
-      const canRename = !branch.isRemote && !branch.isTrunk
+
+      // Use centralized permission functions
+      const renamePermission = getRenameBranchPermission({
+        isTrunk: branch.isTrunk,
+        isRemote: branch.isRemote
+      })
+      const canRename = renamePermission.allowed
+
+      // canDelete is still computed inline as it uses getDeleteBranchPermission on frontend
       const canDelete = !isCurrent && !branch.isTrunk
 
       const branchCommit = state.commitMap.get(branch.headSha)
       const parentSha = branchCommit?.parentSha
       const parentIsOnTrunk = parentSha ? state.trunkShas.has(parentSha) : true
-      const canSquash = !branch.isRemote && !branch.isTrunk && !parentIsOnTrunk
 
-      let squashDisabledReason: string | undefined
-      if (!canSquash) {
-        if (branch.isRemote) {
-          squashDisabledReason = 'Cannot squash remote branches'
-        } else if (branch.isTrunk) {
-          squashDisabledReason = 'Cannot squash trunk branches'
-        } else if (parentIsOnTrunk) {
-          squashDisabledReason = 'Cannot squash: parent commit is on trunk'
-        }
-      }
+      const squashPermission = getSquashPermission({
+        isTrunk: branch.isTrunk,
+        isRemote: branch.isRemote,
+        parentIsTrunk: parentIsOnTrunk
+      })
+      const canSquash = squashPermission.allowed
+      const squashDisabledReason = squashPermission.deniedReason
 
-      const canCreateWorktree = !branch.isRemote && !branch.isTrunk
+      const worktreePermission = getCreateWorktreePermission({
+        isTrunk: branch.isTrunk,
+        isRemote: branch.isRemote
+      })
+      const canCreateWorktree = worktreePermission.allowed
 
       commitNode.branches.push({
         name: branch.ref,

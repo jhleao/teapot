@@ -44,6 +44,7 @@
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.3.9",
+    "ignore": "^7.0.5",
     "lucide-react": "^0.553.0",
     "simple-git": "^3.30.0",
     "sonner": "^2.0.7",

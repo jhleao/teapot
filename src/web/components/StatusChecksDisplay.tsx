@@ -1,5 +1,5 @@
 import type { MergeReadiness, StatusCheck } from '@shared/types/git-forge'
-import { CheckCircle2Icon, CircleDotIcon, CircleIcon, Loader2Icon, XCircleIcon } from 'lucide-react'
+import { CheckCircle2Icon, CircleDotIcon, XCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '../utils/cn'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
@@ -36,29 +36,32 @@ export function StatusChecksDisplay({
     switch (checksStatus) {
       case 'success':
         return {
-          Icon: CheckCircle2Icon,
+          icon: <CheckCircle2Icon className="h-3 w-3" />,
           color: 'text-green-500',
           bgColor: 'bg-green-500/10',
           borderColor: 'border-green-500/30'
         }
       case 'failure':
         return {
-          Icon: XCircleIcon,
+          icon: <XCircleIcon className="h-3 w-3" />,
           color: 'text-red-500',
           bgColor: 'bg-red-500/10',
           borderColor: 'border-red-500/30'
         }
       case 'pending':
         return {
-          Icon: Loader2Icon,
+          icon: (
+            <span className="inline-flex h-3 w-3 items-center justify-center">
+              <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+            </span>
+          ),
           color: 'text-yellow-500',
           bgColor: 'bg-yellow-500/10',
-          borderColor: 'border-yellow-500/30',
-          animate: true
+          borderColor: 'border-yellow-500/30'
         }
       default:
         return {
-          Icon: CircleIcon,
+          icon: <span className="inline-block h-2.5 w-2.5 rounded-full bg-current" />,
           color: 'text-muted-foreground',
           bgColor: 'bg-muted/10',
           borderColor: 'border-border'
@@ -66,7 +69,7 @@ export function StatusChecksDisplay({
     }
   }
 
-  const { Icon, color, bgColor, borderColor, animate } = getStatusDisplay()
+  const { icon, color, bgColor, borderColor } = getStatusDisplay()
 
   // Format the badge text
   const getBadgeText = () => {
@@ -96,16 +99,16 @@ export function StatusChecksDisplay({
           )}
           title={`${passedCount} passed, ${failedCount} failed, ${pendingCount} pending`}
         >
-          <Icon className={cn('h-3 w-3', animate && 'animate-spin')} />
+          {icon}
           <span>{getBadgeText()}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="max-w-[300px] min-w-[200px] p-2">
+      <PopoverContent align="start" className="w-[240px] p-2">
         <div className="border-border text-muted-foreground mb-1.5 border-b pb-1.5 text-xs font-medium">
           Status Checks ({passedCount}/{checks.length})
         </div>
         <ScrollArea className="max-h-[200px]">
-          <div className="flex flex-col gap-1">
+          <div className="flex w-[224px] flex-col gap-1">
             {checks.map((check, index) => (
               <CheckItem key={index} check={check} />
             ))}
@@ -124,17 +127,21 @@ function CheckItem({ check }: { check: StatusCheck }): React.JSX.Element {
       case 'failure':
         return <XCircleIcon className="h-3.5 w-3.5 text-red-500" />
       case 'pending':
-        return <Loader2Icon className="h-3.5 w-3.5 animate-spin text-yellow-500" />
+        return (
+          <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+            <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+          </span>
+        )
       case 'neutral':
       case 'skipped':
         return <CircleDotIcon className="text-muted-foreground h-3.5 w-3.5" />
       default:
-        return <CircleIcon className="text-muted-foreground h-3.5 w-3.5" />
+        return <span className="border-muted-foreground inline-block h-3 w-3 rounded-full border" />
     }
   }
 
   const content = (
-    <div className="flex items-start gap-2 py-0.5">
+    <div className="flex min-w-0 items-start gap-2 py-0.5">
       <div className="mt-0.5 shrink-0">{getCheckIcon()}</div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-xs">{check.name}</div>
@@ -151,7 +158,7 @@ function CheckItem({ check }: { check: StatusCheck }): React.JSX.Element {
         href={check.detailsUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="hover:bg-muted/50 -mx-1 rounded px-1"
+        className="hover:bg-muted/50 block overflow-hidden rounded"
         onClick={(e) => e.stopPropagation()}
       >
         {content}
@@ -159,5 +166,5 @@ function CheckItem({ check }: { check: StatusCheck }): React.JSX.Element {
     )
   }
 
-  return <div className="-mx-1 px-1">{content}</div>
+  return <div className="overflow-hidden">{content}</div>
 }

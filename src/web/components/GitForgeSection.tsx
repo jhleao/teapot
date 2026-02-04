@@ -3,12 +3,12 @@ import type { UiBranch } from '@shared/types'
 import type { StatusCheck } from '@shared/types/git-forge'
 import {
   BadgeCheckIcon,
+  BadgeIcon,
   BadgeMinusIcon,
   BadgeXIcon,
   CheckCircle2Icon,
   CircleDotIcon,
   CircleSlashIcon,
-  Loader2Icon,
   XCircleIcon
 } from 'lucide-react'
 import React, { memo, useCallback, useMemo, useState } from 'react'
@@ -471,7 +471,7 @@ function ActivePrSection({
                 />
               </button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="max-w-[340px] min-w-[240px] p-3">
+            <PopoverContent align="start" className="w-[240px] p-3">
               <ChecksPopoverContent
                 checks={checks}
                 reviewsRequired={reviewsRequired}
@@ -649,7 +649,7 @@ function ChecksIcon({
   }
 
   if (reviewsRequired && checksStatus === 'success') {
-    return <BadgeCheckIcon className="h-4 w-4 text-yellow-500" />
+    return <BadgeIcon className="text-muted-foreground h-4 w-4" />
   }
 
   switch (checksStatus) {
@@ -658,7 +658,11 @@ function ChecksIcon({
     case 'failure':
       return <BadgeXIcon className="h-4 w-4 text-red-500" />
     case 'pending':
-      return <Loader2Icon className="h-4 w-4 animate-spin text-yellow-500" />
+      return (
+        <span className="inline-flex h-4 w-4 items-center justify-center">
+          <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+        </span>
+      )
     case 'expected':
       return <CircleDotIcon className="h-4 w-4 text-yellow-500" />
     default:
@@ -724,7 +728,7 @@ function ChecksPopoverContent({
   return (
     <>
       <ScrollArea className="max-h-[200px]">
-        <div className="flex flex-col gap-1.5">
+        <div className="flex w-[216px] flex-col gap-1.5">
           {[...checks]
             .sort((a, b) => {
               const order: Record<string, number> = {
@@ -785,7 +789,7 @@ function ChecksPopoverContent({
 function CheckItemRow({ check }: { check: StatusCheck }): React.JSX.Element {
   const icon = getCheckStatusIcon(check.status)
   const content = (
-    <div className="flex items-start gap-2 py-0.5">
+    <div className="flex min-w-0 items-start gap-2 py-0.5">
       <div className="mt-0.5 shrink-0">{icon}</div>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">{check.name}</div>
@@ -802,7 +806,7 @@ function CheckItemRow({ check }: { check: StatusCheck }): React.JSX.Element {
         href={check.detailsUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="hover:bg-muted/50 -mx-1 rounded px-1"
+        className="hover:bg-muted/50 block overflow-hidden rounded"
         onClick={(e) => e.stopPropagation()}
       >
         {content}
@@ -810,7 +814,7 @@ function CheckItemRow({ check }: { check: StatusCheck }): React.JSX.Element {
     )
   }
 
-  return <div className="-mx-1 px-1">{content}</div>
+  return <div className="overflow-hidden">{content}</div>
 }
 
 function getCheckStatusIcon(status: string): React.JSX.Element {
@@ -820,7 +824,11 @@ function getCheckStatusIcon(status: string): React.JSX.Element {
     case 'failure':
       return <XCircleIcon className="h-4 w-4 text-red-500" />
     case 'pending':
-      return <Loader2Icon className="h-4 w-4 animate-spin text-yellow-500" />
+      return (
+        <span className="inline-flex h-4 w-4 items-center justify-center">
+          <span className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
+        </span>
+      )
     case 'expected':
       return <CircleDotIcon className="h-4 w-4 text-yellow-500" />
     case 'neutral':

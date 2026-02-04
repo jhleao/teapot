@@ -82,7 +82,6 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                e.preventDefault()
               }}
               onMouseDown={(e) => e.stopPropagation()}
               className={cn(

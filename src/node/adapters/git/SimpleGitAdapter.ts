@@ -541,7 +541,8 @@ export class SimpleGitAdapter implements GitAdapter {
 
   async commit(dir: string, options: CommitOptions): Promise<string> {
     try {
-      const git = this.createGit(dir)
+      const committerEnv = await this.resolveCommitterEnv(dir, options.committer)
+      const git = this.createGit(dir).env(committerEnv)
 
       // Build git commit options
       const gitOptions: Record<string, string | null> = {}
@@ -808,7 +809,8 @@ export class SimpleGitAdapter implements GitAdapter {
    */
   async rebase(dir: string, options: RebaseOptions): Promise<RebaseResult> {
     try {
-      const git = this.createGit(dir)
+      const committerEnv = await this.resolveCommitterEnv(dir)
+      const git = this.createGit(dir).env(committerEnv)
 
       // Build rebase command arguments
       // git rebase --onto <newbase> <upstream> [<branch>]
@@ -881,9 +883,11 @@ export class SimpleGitAdapter implements GitAdapter {
     }
 
     try {
+      const committerEnv = await this.resolveCommitterEnv(dir)
       const git = this.createGit(dir)
       // Set GIT_EDITOR to prevent editor popups during rebase continue
       const gitWithEnv = git.env({
+        ...committerEnv,
         GIT_EDITOR: 'true',
         GIT_SEQUENCE_EDITOR: 'true'
       })
@@ -960,7 +964,8 @@ export class SimpleGitAdapter implements GitAdapter {
    */
   async rebaseSkip(dir: string): Promise<RebaseResult> {
     try {
-      const git = this.createGit(dir)
+      const committerEnv = await this.resolveCommitterEnv(dir)
+      const git = this.createGit(dir).env(committerEnv)
       await git.raw(['rebase', '--skip'])
 
       return {
@@ -1064,6 +1069,35 @@ export class SimpleGitAdapter implements GitAdapter {
   // ============================================================================
   // Private Helper Methods
   // ============================================================================
+
+  /**
+   * Resolve committer identity as environment variables.
+   *
+   * Git determines the committer from (in order): GIT_COMMITTER_NAME/EMAIL env
+   * vars, then user.name/email config, then system defaults. When spawning git
+   * from a non-standard context (e.g. Electron), the config lookup can silently
+   * fall through to the system default (USER@HOSTNAME). Setting explicit env vars
+   * prevents this.
+   */
+  private async resolveCommitterEnv(
+    dir: string,
+    committer?: { name: string; email: string }
+  ): Promise<Record<string, string>> {
+    const identity = committer ?? (await this.resolveIdentityFromConfig(dir))
+    if (!identity) return {}
+    return {
+      GIT_COMMITTER_NAME: identity.name,
+      GIT_COMMITTER_EMAIL: identity.email
+    }
+  }
+
+  private async resolveIdentityFromConfig(
+    dir: string
+  ): Promise<{ name: string; email: string } | null> {
+    const name = await this.getConfig(dir, 'user.name')
+    const email = await this.getConfig(dir, 'user.email')
+    return name && email ? { name, email } : null
+  }
 
   private async runGitWithInput(
     dir: string,

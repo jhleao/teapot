@@ -4,6 +4,14 @@
  * This service watches a repository directory for file changes and
  * notifies the UI to refresh when changes occur.
  *
+ * Filtering:
+ * - All .git/ internal changes are ignored to prevent feedback loops
+ *   (our own git commands write to .git/, which would re-trigger the watcher)
+ * - Gitignored paths (node_modules, build output, etc.) are filtered using
+ *   the repo's .gitignore and .git/info/exclude
+ * - External git state changes (terminal commits, checkouts) are detected
+ *   via the window focus listener in the renderer
+ *
  * Design: One watcher instance per window. The watcher is tightly coupled
  * to a WebContents lifecycle - when the WebContents is destroyed, the
  * watcher automatically cleans up.
@@ -13,6 +21,9 @@ import { log } from '@shared/logger'
 import { IPC_EVENTS } from '@shared/types'
 import { WebContents } from 'electron'
 import { FSWatcher, watch } from 'fs'
+import { readFile } from 'fs/promises'
+import ignore, { type Ignore } from 'ignore'
+import { join } from 'path'
 import * as CacheService from './CacheService'
 
 export class GitWatcher {
@@ -23,6 +34,7 @@ export class GitWatcher {
   private boundOnDestroyed: (() => void) | null = null
   private paused = false
   private pendingChange = false
+  private ignoreFilter: Ignore | null = null
   private static instance: GitWatcher
 
   static getInstance(): GitWatcher {
@@ -57,7 +69,7 @@ export class GitWatcher {
     }
   }
 
-  watch(repoPath: string, webContents: WebContents): void {
+  async watch(repoPath: string, webContents: WebContents): Promise<void> {
     this.stop()
     this.currentRepoPath = repoPath
     this.currentWebContents = webContents
@@ -69,8 +81,11 @@ export class GitWatcher {
     }
     webContents.once('destroyed', this.boundOnDestroyed)
 
+    this.ignoreFilter = await this.buildIgnoreFilter(repoPath)
+
     try {
-      this.currentWatcher = watch(repoPath, { recursive: true }, () => {
+      this.currentWatcher = watch(repoPath, { recursive: true }, (_event, filename) => {
+        if (this.shouldIgnore(filename)) return
         this.handleFileChange()
       })
     } catch (error) {
@@ -97,6 +112,7 @@ export class GitWatcher {
     this.currentRepoPath = null
     this.currentWebContents = null
     this.boundOnDestroyed = null
+    this.ignoreFilter = null
   }
 
   /**
@@ -119,6 +135,46 @@ export class GitWatcher {
       this.stop()
       return false
     }
+  }
+
+  private shouldIgnore(filename: string | null): boolean {
+    if (!filename) return false
+
+    // Ignore all .git/ internal changes. This breaks the feedback loop where
+    // our git commands write to .git/ and re-trigger the watcher.
+    // External git operations (from terminal) are picked up via the
+    // window focus listener in the renderer.
+    if (filename === '.git' || filename.startsWith('.git/') || filename.startsWith('.git\\')) {
+      return true
+    }
+
+    if (this.ignoreFilter?.ignores(filename)) {
+      return true
+    }
+
+    return false
+  }
+
+  private async buildIgnoreFilter(repoPath: string): Promise<Ignore> {
+    const ig = ignore()
+
+    const files = [
+      join(repoPath, '.gitignore'),
+      join(repoPath, '.git', 'info', 'exclude')
+    ]
+
+    await Promise.all(
+      files.map(async (filePath) => {
+        try {
+          const content = await readFile(filePath, 'utf-8')
+          ig.add(content)
+        } catch {
+          // File doesn't exist, that's fine
+        }
+      })
+    )
+
+    return ig
   }
 
   private handleFileChange(): void {

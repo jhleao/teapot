@@ -59,8 +59,8 @@ function resolveWorkingPath(repoPath: string): string {
 // Repository Handlers
 // ============================================================================
 
-const watchRepo: IpcHandlerOf<'watchRepo'> = (event, { repoPath }) => {
-  GitWatcher.getInstance().watch(resolveWorkingPath(repoPath), event.sender)
+const watchRepo: IpcHandlerOf<'watchRepo'> = async (event, { repoPath }) => {
+  await GitWatcher.getInstance().watch(resolveWorkingPath(repoPath), event.sender)
 
   // Proactively prune stale worktree references on startup (best-effort, async)
   // This prevents "already used by worktree" errors from stale references

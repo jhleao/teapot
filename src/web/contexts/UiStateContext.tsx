@@ -216,17 +216,17 @@ export function UiStateProvider({
     }
   }, [])
 
-  useGitWatcher({
-    repoPath,
-    onRepoChange: () => {
-      if (skipWatcherUpdatesRef.current) return
-      refreshRepo()
-    },
-    onRepoError: (error) => {
-      setRepoError(error)
-      setUiState(null)
-    }
-  })
+  const onRepoChange = useCallback(() => {
+    if (skipWatcherUpdatesRef.current) return
+    refreshRepo()
+  }, [refreshRepo])
+
+  const onRepoError = useCallback((error: string) => {
+    setRepoError(error)
+    setUiState(null)
+  }, [])
+
+  useGitWatcher({ repoPath, onRepoChange, onRepoError })
 
   // Helper to call API and update state
   const callApi = useCallback(

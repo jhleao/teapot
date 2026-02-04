@@ -305,6 +305,7 @@ query FetchPullRequests($owner: String!, $repo: String!, $first: Int!) {
         headRefName
         headRefOid
         baseRefName
+        reviewDecision
         commits(last: 1) {
           nodes {
             commit {
@@ -425,6 +426,7 @@ export type GraphQLPullRequest = {
   isDraft: boolean
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
   mergeStateStatus: 'BEHIND' | 'BLOCKED' | 'CLEAN' | 'DIRTY' | 'HAS_HOOKS' | 'UNKNOWN' | 'UNSTABLE'
+  reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null
   createdAt: string
   mergedAt: string | null
   headRefName: string

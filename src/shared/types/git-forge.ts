@@ -322,10 +322,4 @@ export interface GitForgeAdapter {
    * @throws Error if merge fails (conflicts, branch protection, etc.)
    */
   mergePullRequest(number: number, mergeMethod: MergeStrategy): Promise<void>
-
-  /**
-   * Fetches detailed information about a specific pull request.
-   * Used to get mergeable state which is not included in the list endpoint.
-   */
-  fetchPrDetails(number: number): Promise<{ mergeable: boolean | null; mergeable_state: string }>
 }

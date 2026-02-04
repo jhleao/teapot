@@ -158,10 +158,7 @@ export class GitWatcher {
   private async buildIgnoreFilter(repoPath: string): Promise<Ignore> {
     const ig = ignore()
 
-    const files = [
-      join(repoPath, '.gitignore'),
-      join(repoPath, '.git', 'info', 'exclude')
-    ]
+    const files = [join(repoPath, '.gitignore'), join(repoPath, '.git', 'info', 'exclude')]
 
     await Promise.all(
       files.map(async (filePath) => {

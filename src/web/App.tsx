@@ -42,11 +42,16 @@ function App(): React.JSX.Element {
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col" data-testid="app-container">
-        <TitleBar />
-        <div className="border-border/50 bg-background border-b px-6 py-2">
-          <Topbar />
-        </div>
         <ScrollArea className="flex-1" viewportRef={setViewportRef}>
+          <div
+            className="sticky top-0 z-10 backdrop-blur-lg"
+            style={{ backgroundColor: 'color-mix(in srgb, var(--background) 70%, transparent)' }}
+          >
+            <TitleBar />
+            <div className="px-6 py-2">
+              <Topbar />
+            </div>
+          </div>
           <div className="px-6 pt-4 pb-32">
             {!selectedRepo ? (
               <EmptyState variant="no-repo" onAction={handleAddRepo} />

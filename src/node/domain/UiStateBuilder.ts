@@ -647,15 +647,11 @@ export class UiStateBuilder {
       }
 
       const isCurrent = branch.ref === state.currentBranch
-
-      // Use centralized permission functions
-      const renamePermission = getRenameBranchPermission({
+      const canRename = getRenameBranchPermission({
         isTrunk: branch.isTrunk,
         isRemote: branch.isRemote
-      })
-      const canRename = renamePermission.allowed
-
-      // canDelete is still computed inline as it uses getDeleteBranchPermission on frontend
+      }).allowed
+      // canDelete computed inline since frontend uses getDeleteBranchPermission directly
       const canDelete = !isCurrent && !branch.isTrunk
 
       const branchCommit = state.commitMap.get(branch.headSha)
@@ -670,11 +666,10 @@ export class UiStateBuilder {
       const canSquash = squashPermission.allowed
       const squashDisabledReason = squashPermission.deniedReason
 
-      const worktreePermission = getCreateWorktreePermission({
+      const canCreateWorktree = getCreateWorktreePermission({
         isTrunk: branch.isTrunk,
         isRemote: branch.isRemote
-      })
-      const canCreateWorktree = worktreePermission.allowed
+      }).allowed
 
       commitNode.branches.push({
         name: branch.ref,

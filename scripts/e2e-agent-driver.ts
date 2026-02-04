@@ -49,11 +49,7 @@ async function launchApp(): Promise<{ app: ElectronApplication; page: Page }> {
   return { app, page }
 }
 
-async function executeCommand(
-  page: Page,
-  command: string,
-  args: string[]
-): Promise<string> {
+async function executeCommand(page: Page, command: string, args: string[]): Promise<string> {
   switch (command) {
     case 'screenshot': {
       const filePath = args[0] || '/tmp/teapot-screenshot.png'

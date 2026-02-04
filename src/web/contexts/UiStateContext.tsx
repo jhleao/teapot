@@ -69,6 +69,7 @@ interface UiStateContextValue {
     newBranchName?: string
     createWorktree?: boolean
     createWorkingCommit: boolean
+    runInitialization: boolean
   }) => Promise<{
     success: boolean
     error?: string
@@ -630,6 +631,7 @@ export function UiStateProvider({
       newBranchName?: string
       createWorktree?: boolean
       createWorkingCommit: boolean
+      runInitialization: boolean
     }): Promise<{
       success: boolean
       error?: string

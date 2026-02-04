@@ -1084,8 +1084,16 @@ export class SimpleGitAdapter implements GitAdapter {
     committer?: { name: string; email: string }
   ): Promise<Record<string, string>> {
     const identity = committer ?? (await this.resolveIdentityFromConfig(dir))
-    if (!identity) return {}
+    // Spread process.env so that child processes inherit PATH and other
+    // variables. simple-git's .env() replaces the entire environment when
+    // an object is provided, so we must include process.env explicitly.
+    const base: Record<string, string> = {}
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) base[k] = v
+    }
+    if (!identity) return base
     return {
+      ...base,
       GIT_COMMITTER_NAME: identity.name,
       GIT_COMMITTER_EMAIL: identity.email
     }

@@ -252,7 +252,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
             <div className="text-muted-foreground text-sm">
               <p>Run rebases in a temporary worktree to preserve uncommitted changes</p>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex cursor-pointer items-center gap-2">
               <input
                 type="checkbox"
                 checked={useParallelWorktree}

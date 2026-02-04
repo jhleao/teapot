@@ -212,5 +212,4 @@ describe('GitHubAdapter', () => {
       )
     })
   })
-
 })

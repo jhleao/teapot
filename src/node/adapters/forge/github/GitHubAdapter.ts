@@ -1,4 +1,3 @@
-import { log } from '@shared/logger'
 import {
   CheckStatus,
   ForgePullRequest,
@@ -407,7 +406,7 @@ export class GitHubAdapter implements GitForgeAdapter {
   private deriveGraphQLBlockers(
     pr: GraphQLPullRequest,
     checks: StatusCheck[],
-    protectionRule?: GraphQLBranchProtectionRule
+    _protectionRule?: GraphQLBranchProtectionRule
   ): MergeBlocker[] {
     const blockers: MergeBlocker[] = []
 
@@ -818,4 +817,3 @@ type GitHubPullRequest = {
   }
   created_at: string
 }
-

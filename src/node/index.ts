@@ -7,6 +7,7 @@ import { initFileLogging, log } from '../shared/logger'
 import { IPC_EVENTS } from '../shared/types'
 import { registerHandlers } from './handlers'
 import { configStore } from './store'
+import './utils/fix-path'
 
 const isE2ETest = process.env.TEAPOT_E2E === '1'
 const shouldDisableUpdater = process.env.TEAPOT_DISABLE_UPDATER === '1' || isE2ETest

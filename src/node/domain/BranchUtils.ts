@@ -151,7 +151,8 @@ export class BranchUtils {
     const randomNoun = nouns[Math.floor(Math.random() * nouns.length)]
     const randomNumber = Math.floor(Math.random() * 1000)
 
-    return `${prefix}-${randomAdjective}-${randomNoun}-${randomNumber}`
+    const baseName = `${randomAdjective}-${randomNoun}-${randomNumber}`
+    return prefix ? `${prefix}-${baseName}` : baseName
   }
 
   /**

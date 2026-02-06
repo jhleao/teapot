@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/jhleao/teapot/compare/v0.8.0...v0.9.0) (2026-02-06)
+
+
+### Features
+
+* add comprehensive E2E testing infrastructure ([f045462](https://github.com/jhleao/teapot/commit/f045462bc43a5a4c6b617b2691ed55938016b16d))
+* add feature flag to disable parallel worktree mode ([0c91dd5](https://github.com/jhleao/teapot/commit/0c91dd5ffdcba82a7e8e21279254aa23a93a8c47))
+* make repo selector sticky and more compact ([36b9faf](https://github.com/jhleao/teapot/commit/36b9fafb04e7adf4446ad55e6bd8ea8122ef2a4f))
+
+
+### Bug Fixes
+
+* branch badge dropdown ([071b3de](https://github.com/jhleao/teapot/commit/071b3de6b4be40187fe4d29ecec52bd68551d518))
+* commit identity handling ([7e6ee13](https://github.com/jhleao/teapot/commit/7e6ee1370cead4b77576a71315239af3b7084b30))
+* env var passing from os ([c2efd00](https://github.com/jhleao/teapot/commit/c2efd00a6ab0d7806090d99906cf2b459c0a3385))
+* git forge issues/cleanup ([4c505bf](https://github.com/jhleao/teapot/commit/4c505bf99e8b70099e30e47421db4860f8bab2f3))
+* minor visual fixes ([d5cecf5](https://github.com/jhleao/teapot/commit/d5cecf54dd361198c7f309def5c047d270fadea4))
+* pr approval line item ([db3dff2](https://github.com/jhleao/teapot/commit/db3dff290b0dd674dc50d95649064cb38cd9c56a))
+* recursive git watching ([a37543f](https://github.com/jhleao/teapot/commit/a37543f38f3ea004144fae22e873e2e3b9b8f434))
+* restore drag initiation from entire commit row ([54dea96](https://github.com/jhleao/teapot/commit/54dea967dabde0108583c97b24bcb595ff918eb2))
+
 ## [0.8.0](https://github.com/jhleao/teapot/compare/v0.7.0...v0.8.0) (2026-01-26)
 
 ### Features

@@ -13,7 +13,6 @@ import { findOpenPr } from '@shared/types/git-forge'
 import { getAuthorIdentity, getGitAdapter, type GitAdapter } from '../adapters/git'
 import {
   BranchUtils,
-  RebaseIntentBuilder,
   RebaseStateMachine,
   StackAnalyzer,
   TrunkResolver
@@ -34,10 +33,16 @@ export class CommitOperation {
 
     const childrenToRebase = await this.findChildBranches(repoPath, config, git)
 
+    // Capture the old HEAD SHA before amending. After the amend, this commit
+    // will no longer be referenced by any branch, but child branches still
+    // have it in their ancestry. We need this to correctly scope the rebase
+    // so only the child's own commits are replayed (not the old HEAD itself).
+    const oldHeadSha = await git.resolveRef(repoPath, 'HEAD')
+
     await this.performAmend(repoPath, message, git)
 
     if (childrenToRebase.length > 0) {
-      await this.rebaseChildren(repoPath, childrenToRebase, config, git)
+      await this.rebaseChildren(repoPath, childrenToRebase, config, git, oldHeadSha)
     }
   }
 
@@ -155,13 +160,14 @@ export class CommitOperation {
     repoPath: string,
     childrenToRebase: string[],
     config: Configuration,
-    git: GitAdapter
+    git: GitAdapter,
+    oldHeadSha: string
   ): Promise<void> {
     try {
       const newRepo = await RepoModelService.buildRepoModel(config)
       const newHeadSha = await git.resolveRef(repoPath, 'HEAD')
 
-      const targets = this.buildRebaseTargets(newRepo, childrenToRebase, newHeadSha)
+      const targets = this.buildRebaseTargets(newRepo, childrenToRebase, newHeadSha, oldHeadSha)
       if (targets.length === 0) return
 
       const intent = this.createRebaseIntent(targets)
@@ -176,7 +182,8 @@ export class CommitOperation {
   private static buildRebaseTargets(
     repo: Repo,
     childrenToRebase: string[],
-    newHeadSha: string
+    newHeadSha: string,
+    oldHeadSha: string
   ): RebaseTarget[] {
     const targets: RebaseTarget[] = []
 
@@ -184,10 +191,23 @@ export class CommitOperation {
       const childBranch = repo.branches.find((b) => b.ref === childName)
       if (!childBranch?.headSha) continue
 
-      const intent = RebaseIntentBuilder.build(repo, childBranch.headSha, newHeadSha)
-      if (intent) {
-        targets.push(...intent.targets)
-      }
+      // Use the old (pre-amend) HEAD SHA as the base for the rebase, not the
+      // ownership-computed base. After amending, the old HEAD commit is still
+      // in the child's ancestry but no longer has a branch pointing to it.
+      // If we let RebaseIntentBuilder.build() recompute ownership, it would
+      // walk past the old HEAD and include it in the child's owned commits,
+      // causing the rebase to replay the old HEAD on top of the new one —
+      // creating a bogus duplicate commit and spurious conflicts.
+      targets.push({
+        node: {
+          branch: childName,
+          headSha: childBranch.headSha,
+          baseSha: oldHeadSha,
+          ownedShas: [],
+          children: []
+        },
+        targetBaseSha: newHeadSha
+      })
     }
 
     return targets

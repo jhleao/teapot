@@ -4,10 +4,24 @@ import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Mock electron before any imports that use it
+vi.mock('electron', () => ({
+  BrowserWindow: {
+    getAllWindows: () => []
+  }
+}))
+
 // Mock the store to avoid electron-store initialization
+const mockRebaseSessions = new Map<string, unknown>()
 vi.mock('../../store', () => ({
   configStore: {
-    getGithubPat: vi.fn().mockReturnValue(null)
+    getGithubPat: vi.fn().mockReturnValue(null),
+    getActiveWorktree: () => null,
+    getUseParallelWorktree: () => false,
+    getRebaseSession: (key: string) => mockRebaseSessions.get(key) ?? null,
+    setRebaseSession: (key: string, session: unknown) => mockRebaseSessions.set(key, session),
+    deleteRebaseSession: (key: string) => mockRebaseSessions.delete(key),
+    hasRebaseSession: (key: string) => mockRebaseSessions.has(key)
   }
 }))
 
@@ -31,13 +45,16 @@ describe('amend', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockRebaseSessions.clear()
     repoPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'teapot-test-amend-'))
     execSync('git init -b main', { cwd: repoPath })
     execSync('git config user.name "Test User"', { cwd: repoPath })
     execSync('git config user.email "test@example.com"', { cwd: repoPath })
+    execSync('git config commit.gpgsign false', { cwd: repoPath })
   })
 
   afterEach(async () => {
+    mockRebaseSessions.clear()
     await fs.promises.rm(repoPath, { recursive: true, force: true })
   })
 
@@ -95,6 +112,79 @@ describe('amend', () => {
     const content = await fs.promises.readFile(file1, 'utf-8')
     expect(content).toBe('modified content')
   })
+
+  it('should amend with child branch without creating duplicate commits', async () => {
+    // Setup:
+    //   main(A) → parent-branch(B) → child-branch(C)
+    //
+    // After amending parent-branch (B → B'), child-branch should be rebased:
+    //   main(A) → parent-branch(B') → child-branch(C')
+    //
+    // Bug scenario: If the old commit B is incorrectly included in the child's
+    // rebase range, it gets replayed on top of B', creating a bogus duplicate:
+    //   main(A) → parent-branch(B') → B'' → child-branch(C')
+    // This B'' causes spurious conflicts since B and B' have near-identical content.
+
+    // Create trunk commit
+    const file1 = path.join(repoPath, 'base.txt')
+    await fs.promises.writeFile(file1, 'base')
+    execSync('git add base.txt', { cwd: repoPath })
+    execSync('git commit -m "trunk commit A"', { cwd: repoPath })
+
+    // Create parent-branch with one commit
+    execSync('git checkout -b parent-branch', { cwd: repoPath })
+    const parentFile = path.join(repoPath, 'parent.txt')
+    await fs.promises.writeFile(parentFile, 'parent content v1')
+    execSync('git add parent.txt', { cwd: repoPath })
+    execSync('git commit -m "parent commit B"', { cwd: repoPath })
+
+    // Create child-branch stacked on parent-branch
+    execSync('git checkout -b child-branch', { cwd: repoPath })
+    const childFile = path.join(repoPath, 'child.txt')
+    await fs.promises.writeFile(childFile, 'child content')
+    execSync('git add child.txt', { cwd: repoPath })
+    execSync('git commit -m "child commit C"', { cwd: repoPath })
+
+    // Go back to parent-branch, stage changes, and amend
+    execSync('git checkout parent-branch', { cwd: repoPath })
+    await fs.promises.writeFile(parentFile, 'parent content v2')
+    execSync('git add parent.txt', { cwd: repoPath })
+
+    await CommitOperation.amend(repoPath, 'parent commit B (amended)')
+
+    // Verify parent-branch has the amended message
+    const parentMsg = execSync('git log -1 --format=%s parent-branch', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(parentMsg).toBe('parent commit B (amended)')
+
+    // Verify child-branch has exactly 1 commit on top of parent-branch (not 2)
+    // If the bug were present, there would be 2 commits: B'' (duplicate) and C'
+    const commitCount = execSync(
+      'git rev-list --count parent-branch..child-branch',
+      { cwd: repoPath, encoding: 'utf-8' }
+    ).trim()
+    expect(commitCount).toBe('1')
+
+    // Verify the single child commit has the right message
+    const childMsg = execSync('git log -1 --format=%s child-branch', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(childMsg).toBe('child commit C')
+
+    // Verify child-branch's parent is parent-branch's HEAD
+    const childParent = execSync('git rev-parse child-branch~1', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    const parentHead = execSync('git rev-parse parent-branch', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(childParent).toBe(parentHead)
+  })
 })
 
 describe('uncommit', () => {
@@ -106,6 +196,7 @@ describe('uncommit', () => {
     execSync('git init -b main', { cwd: repoPath })
     execSync('git config user.name "Test User"', { cwd: repoPath })
     execSync('git config user.email "test@example.com"', { cwd: repoPath })
+    execSync('git config commit.gpgsign false', { cwd: repoPath })
   })
 
   afterEach(async () => {

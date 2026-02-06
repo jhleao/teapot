@@ -71,6 +71,11 @@ Each branch has one focused change. Reviewers see small diffs. Reviews go faster
 
 Small PRs get reviewed quickly. You ship code while the next piece is still in review. Your git history stays clean.
 
+## Documentation
+
+- **[Feature Specifications](./docs/feature-specs/README.md)**: Detailed specs for implemented features, enabling reimplementation by any engineer
+- **[Ideas](./docs/ideas/README.md)**: Proposed improvements and future features
+
 ## Contributing
 
 Found a bug or have an idea? [Open an issue](https://github.com/jhleao/teapot/issues).

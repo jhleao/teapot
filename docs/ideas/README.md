@@ -2,6 +2,8 @@
 
 This directory contains individual idea documents extracted from the `/docs` folder, including post-mortems, proposals, and design documents.
 
+> **Note:** For specifications of already-implemented features, see [Feature Specifications](../feature-specs/README.md).
+
 ## Ideas by Category
 
 ### Architecture & Testing

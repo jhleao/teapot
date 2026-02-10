@@ -76,7 +76,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
 
   return (
     <Dialog open={true} onOpenChange={() => {}}>
-      <DialogContent className="max-w-md gap-0 p-0">
+      <DialogContent className="max-w-md gap-0 p-0" data-testid="conflict-resolution-dialog">
         <DialogHeader className="px-4 pt-3">
           <DialogDescription>
             Rebasing{' '}
@@ -117,6 +117,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
           <div className="border-border flex flex-col gap-2 border-t px-4 py-3">
             <button
               onClick={handleOpenInEditor}
+              data-testid="open-in-editor-button"
               className="bg-accent text-accent-foreground hover:bg-accent/90 flex w-full items-center justify-center gap-2 rounded px-3 py-1.5 text-sm transition-colors"
             >
               <ExternalLink className="h-4 w-4" />
@@ -125,6 +126,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
             <div className="flex gap-2">
               <button
                 onClick={handleOpenInTerminal}
+                data-testid="open-in-terminal-button"
                 className="text-muted-foreground hover:text-foreground hover:bg-muted flex flex-1 items-center justify-center gap-2 rounded px-2 py-1 text-xs transition-colors"
               >
                 <Terminal className="h-3.5 w-3.5" />
@@ -132,6 +134,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
               </button>
               <button
                 onClick={handleCopyPath}
+                data-testid="copy-worktree-path-button"
                 className="text-muted-foreground hover:text-foreground hover:bg-muted flex flex-1 items-center justify-center gap-2 rounded px-2 py-1 text-xs transition-colors"
               >
                 <Clipboard className="h-3.5 w-3.5" />
@@ -145,6 +148,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
           <button
             onClick={handleAbort}
             disabled={isPending}
+            data-testid="abort-rebase-button"
             className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-sm transition-colors disabled:opacity-50"
           >
             Abort
@@ -152,6 +156,7 @@ export function ConflictResolutionDialog(): React.JSX.Element {
           <button
             onClick={handleContinue}
             disabled={isPending || !allResolved}
+            data-testid="continue-rebase-button"
             className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-sm transition-colors disabled:opacity-50"
           >
             Continue
@@ -168,7 +173,7 @@ function ConflictFileItem({ file }: { file: UiWorkingTreeFile }): React.JSX.Elem
   const filename = lastSlashIndex >= 0 ? file.path.slice(lastSlashIndex + 1) : file.path
 
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-sm" data-testid={`conflict-file-${file.path}`}>
       {file.resolved ? (
         <CheckCircle className="h-4 w-4 shrink-0 text-green-600" />
       ) : (

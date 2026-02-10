@@ -373,8 +373,11 @@ export const CommitView = memo(function CommitView({
         )}
       >
         {/* Drop indicator - shown/hidden via direct DOM manipulation in DragContext */}
-        <div className="drop-indicator bg-accent absolute -top-px left-0 hidden h-[3px] w-full" />
-        <div onMouseDown={onCommitDotMouseDown}>
+        <div
+          className="drop-indicator bg-accent absolute -top-px left-0 hidden h-[3px] w-full"
+          data-testid="drop-indicator"
+        />
+        <div onMouseDown={onCommitDotMouseDown} data-testid="commit-dot-handle">
           <CommitDot
             top={!isOwned && showTopLine}
             bottom={!isOwned && showBottomLine}
@@ -450,10 +453,11 @@ export const CommitView = memo(function CommitView({
             </>
           )}
           {data.rebaseStatus === 'prompting' && (
-            <div className="flex gap-2">
+            <div className="flex gap-2" data-testid="rebase-prompt">
               <button
                 onClick={handleCancelRebase}
                 disabled={isCanceling || isConfirming}
+                data-testid="cancel-rebase-button"
                 className="border-border bg-muted text-foreground hover:bg-muted/80 flex items-center gap-1 rounded border px-3 py-1 text-xs transition-colors disabled:opacity-50"
               >
                 {isCanceling && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -462,6 +466,7 @@ export const CommitView = memo(function CommitView({
               <button
                 onClick={handleConfirmRebase}
                 disabled={isCanceling || isConfirming}
+                data-testid="confirm-rebase-button"
                 className="bg-accent text-accent-foreground hover:bg-accent/90 flex items-center gap-1 rounded px-3 py-1 text-xs transition-colors disabled:opacity-50"
               >
                 {isConfirming && <Loader2 className="h-3 w-3 animate-spin" />}

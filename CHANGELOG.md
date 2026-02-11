@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/jhleao/teapot/compare/v0.9.0...v0.9.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* amend with children creates duplicate commit causing bogus conflicts ([11f0705](https://github.com/jhleao/teapot/commit/11f0705c2b92e8b9ff5e583516d5ac373e2c2a03))
+
 ## [0.9.0](https://github.com/jhleao/teapot/compare/v0.8.0...v0.9.0) (2026-02-06)
 
 

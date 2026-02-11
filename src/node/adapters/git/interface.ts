@@ -322,6 +322,23 @@ export interface GitAdapter {
   mergeBase?(dir: string, ref1: string, ref2: string): Promise<string>
 
   /**
+   * Get the ahead/behind commit counts between two refs.
+   *
+   * Computes how many commits are in `ref1` but not `ref2` (ahead),
+   * and how many commits are in `ref2` but not `ref1` (behind).
+   *
+   * @param dir - Repository directory path
+   * @param ref1 - First ref (typically local branch)
+   * @param ref2 - Second ref (typically remote tracking branch)
+   * @returns Object with ahead and behind counts, or null if refs don't exist
+   */
+  getAheadBehind?(
+    dir: string,
+    ref1: string,
+    ref2: string
+  ): Promise<{ ahead: number; behind: number } | null>
+
+  /**
    * Merge a branch into the current branch.
    *
    * @param dir - Repository directory path
@@ -497,4 +514,17 @@ export function supportsClone(adapter: GitAdapter): adapter is GitAdapter & {
   clone: (url: string, targetPath: string) => Promise<void>
 } {
   return typeof adapter.clone === 'function'
+}
+
+/**
+ * Type guard to check if an adapter supports getAheadBehind
+ */
+export function supportsGetAheadBehind(adapter: GitAdapter): adapter is GitAdapter & {
+  getAheadBehind: (
+    dir: string,
+    ref1: string,
+    ref2: string
+  ) => Promise<{ ahead: number; behind: number } | null>
+} {
+  return typeof adapter.getAheadBehind === 'function'
 }

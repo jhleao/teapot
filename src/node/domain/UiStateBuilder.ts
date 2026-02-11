@@ -679,7 +679,9 @@ export class UiStateBuilder {
         canSquash,
         squashDisabledReason,
         canCreateWorktree,
-        canRecreatePr: branchCanRecreatePr
+        canRecreatePr: branchCanRecreatePr,
+        commitsBehind: branch.commitsBehind,
+        commitsAhead: branch.commitsAhead
       })
     })
   }

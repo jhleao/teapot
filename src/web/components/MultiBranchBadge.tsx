@@ -1,4 +1,4 @@
-import type { UiBranch } from '@shared/types'
+import type { UiBranch, UiStack } from '@shared/types'
 import React, { memo, useMemo, useState } from 'react'
 import { cn } from '../utils/cn'
 import { BranchBadge } from './BranchBadge'
@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 
 interface MultiBranchBadgeProps {
   branches: UiBranch[]
+  stack?: UiStack
 }
 
 interface ProcessedBranches {
@@ -55,7 +56,8 @@ function processBranches(branches: UiBranch[]): ProcessedBranches {
  * that expands to show all branches on click.
  */
 export const MultiBranchBadge = memo(function MultiBranchBadge({
-  branches
+  branches,
+  stack
 }: MultiBranchBadgeProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
 
@@ -67,7 +69,7 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
 
   // If only one branch, just render the regular BranchBadge
   if (branches.length === 1) {
-    return <BranchBadge data={branches[0]} />
+    return <BranchBadge data={branches[0]} stack={stack} />
   }
 
   const hasLocalBranches = additionalLocal.length > 0
@@ -75,7 +77,7 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
 
   return (
     <div className="flex items-center gap-1">
-      <BranchBadge data={primary} />
+      <BranchBadge data={primary} stack={stack} />
       {additionalCount > 0 && (
         <Popover open={open} onOpenChange={setOpen}>
           <PopoverTrigger asChild>
@@ -103,11 +105,11 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
             onMouseDown={(e) => e.stopPropagation()}
           >
             {hasLocalBranches && (
-              <BranchSection title="Local branches" branches={additionalLocal} />
+              <BranchSection title="Local branches" branches={additionalLocal} stack={stack} />
             )}
             {hasLocalBranches && hasRemoteBranches && <div className="bg-border my-2 h-px" />}
             {hasRemoteBranches && (
-              <BranchSection title="Remote branches" branches={additionalRemote} />
+              <BranchSection title="Remote branches" branches={additionalRemote} stack={stack} />
             )}
           </PopoverContent>
         </Popover>
@@ -119,16 +121,17 @@ export const MultiBranchBadge = memo(function MultiBranchBadge({
 interface BranchSectionProps {
   title: string
   branches: UiBranch[]
+  stack?: UiStack
 }
 
-function BranchSection({ title, branches }: BranchSectionProps): React.JSX.Element {
+function BranchSection({ title, branches, stack }: BranchSectionProps): React.JSX.Element {
   return (
     <div>
       <div className="text-muted-foreground mb-1.5 px-1 text-xs font-medium">{title}</div>
       <div className="flex flex-col gap-1">
         {branches.map((branch) => (
           <div key={branch.name} className="flex">
-            <BranchBadge data={branch} />
+            <BranchBadge data={branch} stack={stack} />
           </div>
         ))}
       </div>

@@ -13,6 +13,8 @@
  *   eval <script>         - Evaluate JS in renderer
  *   wait <testid>         - Wait for element to be visible
  *   html                  - Get page HTML
+ *   drag <fromSha> <toSha> [steps] - Drag commit onto another (simulates rebase)
+ *   commits               - List all visible commits with SHAs
  *
  * The script maintains a running app instance. Use CTRL+C to close.
  */
@@ -102,8 +104,59 @@ async function executeCommand(page: Page, command: string, args: string[]): Prom
       return await page.content()
     }
 
+    case 'drag': {
+      // Drag from one commit to another using data-commit-sha attributes
+      // Usage: drag <fromSha> <toSha> [steps]
+      const [fromSha, toSha, stepsArg] = args
+      if (!fromSha || !toSha) return 'Error: drag <fromSha> <toSha> [steps]'
+      const steps = parseInt(stepsArg || '10', 10)
+
+      const fromEl = page.locator(
+        `[data-commit-sha="${fromSha}"] [data-testid="commit-dot-handle"]`
+      )
+      const toEl = page.locator(`[data-commit-sha="${toSha}"]`)
+
+      const fromBox = await fromEl.boundingBox()
+      const toBox = await toEl.boundingBox()
+
+      if (!fromBox) return `Error: could not find commit dot for SHA ${fromSha}`
+      if (!toBox) return `Error: could not find commit element for SHA ${toSha}`
+
+      const fromX = fromBox.x + fromBox.width / 2
+      const fromY = fromBox.y + fromBox.height / 2
+      const toX = toBox.x + toBox.width / 2
+      const toY = toBox.y + toBox.height / 2
+
+      await page.mouse.move(fromX, fromY)
+      await page.mouse.down()
+
+      // Move in incremental steps to trigger mousemove handlers
+      for (let i = 1; i <= steps; i++) {
+        const progress = i / steps
+        const x = fromX + (toX - fromX) * progress
+        const y = fromY + (toY - fromY) * progress
+        await page.mouse.move(x, y)
+        await new Promise((r) => setTimeout(r, 16)) // ~60fps
+      }
+
+      await page.mouse.up()
+      return `Dragged from ${fromSha.slice(0, 8)} to ${toSha.slice(0, 8)} in ${steps} steps`
+    }
+
+    case 'commits': {
+      // List all visible commits with their SHAs
+      const commits = await page.evaluate(() => {
+        const elements = document.querySelectorAll('[data-commit-sha]')
+        return Array.from(elements).map((el) => ({
+          sha: el.getAttribute('data-commit-sha'),
+          text: el.textContent?.trim().slice(0, 80)
+        }))
+      })
+      return JSON.stringify(commits, null, 2)
+    }
+
     case 'help':
-      return `Commands: screenshot, snapshot, click, type, press, eval, wait, html, help, quit`
+      return `Commands: screenshot, snapshot, click, type, press, eval, wait, html, drag, commits, help, quit`
 
     default:
       return `Unknown command: ${command}. Use 'help' for list.`

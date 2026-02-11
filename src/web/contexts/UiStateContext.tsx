@@ -64,6 +64,17 @@ interface UiStateContextValue {
   createWorktree: (params: {
     branch: string
   }) => Promise<{ success: boolean; worktreePath?: string }>
+  createWorktreeWithBranch: (params: {
+    sourceBranch: string
+    newBranchName?: string
+    createWorktree?: boolean
+    createWorkingCommit: boolean
+  }) => Promise<{
+    success: boolean
+    error?: string
+    worktreePath?: string
+    branchName?: string
+  }>
   removeWorktree: (params: {
     worktreePath: string
     force?: boolean
@@ -112,6 +123,7 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   syncTrunk: async () => {},
   switchWorktree: async () => {},
   createWorktree: async () => ({ success: false }),
+  createWorktreeWithBranch: async () => ({ success: false }),
   removeWorktree: async () => ({ success: false }),
   isWorkingTreeDirty: false,
   isRebasingWithConflicts: false,
@@ -612,6 +624,33 @@ export function UiStateProvider({
     [repoPath]
   )
 
+  const createWorktreeWithBranch = useCallback(
+    async (params: {
+      sourceBranch: string
+      newBranchName?: string
+      createWorktree?: boolean
+      createWorkingCommit: boolean
+    }): Promise<{
+      success: boolean
+      error?: string
+      worktreePath?: string
+      branchName?: string
+    }> => {
+      if (!repoPath) return { success: false, error: 'No repository selected' }
+      const result = await window.api.createWorktreeWithBranch({ repoPath, ...params })
+      if (result.success && result.uiState) {
+        setUiState(result.uiState)
+      }
+      return {
+        success: result.success,
+        error: result.error,
+        worktreePath: result.worktreePath,
+        branchName: result.branchName
+      }
+    },
+    [repoPath]
+  )
+
   const removeWorktree = useCallback(
     async (params: { worktreePath: string; force?: boolean }): Promise<{ success: boolean }> => {
       if (!repoPath) return { success: false }
@@ -810,6 +849,7 @@ export function UiStateProvider({
       syncTrunk,
       switchWorktree,
       createWorktree,
+      createWorktreeWithBranch,
       removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
@@ -850,6 +890,7 @@ export function UiStateProvider({
       syncTrunk,
       switchWorktree,
       createWorktree,
+      createWorktreeWithBranch,
       removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,

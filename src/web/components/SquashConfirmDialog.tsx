@@ -14,7 +14,7 @@ function RadioButton({ checked, disabled }: { checked: boolean; disabled?: boole
   return (
     <div
       className={`h-4 w-4 shrink-0 rounded-full border-2 transition-colors ${
-        checked ? 'border-blue-500 bg-blue-500' : 'border-muted-foreground/50 bg-transparent'
+        checked ? 'border-accent bg-accent' : 'border-muted-foreground/50 bg-transparent'
       } ${disabled ? 'opacity-50' : ''} flex items-center justify-center`}
     >
       {checked && <div className="h-1.5 w-1.5 rounded-full bg-white" />}
@@ -53,6 +53,11 @@ export function SquashConfirmDialog({
   }, [open, defaultCommitMessage])
 
   const handleConfirm = async () => {
+    if (preview.resultWouldBeEmpty) {
+      // No commit message or branch choice needed — both branches will be removed
+      await onConfirm('')
+      return
+    }
     const finalBranchChoice = branchChoice === 'new' ? customBranchName : branchChoice
     await onConfirm(commitMessage, hasBranchCollision ? finalBranchChoice : undefined)
   }
@@ -60,24 +65,45 @@ export function SquashConfirmDialog({
   // Determine if confirm button should be disabled
   const isConfirmDisabled =
     isSubmitting ||
-    (!preview.isEmpty && commitMessage.trim().length === 0) ||
+    (!preview.isEmpty && !preview.resultWouldBeEmpty && commitMessage.trim().length === 0) ||
     (branchChoice === 'new' && customBranchName.trim().length === 0)
+
+  let buttonLabel: string
+  if (isSubmitting) {
+    buttonLabel = preview.resultWouldBeEmpty ? 'Removing...' : 'Squashing...'
+  } else {
+    buttonLabel = preview.resultWouldBeEmpty ? 'Remove Branches' : 'Squash'
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[560px] max-w-[92vw]">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Squash {preview.targetBranch} into {preview.parentBranch}
+            {preview.resultWouldBeEmpty
+              ? `Remove ${preview.targetBranch} and ${preview.parentBranch}`
+              : `Squash ${preview.targetBranch} into ${preview.parentBranch}`}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {!preview.isEmpty && (
+        <div className="space-y-4">
+          {preview.resultWouldBeEmpty && (
+            <div className="rounded-md border border-amber-200 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500 dark:text-amber-200">
+              <div className="font-medium">Changes cancel out</div>
+              <div className="mt-1">
+                The changes in{' '}
+                <span className="font-semibold">{preview.targetBranch}</span> undo the changes in{' '}
+                <span className="font-semibold">{preview.parentBranch}</span>. Both branches will
+                be removed.
+              </div>
+            </div>
+          )}
+
+          {!preview.isEmpty && !preview.resultWouldBeEmpty && (
             <div className="space-y-3">
-              <label className="text-muted-foreground text-sm">Combined commit message</label>
+              <h4 className="text-sm leading-none font-medium">Combined commit message</h4>
               <textarea
-                className="border-border bg-background text-foreground focus:border-muted-foreground/70 w-full resize-none rounded-lg border px-3 py-2.5 text-sm transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                className="border-border bg-background placeholder:text-muted-foreground focus:border-foreground flex w-full resize-none rounded-md border px-3 py-2 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
                 rows={8}
                 value={commitMessage}
                 onChange={(e) => setCommitMessage(e.target.value)}
@@ -87,14 +113,14 @@ export function SquashConfirmDialog({
           )}
 
           {preview.isEmpty && (
-            <div className="bg-muted text-foreground border-border rounded-lg border px-3 py-2.5 text-sm">
+            <div className="bg-muted text-foreground border-border rounded-md border px-3 py-2.5 text-sm">
               This branch&apos;s changes are already present in{' '}
               <span className="font-semibold">{preview.parentBranch}</span>. Descendants will be
               rebased.
             </div>
           )}
 
-          {hasBranchCollision && (
+          {hasBranchCollision && !preview.resultWouldBeEmpty && (
             <div className="space-y-4">
               <div className="text-foreground text-sm">
                 Both branches will point to the same commit.
@@ -172,7 +198,7 @@ export function SquashConfirmDialog({
                     onFocus={() => setBranchChoice('new')}
                     placeholder="new-branch-name"
                     disabled={isSubmitting}
-                    className="border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:border-muted-foreground/70 flex-1 rounded-lg border px-3 py-1.5 text-sm transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                    className="border-border bg-background placeholder:text-muted-foreground focus:border-foreground flex-1 rounded-md border px-3 py-1.5 text-sm outline-none disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </label>
               </div>
@@ -180,7 +206,7 @@ export function SquashConfirmDialog({
           )}
 
           {preview.descendantBranches && preview.descendantBranches.length > 0 && (
-            <div className="bg-muted/40 text-foreground border-border rounded-lg border px-3 py-2.5 text-sm">
+            <div className="bg-muted/40 text-foreground border-border rounded-md border px-3 py-2.5 text-sm">
               <div className="font-medium">Will rebase</div>
               <div className="text-muted-foreground mt-1">
                 {preview.descendantBranches.join(', ')}
@@ -189,26 +215,26 @@ export function SquashConfirmDialog({
           )}
 
           {preview.hasPr && branchChoice !== 'child' && branchChoice !== 'both' && (
-            <div className="rounded-lg border border-amber-200 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500 dark:text-amber-200">
+            <div className="rounded-md border border-amber-200 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500 dark:text-amber-200">
               Will close PR #{preview.prNumber} for {preview.targetBranch}.
             </div>
           )}
         </div>
 
-        <DialogFooter className="mt-6 gap-3">
+        <DialogFooter className="mt-4 gap-1.5 sm:gap-1.5">
           <button
             onClick={() => onOpenChange(false)}
             disabled={isSubmitting}
-            className="border-border bg-muted text-foreground hover:bg-muted/80 rounded-md border px-4 py-2 text-sm transition-colors disabled:opacity-50"
+            className="border-border bg-muted text-foreground hover:bg-muted/80 rounded border px-3 py-1 text-sm transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={isConfirmDisabled}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+            className="bg-accent text-accent-foreground hover:bg-accent/90 rounded px-3 py-1 text-sm transition-colors disabled:opacity-50"
           >
-            {isSubmitting ? 'Squashing...' : 'Squash'}
+            {buttonLabel}
           </button>
         </DialogFooter>
       </DialogContent>

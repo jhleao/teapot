@@ -188,6 +188,67 @@ describe('SquashOperation', () => {
       expect(preview.canSquash).toBe(true)
       expect(preview.descendantBranches).toContain('child')
     })
+
+    it('returns resultWouldBeEmpty true when child reverts parent changes', async () => {
+      // Stack: main -> parent (modifies file.txt) -> target (reverts file.txt to initial)
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const preview = await SquashOperation.preview(repoPath, 'target')
+
+      expect(preview.canSquash).toBe(true)
+      expect(preview.isEmpty).toBe(false)
+      expect(preview.resultWouldBeEmpty).toBe(true)
+    })
+
+    it('returns resultWouldBeEmpty false for normal squash', async () => {
+      // Stack: main -> parent -> target (adds different files)
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'parent.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'target.txt'), 'target content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "target commit"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const preview = await SquashOperation.preview(repoPath, 'target')
+
+      expect(preview.canSquash).toBe(true)
+      expect(preview.isEmpty).toBe(false)
+      expect(preview.resultWouldBeEmpty).toBeFalsy()
+    })
+
+    it('resultWouldBeEmpty is not set when isEmpty', async () => {
+      // Stack: main -> parent -> target (empty commit)
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'parent.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      execSync('git commit --allow-empty -m "empty commit"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const preview = await SquashOperation.preview(repoPath, 'target')
+
+      expect(preview.canSquash).toBe(true)
+      expect(preview.isEmpty).toBe(true)
+      expect(preview.resultWouldBeEmpty).toBeFalsy()
+    })
   })
 
   describe('execute - fast path (empty branch, no descendants)', () => {
@@ -688,5 +749,204 @@ describe('SquashOperation', () => {
       }
       // If no conflict, the test still passes (conflict is not guaranteed)
     }, 15000)
+  })
+
+  describe('execute - result would be empty', () => {
+    it('deletes both branches when result would be empty (no descendants)', async () => {
+      // Stack: main(file.txt="initial") -> parent(file.txt="changed") -> target(file.txt="initial")
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const result = await SquashOperation.execute(repoPath, 'target')
+
+      expect(result.success).toBe(true)
+
+      // Both branches should be deleted
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      expect(branches).not.toContain('target')
+      expect(branches).not.toContain('parent')
+      expect(branches).toContain('main')
+    })
+
+    it('checks out grandparent branch when user was on deleted branch', async () => {
+      // Same revert scenario, user on parent
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      // Stay on parent (not main)
+      execSync('git checkout parent', { cwd: repoPath })
+
+      const result = await SquashOperation.execute(repoPath, 'target')
+
+      expect(result.success).toBe(true)
+
+      // Should not be on a deleted branch - should be on grandparent (main)
+      const currentBranch = execSync('git branch --show-current', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(currentBranch).toBe('main')
+    })
+
+    it('rebases descendants onto grandparent when result would be empty', async () => {
+      // Stack: main -> parent(file.txt="changed") -> target(file.txt="initial") -> child(child.txt)
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      execSync('git checkout -b child', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'child.txt'), 'child content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "child commit"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const result = await SquashOperation.execute(repoPath, 'target')
+
+      expect(result.success).toBe(true)
+      expect(result.modifiedBranches).toContain('child')
+
+      // Parent and target deleted, child preserved
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      expect(branches).not.toContain('target')
+      expect(branches).not.toContain('parent')
+      expect(branches).toContain('child')
+
+      // Child still has its content
+      execSync('git checkout child', { cwd: repoPath })
+      expect(fs.existsSync(path.join(repoPath, 'child.txt'))).toBe(true)
+      const childContent = await fs.promises.readFile(path.join(repoPath, 'child.txt'), 'utf-8')
+      expect(childContent).toBe('child content')
+
+      // Child's parent commit should be main's HEAD (grandparent)
+      const childParentSha = execSync('git rev-parse child^', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      const mainSha = execSync('git rev-parse main', {
+        cwd: repoPath,
+        encoding: 'utf-8'
+      }).trim()
+      expect(childParentSha).toBe(mainSha)
+    })
+
+    it('rebases multi-level descendants onto grandparent', async () => {
+      // Stack: main -> parent -> target -> child1 -> child2
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      execSync('git checkout -b child1', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'child1.txt'), 'child1 content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "child1 commit"', { cwd: repoPath })
+
+      execSync('git checkout -b child2', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'child2.txt'), 'child2 content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "child2 commit"', { cwd: repoPath })
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const result = await SquashOperation.execute(repoPath, 'target')
+
+      expect(result.success).toBe(true)
+
+      const branches = execSync('git branch', { cwd: repoPath, encoding: 'utf-8' })
+      expect(branches).not.toContain('target')
+      expect(branches).not.toContain('parent')
+      expect(branches).toContain('child1')
+      expect(branches).toContain('child2')
+
+      // Both children have their content
+      execSync('git checkout child1', { cwd: repoPath })
+      expect(fs.existsSync(path.join(repoPath, 'child1.txt'))).toBe(true)
+
+      execSync('git checkout child2', { cwd: repoPath })
+      expect(fs.existsSync(path.join(repoPath, 'child2.txt'))).toBe(true)
+    })
+
+    it('closes PRs for both deleted branches', async () => {
+      // Same revert scenario
+      execSync('git checkout -b parent', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'parent content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "parent commit"', { cwd: repoPath })
+
+      execSync('git checkout -b target', { cwd: repoPath })
+      await fs.promises.writeFile(path.join(repoPath, 'file.txt'), 'initial content')
+      execSync('git add .', { cwd: repoPath })
+      execSync('git commit -m "revert parent changes"', { cwd: repoPath })
+
+      // Mock PRs for both branches
+      const mockPR = {
+        state: {
+          pullRequests: [
+            {
+              number: 10,
+              headRefName: 'parent',
+              state: 'open' as PrState,
+              title: 'Parent PR',
+              url: 'https://github.com/test/repo/pull/10',
+              headSha: 'abc',
+              baseRefName: 'main',
+              createdAt: '2024-01-01T00:00:00Z',
+              isMergeable: true
+            },
+            {
+              number: 20,
+              headRefName: 'target',
+              state: 'open' as PrState,
+              title: 'Target PR',
+              url: 'https://github.com/test/repo/pull/20',
+              headSha: 'def',
+              baseRefName: 'parent',
+              createdAt: '2024-01-01T00:00:00Z',
+              isMergeable: true
+            }
+          ]
+        },
+        status: 'idle' as const,
+        error: undefined,
+        lastSuccessfulFetch: undefined
+      }
+      vi.mocked(gitForgeService.getStateWithStatus).mockResolvedValueOnce(mockPR)
+
+      execSync('git checkout main', { cwd: repoPath })
+
+      const result = await SquashOperation.execute(repoPath, 'target')
+
+      expect(result.success).toBe(true)
+      expect(gitForgeService.closePullRequest).toHaveBeenCalledWith(repoPath, 10)
+      expect(gitForgeService.closePullRequest).toHaveBeenCalledWith(repoPath, 20)
+    })
   })
 })

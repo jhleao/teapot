@@ -306,7 +306,7 @@ testWithConflictWorktree.describe('Resolve Conflicts Flow', () => {
 
 testWithConflictWorktree.describe('Abort Rebase Flow', () => {
   testWithConflictWorktree(
-    'aborting rebase via dialog cleans up conflict state',
+    'aborting rebase via dialog switches back to main worktree and cleans up conflict state',
     async ({ page, conflictRepo }) => {
       await expect(page.getByTestId('app-container')).toBeVisible()
       await addRepoToApp(page, conflictRepo.repoPath)
@@ -320,22 +320,19 @@ testWithConflictWorktree.describe('Abort Rebase Flow', () => {
       // Dialog should appear
       await expect(page.getByRole('button', { name: 'Abort' })).toBeVisible({ timeout: 10_000 })
 
-      // Click Abort
+      // Click Abort — the app should auto-switch back to the main worktree
       await page.getByRole('button', { name: 'Abort' }).click()
 
-      // After abort, the dialog should close and conflict indicators should disappear
-      // Give the app time to refresh state
-      await page.waitForTimeout(2_000)
-      await page.reload()
-      await page.waitForLoadState('domcontentloaded')
-
-      // Re-add repo since reload may clear state
-      await addRepoToApp(page, conflictRepo.repoPath)
+      // After abort, the dialog should close. The app auto-switches back
+      // to the main worktree, so we should land on the stack view for main.
       await waitForRepoLoaded(page)
 
-      // Verify banner is gone
+      // Verify conflict indicators are gone (no banner, no badge)
       const banner = page.locator('[role="alert"]')
-      await expect(banner).not.toBeVisible({ timeout: 5_000 })
+      await expect(banner).not.toBeVisible({ timeout: 10_000 })
+      await expect(
+        page.getByTitle('Has merge conflicts - click to resolve')
+      ).not.toBeVisible({ timeout: 5_000 })
     }
   )
 })

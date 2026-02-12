@@ -14,6 +14,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { resolveGitDir } from '../../../operations/WorktreeUtils'
 import { SimpleGitAdapter } from '../SimpleGitAdapter'
 import { cleanupTestRepo, createTestRepo } from './test-utils'
 
@@ -436,5 +437,133 @@ describe('Worktree Conflict Detection – listWorktrees()', () => {
     expect(wt!.conflictedFiles).toContain('a.txt')
     expect(wt!.conflictedFiles).toContain('b.txt')
     expect(wt!.conflictedFiles.length).toBe(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Lifecycle: resolve conflicts → continue → stale files cleaned up
+// ---------------------------------------------------------------------------
+
+describe('Worktree conflict lifecycle', () => {
+  let repoPath: string
+  let worktreePath: string
+  let adapter: SimpleGitAdapter
+
+  beforeEach(async () => {
+    repoPath = await createTestRepo()
+    adapter = new SimpleGitAdapter()
+
+    // Base content on main
+    commitFile(repoPath, 'file.txt', 'line 1\noriginal\nline 3', 'Initial content')
+
+    // Feature branch with conflicting change
+    git(repoPath, 'checkout -b lifecycle-conflict-test')
+    commitFile(repoPath, 'file.txt', 'line 1\nfeature-change\nline 3', 'Feature: modify line 2')
+
+    // Advance main with a different change to same line
+    git(repoPath, 'checkout main')
+    commitFile(repoPath, 'file.txt', 'line 1\nmain-change\nline 3', 'Main: modify line 2')
+
+    // Create worktree and start conflicting rebase
+    worktreePath = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'teapot-lifecycle-wt-'))
+    )
+    fs.rmSync(worktreePath, { recursive: true })
+    git(repoPath, `worktree add "${worktreePath}" lifecycle-conflict-test`)
+
+    try {
+      execSync('git rebase main', {
+        cwd: worktreePath,
+        encoding: 'utf-8',
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: 'Test User',
+          GIT_AUTHOR_EMAIL: 'test@example.com',
+          GIT_COMMITTER_NAME: 'Test User',
+          GIT_COMMITTER_EMAIL: 'test@example.com',
+          GIT_CONFIG_NOSYSTEM: '1',
+          HOME: repoPath
+        }
+      })
+    } catch {
+      // Expected: conflict
+    }
+  })
+
+  afterEach(async () => {
+    try {
+      execSync('git rebase --abort', { cwd: worktreePath, stdio: 'ignore' })
+    } catch {
+      /* already finished */
+    }
+    try {
+      git(repoPath, `worktree remove "${worktreePath}" --force`)
+    } catch {
+      /* may already be gone */
+    }
+    fs.rmSync(worktreePath, { recursive: true, force: true })
+    await cleanupTestRepo(repoPath)
+  })
+
+  it('cleans up stale rebase files after rebase continue', async () => {
+    // Confirm conflict is detected
+    const before = await adapter.listWorktrees(repoPath)
+    const wtBefore = before.find((w) => w.path === worktreePath)
+    expect(wtBefore).toBeDefined()
+    expect(wtBefore!.isRebasing).toBe(true)
+    expect(wtBefore!.conflictedFiles.length).toBeGreaterThan(0)
+
+    // Resolve the conflict and continue the rebase
+    fs.writeFileSync(path.join(worktreePath, 'file.txt'), 'line 1\nresolved\nline 3')
+    execSync('git add file.txt', { cwd: worktreePath })
+    execSync('git rebase --continue', {
+      cwd: worktreePath,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Test User',
+        GIT_AUTHOR_EMAIL: 'test@example.com',
+        GIT_COMMITTER_NAME: 'Test User',
+        GIT_COMMITTER_EMAIL: 'test@example.com',
+        GIT_CONFIG_NOSYSTEM: '1',
+        HOME: repoPath
+      }
+    })
+
+    // listWorktrees should report no conflicts AND clean up stale files
+    const after = await adapter.listWorktrees(repoPath)
+    const wtAfter = after.find((w) => w.path === worktreePath)
+    expect(wtAfter).toBeDefined()
+    expect(wtAfter!.isRebasing).toBe(false)
+    expect(wtAfter!.conflictedFiles).toEqual([])
+
+    // Verify stale files were cleaned up
+    const gitDir = await resolveGitDir(worktreePath)
+    for (const staleFile of ['AUTO_MERGE', 'REBASE_HEAD', 'ORIG_HEAD']) {
+      const filePath = path.join(gitDir, staleFile)
+      expect(fs.existsSync(filePath), `${staleFile} should be cleaned up`).toBe(false)
+    }
+  })
+
+  it('cleans up stale rebase files after rebase abort via adapter', async () => {
+    // Confirm conflict is detected
+    const before = await adapter.listWorktrees(repoPath)
+    const wtBefore = before.find((w) => w.path === worktreePath)
+    expect(wtBefore!.isRebasing).toBe(true)
+
+    // Abort via the adapter (simulates what the app does)
+    await adapter.rebaseAbort(worktreePath)
+
+    // Verify stale files were cleaned up
+    const gitDir = await resolveGitDir(worktreePath)
+    for (const staleFile of ['AUTO_MERGE', 'REBASE_HEAD', 'ORIG_HEAD']) {
+      const filePath = path.join(gitDir, staleFile)
+      expect(fs.existsSync(filePath), `${staleFile} should be cleaned up`).toBe(false)
+    }
+
+    // listWorktrees should report clean state
+    const after = await adapter.listWorktrees(repoPath)
+    const wtAfter = after.find((w) => w.path === worktreePath)
+    expect(wtAfter!.isRebasing).toBe(false)
+    expect(wtAfter!.conflictedFiles).toEqual([])
   })
 })

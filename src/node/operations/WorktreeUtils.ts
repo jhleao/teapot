@@ -112,6 +112,62 @@ export function clearGitDirCache(): void {
 }
 
 // ===========================================================================
+// Stale Rebase File Cleanup
+// ===========================================================================
+
+/**
+ * Files that git may leave behind after a rebase completes or aborts.
+ * These don't prevent `detectRebase()` from returning false (it only checks
+ * for `rebase-merge/` and `rebase-apply/` dirs), but they can interfere
+ * with other git operations like worktree switching.
+ */
+const STALE_REBASE_FILES = ['AUTO_MERGE', 'REBASE_HEAD', 'ORIG_HEAD']
+
+/**
+ * Remove stale rebase-related files from a git directory.
+ *
+ * After `git rebase --continue` or `--abort`, git removes the `rebase-merge/`
+ * and `rebase-apply/` directories but may leave behind `AUTO_MERGE`,
+ * `REBASE_HEAD`, and `ORIG_HEAD`. These leftover files can block worktree
+ * switching and other operations.
+ *
+ * This function only removes the files when no active rebase is in progress
+ * (i.e., neither `rebase-merge/` nor `rebase-apply/` directories exist).
+ *
+ * @param gitDir - The resolved git directory path (from `resolveGitDir()`)
+ */
+export async function cleanupStaleRebaseFiles(gitDir: string): Promise<void> {
+  // Don't clean up if a rebase is actually in progress
+  const rebaseMerge = path.join(gitDir, 'rebase-merge')
+  const rebaseApply = path.join(gitDir, 'rebase-apply')
+
+  const rebaseActive = await fs.promises
+    .access(rebaseMerge)
+    .then(
+      () => true,
+      () => false
+    )
+    .then(async (mergeExists) => {
+      if (mergeExists) return true
+      return fs.promises.access(rebaseApply).then(
+        () => true,
+        () => false
+      )
+    })
+
+  if (rebaseActive) return
+
+  // Remove stale files, ignoring errors for missing files
+  await Promise.all(
+    STALE_REBASE_FILES.map((file) =>
+      fs.promises.unlink(path.join(gitDir, file)).catch(() => {
+        /* file doesn't exist — fine */
+      })
+    )
+  )
+}
+
+// ===========================================================================
 // Stale Worktree Detection
 // ===========================================================================
 

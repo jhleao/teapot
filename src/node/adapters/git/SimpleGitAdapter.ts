@@ -12,7 +12,7 @@ import fs from 'fs'
 import path from 'path'
 import simpleGit, { type SimpleGit, type StatusResult } from 'simple-git'
 import { promisify } from 'util'
-import { resolveGitDir } from '../../operations/WorktreeUtils'
+import { cleanupStaleRebaseFiles, resolveGitDir } from '../../operations/WorktreeUtils'
 import type { GitAdapter } from './interface'
 import type {
   ApplyPatchResult,
@@ -495,6 +495,11 @@ export class SimpleGitAdapter implements GitAdapter {
               if (branch === null) {
                 branch = await this.getRebasingBranchName(wt.path)
               }
+            } else {
+              // No active rebase — clean up any stale files left from a
+              // previous rebase (e.g., completed via CLI outside Teapot)
+              const wtGitDir = await resolveGitDir(wt.path)
+              await cleanupStaleRebaseFiles(wtGitDir)
             }
           }
 
@@ -962,6 +967,11 @@ export class SimpleGitAdapter implements GitAdapter {
         'rebase --continue'
       )
 
+      // Clean up stale rebase files (AUTO_MERGE, REBASE_HEAD, ORIG_HEAD)
+      // that git leaves behind after a successful rebase
+      const gitDir = await resolveGitDir(dir)
+      await cleanupStaleRebaseFiles(gitDir)
+
       return {
         success: true,
         conflicts: [],
@@ -1011,6 +1021,10 @@ export class SimpleGitAdapter implements GitAdapter {
     try {
       const git = this.createGit(dir)
       await git.raw(['rebase', '--abort'])
+
+      // Clean up stale rebase files that git leaves behind after abort
+      const gitDir = await resolveGitDir(dir)
+      await cleanupStaleRebaseFiles(gitDir)
     } catch (error) {
       throw this.createError('rebaseAbort', error)
     }

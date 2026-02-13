@@ -3,9 +3,11 @@ import type {
   FileLogLevel,
   LocalRepo,
   RebaseIntent,
-  RebaseState
+  RebaseState,
+  WorktreeInitConfig
 } from '@shared/types'
 import type { GitForgeState, MergeStrategy } from '@shared/types/git-forge'
+import { DEFAULT_WORKTREE_INIT_CONFIG } from '@shared/types/repo'
 import Store from 'electron-store'
 
 // Rebase session type - defined here to avoid circular imports with SessionService
@@ -39,6 +41,8 @@ interface StoreSchema {
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
   forgeStateCache: Record<string, CachedForgeState>
+  /** Per-repo worktree initialization configuration, keyed by repoPath */
+  worktreeInitConfigs: Record<string, WorktreeInitConfig>
 }
 
 export class ConfigStore {
@@ -50,7 +54,8 @@ export class ConfigStore {
       defaults: {
         repos: [],
         rebaseSessions: {},
-        forgeStateCache: {}
+        forgeStateCache: {},
+        worktreeInitConfigs: {}
       }
     })
   }
@@ -271,6 +276,35 @@ export class ConfigStore {
     const cache = this.store.get('forgeStateCache', {})
     delete cache[repoPath]
     this.store.set('forgeStateCache', cache)
+  }
+
+  // Worktree initialization config methods
+
+  /**
+   * Get worktree initialization config for a repository.
+   * Returns default config if none is set.
+   */
+  getWorktreeInitConfig(repoPath: string): WorktreeInitConfig {
+    const configs = this.store.get('worktreeInitConfigs', {})
+    return configs[repoPath] ?? DEFAULT_WORKTREE_INIT_CONFIG
+  }
+
+  /**
+   * Set worktree initialization config for a repository.
+   */
+  setWorktreeInitConfig(repoPath: string, config: WorktreeInitConfig): void {
+    const configs = this.store.get('worktreeInitConfigs', {})
+    configs[repoPath] = config
+    this.store.set('worktreeInitConfigs', configs)
+  }
+
+  /**
+   * Delete worktree initialization config for a repository.
+   */
+  deleteWorktreeInitConfig(repoPath: string): void {
+    const configs = this.store.get('worktreeInitConfigs', {})
+    delete configs[repoPath]
+    this.store.set('worktreeInitConfigs', configs)
   }
 }
 

@@ -555,18 +555,30 @@ const createWorktree: IpcHandlerOf<'createWorktree'> = async (_event, { repoPath
 
 const createWorktreeWithBranch: IpcHandlerOf<'createWorktreeWithBranch'> = async (
   _event,
-  { repoPath, sourceBranch, newBranchName, createWorktree, createWorkingCommit }
+  { repoPath, sourceBranch, newBranchName, createWorktree, createWorkingCommit, runInitialization }
 ) => {
   const result = await WorktreeOperation.createWithNewBranch(repoPath, sourceBranch, {
     newBranchName,
     createWorktree,
-    createWorkingCommit
+    createWorkingCommit,
+    runInitialization
   })
   if (result.success) {
     const uiState = await UiStateOperation.getUiState(repoPath)
     return { ...result, uiState }
   }
   return result
+}
+
+const getWorktreeInitConfig: IpcHandlerOf<'getWorktreeInitConfig'> = (_event, { repoPath }) => {
+  return configStore.getWorktreeInitConfig(repoPath)
+}
+
+const setWorktreeInitConfig: IpcHandlerOf<'setWorktreeInitConfig'> = (
+  _event,
+  { repoPath, config }
+) => {
+  configStore.setWorktreeInitConfig(repoPath, config)
 }
 
 const getRebaseExecutionPath: IpcHandlerOf<'getRebaseExecutionPath'> = async (
@@ -641,5 +653,7 @@ export function registerRepoHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.copyWorktreePath, copyWorktreePath)
   ipcMain.handle(IPC_CHANNELS.createWorktree, createWorktree)
   ipcMain.handle(IPC_CHANNELS.createWorktreeWithBranch, createWorktreeWithBranch)
+  ipcMain.handle(IPC_CHANNELS.getWorktreeInitConfig, getWorktreeInitConfig)
+  ipcMain.handle(IPC_CHANNELS.setWorktreeInitConfig, setWorktreeInitConfig)
   ipcMain.handle(IPC_CHANNELS.getRebaseExecutionPath, getRebaseExecutionPath)
 }

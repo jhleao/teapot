@@ -9,6 +9,7 @@ import { TitleBar } from './components/TitleBar'
 import { Toaster } from './components/Toaster'
 import { TooltipProvider } from './components/Tooltip'
 import { Topbar } from './components/Topbar'
+import { WorktreeConflictBanner } from './components/WorktreeConflictBanner'
 import { ScrollArea, ScrollBar } from './components/ui/scroll-area'
 import { useForgeStateContext } from './contexts/ForgeStateContext'
 import { useLocalStateContext } from './contexts/LocalStateContext'
@@ -18,7 +19,14 @@ import { useUpdateNotifications } from './hooks/use-update-notifications'
 import { enrichStackWithForge } from './utils/enrich-stack-with-forge'
 
 function App(): React.JSX.Element {
-  const { uiState, repoError, isRebasingWithConflicts, queuedBranches } = useUiStateContext()
+  const {
+    uiState,
+    repoError,
+    isCurrentWorktreeConflicted,
+    conflictedWorktrees,
+    queuedBranches,
+    switchWorktree
+  } = useUiStateContext()
   const { forgeState } = useForgeStateContext()
   const { selectedRepo, addRepo } = useLocalStateContext()
   const { setViewportRef } = useScrollViewport()
@@ -39,6 +47,17 @@ function App(): React.JSX.Element {
     }
   }
 
+  // Filter to only show banner for worktrees that are NOT the current one
+  // (current worktree conflicts show the modal instead)
+  const currentWorktreePath = selectedRepo?.activeWorktreePath ?? selectedRepo?.path ?? null
+  const nonCurrentConflictedWorktrees = conflictedWorktrees.filter(
+    (wt) => wt.path !== currentWorktreePath
+  )
+
+  const handleSwitchToWorktree = (worktreePath: string): void => {
+    switchWorktree({ worktreePath })
+  }
+
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col" data-testid="app-container">
@@ -51,6 +70,13 @@ function App(): React.JSX.Element {
             <div className="px-6 py-2">
               <Topbar />
             </div>
+            {/* Non-blocking banner for conflicts in non-current worktrees */}
+            {nonCurrentConflictedWorktrees.length > 0 && (
+              <WorktreeConflictBanner
+                conflictedWorktrees={nonCurrentConflictedWorktrees}
+                onSwitchToWorktree={handleSwitchToWorktree}
+              />
+            )}
           </div>
           <div className="px-6 pt-4 pb-32">
             {!selectedRepo ? (
@@ -76,8 +102,9 @@ function App(): React.JSX.Element {
         </button>
 
         <SettingsDialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
-        {isRebasingWithConflicts && <ConflictResolutionDialog />}
-        {queuedBranches.length > 0 && !isRebasingWithConflicts && (
+        {/* Blocking modal only for current worktree conflicts */}
+        {isCurrentWorktreeConflicted && <ConflictResolutionDialog />}
+        {queuedBranches.length > 0 && !isCurrentWorktreeConflicted && (
           <ResumeQueueDialog queuedBranches={queuedBranches} />
         )}
         <Toaster />

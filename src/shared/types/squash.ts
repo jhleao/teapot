@@ -8,6 +8,8 @@ export type SquashPreview = {
   parentBranch?: string
   descendantBranches?: string[]
   isEmpty?: boolean
+  /** True when child's changes undo parent's changes, making the combined result empty */
+  resultWouldBeEmpty?: boolean
   hasPr?: boolean
   prNumber?: number
   parentCommitMessage?: string
@@ -50,6 +52,7 @@ export type SquashBlocker =
   | 'descendant_conflict'
   | 'push_failed'
   | 'worktree_conflict'
+  | 'empty_result'
 
 /** User's choice for handling branch name collision during squash */
 export type BranchChoice = 'parent' | 'child' | 'both' | string

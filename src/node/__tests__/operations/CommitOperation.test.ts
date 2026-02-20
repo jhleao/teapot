@@ -185,6 +185,115 @@ describe('amend', () => {
     }).trim()
     expect(childParent).toBe(parentHead)
   })
+
+  it('should rebase entire stack when amending a commit mid-stack', { timeout: 30000 }, async () => {
+    // Setup: 4-branch deep stack
+    //   main(A) → branch-1(B) → branch-2(C) → branch-3(D) → branch-4(E)
+    //
+    // After amending branch-1 (B → B'), the entire stack should be rebased:
+    //   main(A) → branch-1(B') → branch-2(C') → branch-3(D') → branch-4(E')
+    //
+    // Bug scenario: Only branch-2 gets rebased, leaving branch-3 and branch-4
+    // pointing to old SHAs (D and E still have parents C and D, not C' and D')
+
+    // Create trunk commit
+    const baseFile = path.join(repoPath, 'base.txt')
+    await fs.promises.writeFile(baseFile, 'base')
+    execSync('git add base.txt', { cwd: repoPath })
+    execSync('git commit -m "trunk commit A"', { cwd: repoPath })
+
+    // Create branch-1
+    execSync('git checkout -b branch-1', { cwd: repoPath })
+    const file1 = path.join(repoPath, 'file1.txt')
+    await fs.promises.writeFile(file1, 'content v1')
+    execSync('git add file1.txt', { cwd: repoPath })
+    execSync('git commit -m "commit B"', { cwd: repoPath })
+
+    // Create branch-2 stacked on branch-1
+    execSync('git checkout -b branch-2', { cwd: repoPath })
+    const file2 = path.join(repoPath, 'file2.txt')
+    await fs.promises.writeFile(file2, 'content 2')
+    execSync('git add file2.txt', { cwd: repoPath })
+    execSync('git commit -m "commit C"', { cwd: repoPath })
+
+    // Create branch-3 stacked on branch-2
+    execSync('git checkout -b branch-3', { cwd: repoPath })
+    const file3 = path.join(repoPath, 'file3.txt')
+    await fs.promises.writeFile(file3, 'content 3')
+    execSync('git add file3.txt', { cwd: repoPath })
+    execSync('git commit -m "commit D"', { cwd: repoPath })
+
+    // Create branch-4 stacked on branch-3
+    execSync('git checkout -b branch-4', { cwd: repoPath })
+    const file4 = path.join(repoPath, 'file4.txt')
+    await fs.promises.writeFile(file4, 'content 4')
+    execSync('git add file4.txt', { cwd: repoPath })
+    execSync('git commit -m "commit E"', { cwd: repoPath })
+
+    // Go back to branch-1, stage changes, and amend
+    execSync('git checkout branch-1', { cwd: repoPath })
+    await fs.promises.writeFile(file1, 'content v2')
+    execSync('git add file1.txt', { cwd: repoPath })
+
+    await CommitOperation.amend(repoPath, 'commit B (amended)')
+
+    // Verify branch-1 has the amended message
+    const msg1 = execSync('git log -1 --format=%s branch-1', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(msg1).toBe('commit B (amended)')
+
+    // Verify each branch in the stack is properly connected
+    // branch-2 should be 1 commit on top of branch-1
+    const count2 = execSync('git rev-list --count branch-1..branch-2', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(count2).toBe('1')
+
+    // branch-3 should be 1 commit on top of branch-2
+    const count3 = execSync('git rev-list --count branch-2..branch-3', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(count3).toBe('1')
+
+    // branch-4 should be 1 commit on top of branch-3
+    const count4 = execSync('git rev-list --count branch-3..branch-4', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(count4).toBe('1')
+
+    // Verify the full chain: branch-4 should be exactly 4 commits ahead of main
+    const totalCount = execSync('git rev-list --count main..branch-4', {
+      cwd: repoPath,
+      encoding: 'utf-8'
+    }).trim()
+    expect(totalCount).toBe('4')
+
+    // Verify parent linkage is correct through the whole stack
+    const branch1Head = execSync('git rev-parse branch-1', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    const branch2Parent = execSync('git rev-parse branch-2~1', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(branch2Parent).toBe(branch1Head)
+
+    const branch2Head = execSync('git rev-parse branch-2', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    const branch3Parent = execSync('git rev-parse branch-3~1', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(branch3Parent).toBe(branch2Head)
+
+    const branch3Head = execSync('git rev-parse branch-3', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    const branch4Parent = execSync('git rev-parse branch-4~1', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(branch4Parent).toBe(branch3Head)
+
+    // Verify all commit messages are preserved
+    const msg2 = execSync('git log -1 --format=%s branch-2', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(msg2).toBe('commit C')
+    const msg3 = execSync('git log -1 --format=%s branch-3', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(msg3).toBe('commit D')
+    const msg4 = execSync('git log -1 --format=%s branch-4', { cwd: repoPath, encoding: 'utf-8' }).trim()
+    expect(msg4).toBe('commit E')
+  })
 })
 
 describe('uncommit', () => {

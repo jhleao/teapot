@@ -47,6 +47,7 @@ vi.mock('../../store', () => ({
 }))
 
 import { getGitAdapter, resetGitAdapter, type GitAdapter } from '../../adapters/git'
+import { CommitOperation } from '../../operations/CommitOperation'
 import { RebaseOperation } from '../../operations/RebaseOperation'
 import { ExecutionContextService } from '../../services/ExecutionContextService'
 
@@ -1107,4 +1108,73 @@ describe('Edge Cases and Error Handling', () => {
       expect(submitResult.success).toBeDefined()
     }
   })
+})
+
+// ============================================================================
+// 9. Amend Mid-Stack Cascades Entire Stack
+// ============================================================================
+
+describe('Amend Mid-Stack Cascades Entire Stack', () => {
+  let repo: TestRepo
+
+  beforeEach(async () => {
+    repo = await createTestRepo()
+    mockActiveWorktree = null
+    mockRebaseSessions.clear()
+  })
+
+  afterEach(async () => {
+    await cleanupTestRepo(repo)
+    mockRebaseSessions.clear()
+  })
+
+  it('amending bottom of a 4-deep stack rebases all descendants', async () => {
+    // Setup:
+    //   main(A) → branch-1(B) → branch-2(C) → branch-3(D) → branch-4(E)
+    //
+    // After amending branch-1 (B → B'), the entire stack should be rebased:
+    //   main(A) → branch-1(B') → branch-2(C') → branch-3(D') → branch-4(E')
+    //
+    // Regression: previously only branch-2 was rebased, leaving branch-3
+    // and branch-4 dangling on old SHAs
+
+    repo.commitFile('base.txt', 'base', 'trunk commit A')
+
+    repo.createBranch('branch-1')
+    repo.commitFile('file1.txt', 'content v1', 'commit B')
+
+    repo.createBranch('branch-2')
+    repo.commitFile('file2.txt', 'content 2', 'commit C')
+
+    repo.createBranch('branch-3')
+    repo.commitFile('file3.txt', 'content 3', 'commit D')
+
+    repo.createBranch('branch-4')
+    repo.commitFile('file4.txt', 'content 4', 'commit E')
+
+    // Go back to branch-1, stage changes, and amend
+    repo.checkout('branch-1')
+    fs.writeFileSync(path.join(repo.repoPath, 'file1.txt'), 'content v2')
+    repo.run('git add file1.txt')
+
+    await CommitOperation.amend(repo.repoPath, 'commit B (amended)')
+
+    // Verify branch-1 was amended
+    expect(repo.getCommitMessage('branch-1')).toBe('commit B (amended)')
+
+    // Verify the entire stack is connected end-to-end
+    // branch-4 should be exactly 4 commits ahead of main
+    const totalCount = repo.run('git rev-list --count main..branch-4')
+    expect(totalCount).toBe('4')
+
+    // Verify each parent linkage through the stack
+    expect(repo.getParentSha('branch-2')).toBe(repo.getSha('branch-1'))
+    expect(repo.getParentSha('branch-3')).toBe(repo.getSha('branch-2'))
+    expect(repo.getParentSha('branch-4')).toBe(repo.getSha('branch-3'))
+
+    // Verify commit messages are preserved
+    expect(repo.getCommitMessage('branch-2')).toBe('commit C')
+    expect(repo.getCommitMessage('branch-3')).toBe('commit D')
+    expect(repo.getCommitMessage('branch-4')).toBe('commit E')
+  }, 30000)
 })

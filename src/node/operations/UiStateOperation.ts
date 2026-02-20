@@ -228,6 +228,17 @@ export class UiStateOperation {
     }
 
     const trunkHeadSha = TrunkResolver.getTrunkHeadSha(repo.branches, repo.commits)
-    return { stack, workingTree, trunkHeadSha }
+
+    // Build worktree list for the global worktree selector
+    const worktrees = repo.worktrees.map((wt) => ({
+      path: wt.path,
+      branch: wt.branch,
+      headSha: wt.headSha,
+      isMain: wt.isMain,
+      isStale: wt.isStale,
+      isDirty: wt.isDirty
+    }))
+
+    return { stack, workingTree, trunkHeadSha, worktrees }
   }
 }

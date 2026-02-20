@@ -12,6 +12,27 @@ export type UiState = {
   workingTree: UiWorkingTreeFile[]
   /** The SHA of the current trunk head commit. Used for rebase operations. */
   trunkHeadSha: string
+  /** All worktrees for the current repository. Used by the worktree selector. */
+  worktrees: UiWorktree[]
+}
+
+/**
+ * Worktree data for the global worktree selector.
+ * Richer than UiWorktreeBadge — includes branch name for display.
+ */
+export type UiWorktree = {
+  /** Absolute path to the worktree */
+  path: string
+  /** Branch checked out in this worktree, or null if detached HEAD */
+  branch: string | null
+  /** HEAD commit SHA (used to display for detached HEAD) */
+  headSha: string
+  /** True if this is the main worktree (original clone location) */
+  isMain: boolean
+  /** True if the worktree directory no longer exists */
+  isStale: boolean
+  /** True if the worktree has uncommitted changes */
+  isDirty: boolean
 }
 
 export type UiStack = {

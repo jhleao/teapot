@@ -29,6 +29,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const [mergeStrategy, setMergeStrategy] = useState<MergeStrategy>('rebase')
   const [fileLogLevel, setFileLogLevel] = useState<FileLogLevel>('off')
   const [useParallelWorktree, setUseParallelWorktree] = useState(false)
+  const [worktreeBasePath, setWorktreeBasePath] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
@@ -40,19 +41,27 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
   const loadSettings = async () => {
     setIsLoading(true)
     try {
-      const [storedPat, storedEditor, storedStrategy, storedFileLogLevel, storedParallelWorktree] =
-        await Promise.all([
-          window.api.getGithubPat(),
-          window.api.getPreferredEditor(),
-          window.api.getMergeStrategy(),
-          window.api.getFileLogLevel(),
-          window.api.getUseParallelWorktree()
-        ])
+      const [
+        storedPat,
+        storedEditor,
+        storedStrategy,
+        storedFileLogLevel,
+        storedParallelWorktree,
+        storedWorktreeBasePath
+      ] = await Promise.all([
+        window.api.getGithubPat(),
+        window.api.getPreferredEditor(),
+        window.api.getMergeStrategy(),
+        window.api.getFileLogLevel(),
+        window.api.getUseParallelWorktree(),
+        window.api.getWorktreeBasePath()
+      ])
       setPat(storedPat || '')
       setEditor(storedEditor || '')
       setMergeStrategy(storedStrategy)
       setFileLogLevel(storedFileLogLevel)
       setUseParallelWorktree(storedParallelWorktree)
+      setWorktreeBasePath(storedWorktreeBasePath)
     } catch (error) {
       log.error('Failed to load settings:', error)
     } finally {
@@ -108,6 +117,27 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
     }
   }
 
+  const handleWorktreeBasePathChange = async (useCustom: boolean) => {
+    if (useCustom) {
+      const selectedPath = await window.api.showFolderPicker()
+      if (selectedPath) {
+        setWorktreeBasePath(selectedPath)
+        try {
+          await window.api.setWorktreeBasePath({ basePath: selectedPath })
+        } catch (error) {
+          log.error('Failed to save worktree base path:', error)
+        }
+      }
+    } else {
+      setWorktreeBasePath(null)
+      try {
+        await window.api.setWorktreeBasePath({ basePath: null })
+      } catch (error) {
+        log.error('Failed to save worktree base path:', error)
+      }
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]" data-testid="settings-dialog">
@@ -145,6 +175,51 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps): Rea
               placeholder="code, cursor, subl, vim..."
               className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
+          </div>
+
+          <div className="space-y-2">
+            <h4 className="text-sm leading-none font-medium">Default Worktree Location</h4>
+            <p className="text-muted-foreground text-sm">
+              Where new worktrees are created. Can be overridden per-worktree.
+            </p>
+            <div className="space-y-2">
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="worktree-location"
+                  checked={worktreeBasePath === null}
+                  onChange={() => handleWorktreeBasePathChange(false)}
+                  disabled={isLoading}
+                  className="border-input bg-background h-4 w-4 border accent-current disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <span className="text-sm">Next to repository</span>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2">
+                <input
+                  type="radio"
+                  name="worktree-location"
+                  checked={worktreeBasePath !== null}
+                  onChange={() => handleWorktreeBasePathChange(true)}
+                  disabled={isLoading}
+                  className="border-input bg-background h-4 w-4 border accent-current disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <span className="text-sm">Custom path</span>
+              </label>
+              {worktreeBasePath !== null && (
+                <div className="flex items-center gap-2 pl-6">
+                  <span className="text-muted-foreground truncate text-xs font-mono">
+                    {worktreeBasePath}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleWorktreeBasePathChange(true)}
+                    className="text-accent text-xs hover:underline"
+                  >
+                    Change
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">

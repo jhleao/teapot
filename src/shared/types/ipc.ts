@@ -151,6 +151,9 @@ export const IPC_CHANNELS = {
   openWorktreeInTerminal: 'openWorktreeInTerminal',
   copyWorktreePath: 'copyWorktreePath',
   createWorktree: 'createWorktree',
+  createWorktreeAtPath: 'createWorktreeAtPath',
+  getWorktreeBasePath: 'getWorktreeBasePath',
+  setWorktreeBasePath: 'setWorktreeBasePath',
   // Clone
   cloneRepository: 'cloneRepository',
   getLastClonePath: 'getLastClonePath',
@@ -418,6 +421,18 @@ export interface IpcContract {
   [IPC_CHANNELS.createWorktree]: {
     request: { repoPath: string; branch: string }
     response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
+  }
+  [IPC_CHANNELS.createWorktreeAtPath]: {
+    request: { repoPath: string; branch: string; targetPath: string }
+    response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
+  }
+  [IPC_CHANNELS.getWorktreeBasePath]: {
+    request: void
+    response: string | null
+  }
+  [IPC_CHANNELS.setWorktreeBasePath]: {
+    request: { basePath: string | null }
+    response: void
   }
   [IPC_CHANNELS.cloneRepository]: {
     request: { url: string; targetPath: string; folderName?: string }

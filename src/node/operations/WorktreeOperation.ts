@@ -213,33 +213,69 @@ export class WorktreeOperation {
   }
 
   /**
-   * Create a new worktree for a branch.
-   * The worktree is created in <temp>/teapot/worktrees/<random-name>
+   * Compute the default worktree path for a branch.
+   * Uses the configured base path or defaults to a sibling directory of the repo.
+   */
+  static computeDefaultWorktreePath(repoPath: string, branch: string): string {
+    const customBasePath = configStore.getWorktreeBasePath()
+    const repoName = path.basename(repoPath)
+    const safeBranch = branch.replace(/\//g, '-')
+
+    if (customBasePath) {
+      return path.join(customBasePath, `${repoName}-${safeBranch}`)
+    }
+    return path.join(path.dirname(repoPath), `${repoName}-${safeBranch}`)
+  }
+
+  /**
+   * Create a new worktree for a branch at a persistent location.
+   * Defaults to a sibling directory of the repo (configurable via settings).
    */
   static async create(
     repoPath: string,
     branch: string
   ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
+    const worktreePath = WorktreeOperation.computeDefaultWorktreePath(repoPath, branch)
+    return WorktreeOperation.createAtPath(repoPath, branch, worktreePath)
+  }
+
+  /**
+   * Create a new worktree for a branch at a specific path.
+   */
+  static async createAtPath(
+    repoPath: string,
+    branch: string,
+    targetPath: string
+  ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
     try {
-      // Generate a random directory name
-      const dirName = BranchUtils.generateRandomBranchName('wt')
-      const baseDir = path.join(os.tmpdir(), 'teapot', 'worktrees')
-      const worktreePath = path.join(baseDir, dirName)
+      // Validate: target must not exist or be empty
+      try {
+        const stat = await fs.promises.stat(targetPath)
+        if (stat.isDirectory()) {
+          const entries = await fs.promises.readdir(targetPath)
+          if (entries.length > 0) {
+            return { success: false, error: 'Directory already exists and is not empty.' }
+          }
+        } else {
+          return { success: false, error: 'A file already exists at that path.' }
+        }
+      } catch {
+        // Path doesn't exist — good, git worktree add will create it
+      }
 
-      // Ensure the parent directory exists (cross-platform)
-      await fs.promises.mkdir(baseDir, { recursive: true })
+      // Ensure the parent directory exists
+      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
 
-      await execAsync(`git -C "${repoPath}" worktree add "${worktreePath}" "${branch}"`)
+      await execAsync(`git -C "${repoPath}" worktree add "${targetPath}" "${branch}"`)
 
       // Resolve symlinks to get the canonical path (e.g., /var -> /private/var on macOS)
-      // This ensures the path matches what git reports in `worktree list`
-      const resolvedPath = await fs.promises.realpath(worktreePath)
+      const resolvedPath = await fs.promises.realpath(targetPath)
 
       log.info(`[WorktreeOperation] Created worktree ${resolvedPath} for branch ${branch}`)
       return { success: true, worktreePath: resolvedPath }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      log.error(`[WorktreeOperation.create] Failed:`, error)
+      log.error(`[WorktreeOperation.createAtPath] Failed:`, error)
       return { success: false, error: message }
     }
   }

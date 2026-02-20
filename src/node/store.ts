@@ -35,6 +35,7 @@ interface StoreSchema {
   lastClonePath?: string
   fileLogLevel?: FileLogLevel
   useParallelWorktree?: boolean
+  worktreeBasePath?: string
   // Legacy field - migrated to fileLogLevel on first read
   debugLoggingEnabled?: boolean
   rebaseSessions: Record<string, StoredRebaseSession>
@@ -132,6 +133,26 @@ export class ConfigStore {
 
   setUseParallelWorktree(enabled: boolean): void {
     this.store.set('useParallelWorktree', enabled)
+  }
+
+  /**
+   * Get the default base path for new worktrees.
+   * Returns null to use the default (sibling of repository).
+   */
+  getWorktreeBasePath(): string | null {
+    return this.store.get('worktreeBasePath') ?? null
+  }
+
+  /**
+   * Set the default base path for new worktrees.
+   * Pass null to use the default (sibling of repository).
+   */
+  setWorktreeBasePath(basePath: string | null): void {
+    if (basePath === null) {
+      this.store.delete('worktreeBasePath')
+    } else {
+      this.store.set('worktreeBasePath', basePath)
+    }
   }
 
   /**

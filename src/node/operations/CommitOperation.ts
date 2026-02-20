@@ -186,9 +186,13 @@ export class CommitOperation {
     oldHeadSha: string
   ): RebaseTarget[] {
     const targets: RebaseTarget[] = []
+    const commitMap = new Map(repo.commits.map((c) => [c.sha, c]))
+    const parentIndex = StackAnalyzer.buildParentIndex(repo.branches, commitMap)
+    const childrenIndex = StackAnalyzer.buildChildrenIndex(parentIndex)
+    const branchByRef = new Map(repo.branches.map((b) => [b.ref, b]))
 
     for (const childName of childrenToRebase) {
-      const childBranch = repo.branches.find((b) => b.ref === childName)
+      const childBranch = branchByRef.get(childName)
       if (!childBranch?.headSha) continue
 
       // Use the old (pre-amend) HEAD SHA as the base for the rebase, not the
@@ -198,13 +202,16 @@ export class CommitOperation {
       // walk past the old HEAD and include it in the child's owned commits,
       // causing the rebase to replay the old HEAD on top of the new one —
       // creating a bogus duplicate commit and spurious conflicts.
+      //
+      // Build the full descendant tree so the executor can cascade rebases
+      // through the entire stack, not just the direct children.
       targets.push({
         node: {
           branch: childName,
           headSha: childBranch.headSha,
           baseSha: oldHeadSha,
           ownedShas: [],
-          children: []
+          children: StackAnalyzer.buildNodeTree(childName, childrenIndex, branchByRef)
         },
         targetBaseSha: newHeadSha
       })

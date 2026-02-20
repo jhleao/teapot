@@ -334,6 +334,32 @@ export class StackAnalyzer {
   }
 
   /**
+   * Builds a StackNodeState tree from pre-computed indices, starting from a given branch.
+   * Returns the children of the given branch as StackNodeState nodes (not including
+   * the branch itself). Each node's baseSha is set to its parent's headSha.
+   */
+  public static buildNodeTree(
+    parentBranchName: string,
+    childrenIndex: Map<string, string[]>,
+    branchByRef: Map<string, { ref: string; headSha: string }>
+  ): StackNodeState[] {
+    const parentBranch = branchByRef.get(parentBranchName)
+    if (!parentBranch) return []
+
+    const childNames = childrenIndex.get(parentBranchName) ?? []
+    return childNames.map((childName) => {
+      const child = branchByRef.get(childName)!
+      return {
+        branch: childName,
+        headSha: child.headSha,
+        baseSha: parentBranch.headSha,
+        ownedShas: [],
+        children: StackAnalyzer.buildNodeTree(childName, childrenIndex, branchByRef)
+      }
+    })
+  }
+
+  /**
    * Finds child branches that stem directly from a given parent commit.
    * A child branch is one whose head's parent is the parentHeadSha.
    */

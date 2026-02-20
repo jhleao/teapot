@@ -154,7 +154,7 @@ function WorktreeSelectorItem({
   const [isDiscarding, setIsDiscarding] = useState(false)
 
   const displayName = abbreviatePath(worktree.path)
-  const branchDisplay = worktree.branch ?? `${worktree.headSha.slice(0, 7)} (detached)`
+  const branchDisplay = worktree.branch ?? `${(worktree.headSha ?? '').slice(0, 7) || '?'} (detached)`
   const isDirty = worktree.isDirty
   const isStale = worktree.isStale
 

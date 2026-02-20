@@ -22,17 +22,75 @@ Currently, worktrees in Teapot are treated as throwaway artifacts attached to br
 
 ---
 
-## UX Design
+## Worktree Storage: The `/tmp` Problem
 
-### Option A: Topbar Breadcrumb Pattern (Recommended)
+### Why `/tmp` is dangerous for persistent worktrees
 
-Extend the existing topbar to a two-level breadcrumb: **Repo > Worktree**
+Currently `WorktreeOperation.create()` places all worktrees in `os.tmpdir()/teapot/worktrees/<random>`:
+
+- **Linux**: `/tmp` is cleared on reboot by `systemd-tmpfiles` / `tmpwatch`. A worktree with uncommitted work would be silently destroyed.
+- **macOS**: `os.tmpdir()` resolves to `/private/var/folders/.../T/`, which macOS periodically purges (every 3 days for unused items).
+- **Data loss risk**: If a user treats a worktree as persistent (has build caches, uncommitted work, IDE config), a temp-directory purge causes silent data loss *and* leaves git with stale worktree references.
+
+`/tmp` is appropriate only for the internal execution worktrees used during rebases (`/tmp/teapot/exec/`), which are truly ephemeral.
+
+### Best practices for worktree location
+
+The git documentation and community convention is to place worktrees as **siblings of the main repo**:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  myrepo  ▾  /  ~/dev/myrepo-review  ▾    ● GitHub     │
-│  [repo]       [worktree selector]        [forge]       │
-└─────────────────────────────────────────────────────────┘
+~/dev/
+  myrepo/                  ← main worktree (original clone)
+  myrepo-review/           ← worktree for code review
+  myrepo-experiment/       ← worktree for experiments
+```
+
+This pattern:
+- Survives reboots
+- Keeps worktrees close to the repo for discoverability
+- Avoids nesting worktrees inside the repo (which confuses git)
+- Works naturally with IDE "Open Recent" and shell history
+
+### Default worktree base path
+
+**Decision:** Add a **"Default worktree location"** setting to `SettingsDialog`.
+
+| Option | Path | Description |
+|--------|------|-------------|
+| **Next to repository** (default) | `<repo-parent>/<repo-name>-<branch>` | Sibling directory, e.g. `~/dev/myrepo-feature-auth` |
+| **Custom path** | User-chosen base directory | e.g. `~/worktrees/myrepo/<branch>` |
+
+The user can always override the path per-worktree in the "Create New Worktree" dialog. This setting only controls the default suggestion.
+
+**Config store change** (`src/node/store.ts`):
+
+```typescript
+// Add to StoreSchema
+worktreeBasePath: string | null  // null = "next to repository" (default)
+```
+
+**Settings UI** (`src/web/components/SettingsDialog.tsx`):
+
+New section between "Preferred Editor" and "GitHub PAT":
+
+```
+Worktree Location
+  Where new worktrees are created by default.
+  ○ Next to repository (recommended)
+  ○ Custom path: [ /home/user/worktrees ] [Browse]
+```
+
+---
+
+## UX Design: Topbar Breadcrumb Pattern
+
+Extend the existing topbar to a two-level breadcrumb: **Repo / Worktree**
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  myrepo  ▾  /  myrepo-review  ▾  ●           ● GitHub      │
+│  [repo]       [worktree]      [dirty dot]     [forge]       │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 **Why this works:**
@@ -40,94 +98,158 @@ Extend the existing topbar to a two-level breadcrumb: **Repo > Worktree**
 - Reads left-to-right: which repo → which worktree within that repo
 - Doesn't consume additional vertical space
 - The `/` separator creates a visual hierarchy without cluttering
-- Worktree selector only appears when >1 worktree exists (progressive disclosure)
+- Familiar pattern (VS Code's breadcrumbs, terminal multiplexer panes)
 
-**Worktree Selector Dropdown:**
+### Always-visible selector
+
+The worktree selector is **always visible**, even with a single worktree. This makes the feature discoverable and gives users a clear path to creating their first additional worktree. When there's only one worktree (the main one), the trigger shows:
 
 ```
-┌──────────────────────────────────────┐
-│  ● ~/dev/myrepo          (main)   ✓ │  ← main worktree, active
-│    main · clean                      │
-│──────────────────────────────────────│
-│  ○ ~/dev/myrepo-review             │  ← secondary worktree
-│    feature-auth · 2 changes          │
-│──────────────────────────────────────│
-│  ○ ~/dev/myrepo-experiment          │  ← secondary worktree
-│    fix-perf · clean                  │
-│──────────────────────────────────────│
-│  + Add Existing Worktree...          │  ← browse to existing dir
-│  + Create New Worktree...            │  ← creates from branch
-│──────────────────────────────────────│
-│  ⚙ Manage Worktrees                 │  ← opens management view
-└──────────────────────────────────────┘
+  myrepo  ▾  /  myrepo  ▾
+  [repo]       [worktree — same name as repo]
+```
+
+The dropdown still shows "Create New Worktree..." so users can get started.
+
+### Dirty status indicator on trigger button
+
+A **yellow dot** appears next to the worktree name when the active worktree has uncommitted changes. This matches the existing `WorktreeBadge` color coding and provides ambient awareness.
+
+```
+  myrepo  ▾  /  myrepo-review  ▾  ●      ← yellow dot = dirty
+  myrepo  ▾  /  myrepo-review  ▾         ← no dot = clean
+  myrepo  ▾  /  myrepo-review  ▾  ●      ← red dot = stale
+```
+
+### Worktree Selector Dropdown
+
+```
+┌────────────────────────────────────────────┐
+│  ● myrepo                     (main)    ✓  │  ← main worktree, active
+│    main · clean                             │
+│─────────────────────────────────────────────│
+│  ● myrepo-review                           │  ← yellow dot = dirty
+│    feature-auth · 2 uncommitted changes     │
+│─────────────────────────────────────────────│
+│  ○ myrepo-experiment                       │  ← gray dot = clean
+│    fix-perf · clean                         │
+│─────────────────────────────────────────────│
+│  ● myrepo-old                    ⚠ stale  │  ← red, path deleted
+│    (path no longer exists)                  │
+│═════════════════════════════════════════════│
+│  + Create New Worktree...                   │
+│  ⚙ Manage Worktrees...                     │
+└─────────────────────────────────────────────┘
 ```
 
 Each worktree item shows:
-- **Directory name** (abbreviated path, full path on hover tooltip)
+- **Status dot** — green (active/clean), yellow (dirty), gray (clean, not active), red (stale)
+- **Directory name** (abbreviated from path; full path on hover tooltip)
+- **"(main)" label** on the main worktree
+- **Active checkmark** on the currently viewed worktree
 - **Current branch** checked out in that worktree
-- **Status indicator** — clean (green dot), dirty (yellow dot with change count), stale (red)
-- **Active marker** — checkmark on the currently viewed worktree
-- **Quick actions** on hover/right-click: Open in Editor, Open in Terminal, Copy Path
+- **Dirty summary** — "clean" or "N uncommitted changes"
 
-**Trigger label** (what's shown in the topbar button):
-- Just the folder name of the active worktree: `myrepo-review ▾`
-- If it's the main worktree, show the repo name (same as today, no visual change for single-worktree repos)
+**Click** any worktree item → switch to it (calls `switchWorktree`).
 
-### Option B: Side Panel Tabs (Alternative)
+**Right-click** any worktree item → context menu:
+- Checkout Branch...
+- Open in Editor
+- Open in Terminal
+- Copy Path
+- *(separator)*
+- Delete Worktree (not shown for main worktree)
 
-Worktrees as persistent tabs at the top of the main content area, similar to browser tabs or IDE editor tabs.
-
-```
-┌───────────────┬──────────────────┬────────────────┬─────┐
-│ myrepo (main) │ myrepo-review    │ myrepo-exp     │  +  │
-├───────────────┴──────────────────┴────────────────┴─────┤
-│                                                         │
-│  [Stack view for selected worktree]                     │
-│                                                         │
-```
-
-**Pros:** Very visible, fast 1-click switching, shows all worktrees at a glance
-**Cons:** Consumes vertical space, doesn't scale beyond ~4 worktrees without overflow, different pattern from the existing repo selector
-
-### Recommendation
-
-**Option A (breadcrumb)** is recommended because:
-- It's consistent with the existing repo-selector UX pattern
-- Zero additional vertical space
-- Progressive disclosure — invisible for single-worktree repos
-- Dropdown gives room for rich metadata per worktree
-- Familiar pattern (VS Code's breadcrumbs, terminal multiplexer panes)
+**Trigger label** (the button in the topbar):
+- Folder name of the active worktree: `myrepo-review ▾`
+- If it's the main worktree: shows the repo folder name (visually identical to today's single-worktree behavior)
 
 ---
 
 ## Checkout Branch on Worktree
 
-When a user wants to switch the branch that a worktree is pointing to, they need a clear flow. Two entry points:
+When a user wants to switch the branch that a worktree is pointing to, there are two entry points:
 
 ### Entry Point 1: From the Worktree Selector Dropdown
 
-Each worktree item in the dropdown gets a **"Checkout Branch..."** action (via right-click context menu or a small button). This opens a branch picker scoped to branches not already checked out in another worktree.
+Right-click a worktree item → "Checkout Branch..." opens a branch picker scoped to that worktree.
 
 ```
-┌────────────────────────────────────┐
-│  Checkout branch in myrepo-review  │
-│──────────────────────────────────────│
-│  🔍 Search branches...             │
-│──────────────────────────────────────│
-│  feature-auth           (current)  │
-│  feature-payments                  │
-│  fix-perf-regression               │
-│  experiment/new-ui                 │
-│──────────────────────────────────────│
-│  ⚠ Branches in other worktrees:   │
-│    main (in ~/dev/myrepo)          │
-│    fix-perf (in ~/dev/myrepo-exp)  │
-└────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Checkout branch in myrepo-review           │
+│─────────────────────────────────────────────│
+│  🔍 Search branches...                      │
+│─────────────────────────────────────────────│
+│  feature-auth               (current)       │
+│  feature-payments                           │
+│  fix-perf-regression                        │
+│  experiment/new-ui                          │
+│─────────────────────────────────────────────│
+│  Checked out in other worktrees:            │
+│    main         → myrepo (main worktree)    │
+│    fix-perf     → myrepo-experiment         │
+└─────────────────────────────────────────────┘
 ```
+
+- Branches already checked out in other worktrees are shown but **grayed out** with the worktree they belong to. Git enforces one-worktree-per-branch, so these are informational.
+- Selecting a branch calls `checkoutWorktreeBranch` IPC.
+- If the worktree is dirty, the checkout is blocked with a clear error: "Worktree has uncommitted changes. Commit or discard them first."
 
 ### Entry Point 2: From the Stack View
 
-The existing branch context menu already has checkout. When a branch is checked out in a different worktree, the existing `WorktreeBadge` on that branch already shows a toast: "Cannot checkout — already checked out in X." We extend this to offer: **"Switch to that worktree instead?"** as a clickable action in the toast.
+The existing branch context menu has checkout. When a branch is checked out in a different worktree, the current toast says "Cannot checkout — already checked out in X." We extend this toast with a clickable action: **"Switch to that worktree"** → calls `switchWorktree`.
+
+---
+
+## Manage Worktrees Dialog
+
+Opened from the worktree selector dropdown via "Manage Worktrees...". A modal dialog with a table view of all worktrees.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  Manage Worktrees                                              [X] │
+│─────────────────────────────────────────────────────────────────────│
+│                                                                     │
+│  ● myrepo (main worktree)                                         │
+│    Path:    ~/dev/myrepo                                           │
+│    Branch:  main                                                   │
+│    Status:  Clean                                                  │
+│    [Open in Editor]  [Open in Terminal]  [Copy Path]               │
+│                                                                     │
+│─────────────────────────────────────────────────────────────────────│
+│                                                                     │
+│  ● myrepo-review                                                   │
+│    Path:    ~/dev/myrepo-review                                    │
+│    Branch:  feature-auth                                           │
+│    Status:  2 uncommitted changes                                  │
+│    [Open in Editor]  [Open in Terminal]  [Copy Path]  [Delete]     │
+│                                                                     │
+│─────────────────────────────────────────────────────────────────────│
+│                                                                     │
+│  ● myrepo-old                                              ⚠      │
+│    Path:    ~/dev/myrepo-old                                       │
+│    Branch:  (unknown — path no longer exists)                      │
+│    Status:  Stale                                                  │
+│    [Remove from list]                                              │
+│                                                                     │
+│═════════════════════════════════════════════════════════════════════│
+│  [+ Create New Worktree]                                           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Each worktree card shows:
+- **Name + status dot** (same color coding as dropdown)
+- **Full path** (not abbreviated)
+- **Branch** currently checked out
+- **Dirty status** — "Clean" or "N uncommitted changes"
+- **Actions:**
+  - Open in Editor, Open in Terminal, Copy Path (always available)
+  - Checkout Branch... (opens the branch picker)
+  - Delete Worktree (not shown for main; destructive confirmation if dirty)
+  - Discard Changes (only shown if dirty)
+  - Remove from List (only for stale worktrees — calls `git worktree prune`)
+
+The dialog is **non-modal** in feel (doesn't block the main view) but is implemented as a dialog for simplicity, consistent with `SettingsDialog`.
 
 ---
 
@@ -135,30 +257,13 @@ The existing branch context menu already has checkout. When a branch is checked 
 
 ### Layer 1: Data Model Changes
 
-#### 1a. Worktree Storage — Persistent Worktrees
+#### 1a. Worktree List Availability in Topbar
 
-Currently, worktrees are created in `/tmp` and are implicitly ephemeral. We need to support user-designated persistent worktree directories.
+Currently `LocalRepo` only has `activeWorktreePath`. The full worktree list lives in `Repo` (backend). We need worktree data available in the topbar *before* full `UiState` loads.
 
-**Config Store Changes** (`src/node/store.ts`):
+**Approach:** The `Repo.worktrees: Worktree[]` data already flows through `UiStateContext` on every refresh. We source the worktree list from the existing `UiState` refresh cycle rather than adding a separate fetch. This avoids new IPC channels and keeps a single source of truth.
 
-```typescript
-// Current LocalRepo shape
-type LocalRepo = {
-  path: string
-  isSelected: boolean
-  activeWorktreePath: string | null
-}
-
-// No schema change needed! The existing activeWorktreePath + the worktrees[]
-// from git itself give us everything we need. The only addition is an
-// "Add Existing Worktree" flow that scans an arbitrary directory.
-```
-
-The key insight: **git already tracks worktrees** (`git worktree list`). We don't need to duplicate this in our config store. The `Repo.worktrees: Worktree[]` from the backend already enumerates all worktrees. What we need is:
-
-1. A way to **add existing worktrees** that aren't created through Teapot (user may have created them via CLI)
-2. A way to **switch** `activeWorktreePath` from the topbar (already exists in backend via `configStore.setActiveWorktree`)
-3. A way to **checkout a branch** on any worktree, not just the active one (already exists: `checkoutWorktreeBranch` IPC)
+For the brief moment before `UiState` loads (app startup), the selector shows just the active worktree name from `LocalRepo.activeWorktreePath` with a loading state for the dropdown.
 
 #### 1b. New IPC Channel — Create Worktree at Custom Path
 
@@ -168,42 +273,28 @@ Currently `WorktreeOperation.create()` always generates a random path in `/tmp`.
 // New IPC channel
 createWorktreeAtPath: {
   request: { repoPath: string; branch: string; targetPath: string }
-  response: { success: boolean; error?: string; worktreePath?: string }
+  response: { success: boolean; error?: string; worktreePath?: string; uiState?: UiState | null }
 }
 ```
 
-This allows "Create New Worktree..." to let the user pick a directory.
-
-#### 1c. Surface Worktree List in LocalState
-
-Currently `LocalRepo` only has `activeWorktreePath`. The full worktree list lives in `Repo` (backend model). We need the worktree list available in the topbar *without* needing `UiState` to be loaded (topbar renders before the full repo state loads).
-
-**Approach:** Extend `LocalRepo` to include a lightweight worktree summary:
+#### 1c. Config Store — Default Worktree Base Path
 
 ```typescript
-type LocalRepo = {
-  path: string
-  isSelected: boolean
-  activeWorktreePath: string | null
-  worktrees: WorktreeSummary[]  // NEW — populated on repo selection
-}
-
-type WorktreeSummary = {
-  path: string
-  branch: string | null
-  isMain: boolean
-  isDirty: boolean
-  isStale: boolean
-}
+// Add to StoreSchema
+worktreeBasePath: string | null  // null = "next to repository" (default)
 ```
 
-This is populated when the repo is selected (or refreshed) via a lightweight `git worktree list --porcelain` call, independent of the full `getUiState` pipeline.
+New methods:
+```typescript
+getWorktreeBasePath(): string | null
+setWorktreeBasePath(path: string | null): void
+```
 
 ### Layer 2: Backend Changes
 
 #### 2a. `WorktreeOperation.createAtPath(repoPath, branch, targetPath)`
 
-New static method. Similar to `create()` but uses user-specified `targetPath` instead of generating one in `/tmp`.
+New static method. Similar to `create()` but uses user-specified `targetPath`.
 
 ```typescript
 static async createAtPath(
@@ -211,37 +302,43 @@ static async createAtPath(
   branch: string,
   targetPath: string
 ): Promise<WorktreeOperationResult & { worktreePath?: string }> {
-  // Validate targetPath is empty or doesn't exist
-  // Run: git -C "$repoPath" worktree add "$targetPath" "$branch"
-  // Return resolved path
+  // 1. Validate targetPath doesn't already exist or is an empty directory
+  // 2. Ensure parent directory exists
+  // 3. Run: git -C "$repoPath" worktree add "$targetPath" "$branch"
+  // 4. Resolve symlinks → return canonical path
 }
 ```
 
-#### 2b. `WorktreeOperation.addExisting(repoPath, worktreePath)`
+**Validation rules:**
+- `targetPath` must not exist, OR must be an empty directory
+- `targetPath` must not be inside the repo directory (git doesn't allow nested worktrees)
+- `branch` must not already be checked out in another worktree
 
-Validate that a user-provided directory is already a git worktree of this repo. No git command needed — just verify `.git` file points back to the repo.
-
-#### 2c. Worktree Summary Refresh
-
-New lightweight function (doesn't build full UiState):
+#### 2b. Default Path Computation
 
 ```typescript
-static async getWorktreeSummaries(repoPath: string): Promise<WorktreeSummary[]> {
-  const git = getGitAdapter()
-  const worktrees = await git.listWorktrees(repoPath)
-  // Map to WorktreeSummary with dirty status
-  // This is fast — just git worktree list + git status --porcelain per worktree
+static computeDefaultWorktreePath(
+  repoPath: string,
+  branch: string,
+  customBasePath: string | null
+): string {
+  const repoName = path.basename(repoPath)
+  const safeBranch = branch.replace(/\//g, '-')  // feature/auth → feature-auth
+
+  if (customBasePath) {
+    // Custom: <basePath>/<repoName>-<branch>
+    return path.join(customBasePath, `${repoName}-${safeBranch}`)
+  }
+  // Sibling: <repoParent>/<repoName>-<branch>
+  return path.join(path.dirname(repoPath), `${repoName}-${safeBranch}`)
 }
 ```
 
-#### 2d. New IPC Handler for `switchWorktree`
+#### 2c. Migrate existing `create()` to use persistent paths
 
-The existing `switchWorktree` handler already does the right thing:
-1. Updates `configStore.setActiveWorktree`
-2. Re-initializes the `GitWatcher` for the new path
-3. Returns fresh `UiState`
+The existing `WorktreeOperation.create()` (called from branch context menu "Create Worktree") should be updated to use the default worktree base path instead of `/tmp`. This is a one-line change — replace the `os.tmpdir()` base with the computed default path.
 
-No changes needed here.
+The `createTemporary()` method (used for rebase execution) keeps using `/tmp` — these are genuinely ephemeral.
 
 ### Layer 3: Frontend Changes
 
@@ -249,141 +346,275 @@ No changes needed here.
 
 **File:** `src/web/components/WorktreeSelector.tsx`
 
-A Radix `Popover` component (matching the `RepoSelectorHeader` pattern) that:
-- Shows the active worktree name as a button
-- Opens a dropdown with all worktrees for the selected repo
-- Each worktree item shows: name, branch, dirty status
-- Actions: switch worktree, open in editor/terminal, checkout branch, create/add worktree
+A Radix `Popover` component matching the `RepoSelectorHeader` pattern:
 
-**Props:**
 ```typescript
 interface WorktreeSelectorProps {
-  repo: LocalRepo
+  worktrees: Worktree[]        // from Repo.worktrees
   activeWorktreePath: string | null
-  worktrees: WorktreeSummary[]
-  onSwitchWorktree: (worktreePath: string) => Promise<void>
-  onCheckoutBranch: (worktreePath: string, branch: string) => Promise<void>
-  onCreateWorktree: () => void
-  onAddExistingWorktree: () => void
+  repoPath: string
 }
 ```
 
-#### 3b. Update `Topbar.tsx`
+Internal state:
+- `isOpen` — popover visibility
+- Consumes `switchWorktree` from `UiStateContext`
+- Consumes `confirmationModal` from `UtilityModalsContext` (for delete confirmations)
 
-Add `WorktreeSelector` next to `RepoSelectorHeader`:
+#### 3b. New Component: `WorktreeSelectorItem`
+
+Individual worktree row in the dropdown. Extracted for context menu handling:
+
+```typescript
+interface WorktreeSelectorItemProps {
+  worktree: Worktree
+  isActive: boolean
+  onSwitch: (path: string) => void
+  onCheckoutBranch: (worktreePath: string) => void
+  onDelete: (worktreePath: string) => void
+}
+```
+
+#### 3c. Update `Topbar.tsx`
+
+Replace the current flat layout with the breadcrumb pattern:
 
 ```tsx
 <div className="flex items-center gap-1">
   <RepoSelectorHeader ... />
-  {worktrees.length > 1 && (
-    <>
-      <span className="text-muted-foreground text-sm">/</span>
-      <WorktreeSelector ... />
-    </>
-  )}
+  <span className="text-muted-foreground/50 text-sm">/</span>
+  <WorktreeSelector
+    worktrees={uiState?.worktrees ?? []}
+    activeWorktreePath={repo?.activeWorktreePath}
+    repoPath={repo?.path}
+  />
   <ForgeStatusIndicator />
 </div>
 ```
 
-**Progressive disclosure:** The selector only appears when there are multiple worktrees. Single-worktree repos look identical to today.
+The `WorktreeSelector` needs access to `UiState` data. Currently `Topbar` only uses `LocalStateContext`. We'll add `useUiStateContext()` to `Topbar` to get the worktree list. This is a minimal change — `Topbar` already imports from contexts.
 
-#### 3c. New Component: `CheckoutBranchDialog`
+#### 3d. Remove inline `WorktreeBadge` from `RepoSelectorHeader`
+
+The existing `WorktreeBadge` in `RepoSelectorHeader.tsx` (lines 176-181) is replaced by the new `WorktreeSelector`. Remove:
+
+```tsx
+// REMOVE this block from RepoSelectorHeader
+{isInWorktree && activeWorktree && (
+  <WorktreeBadge
+    data={{ path: activeWorktree, status: 'active', isMain: false }}
+    variant="compact"
+  />
+)}
+```
+
+#### 3e. New Component: `CheckoutBranchDialog`
 
 **File:** `src/web/components/CheckoutBranchDialog.tsx`
 
 Modal dialog with:
 - Search/filter input for branch names
-- List of available branches (excluding those checked out in other worktrees)
-- Section showing branches that are "taken" by other worktrees (grayed out with worktree path)
+- List of local branches (excluding those checked out in other worktrees)
+- Grayed-out section showing branches "taken" by other worktrees
+- Dirty worktree guard — if target worktree is dirty, show warning and block
 - Calls `checkoutWorktreeBranch` IPC on selection
 
-#### 3d. Update `WorktreeBadge.tsx`
+#### 3f. New Component: `ManageWorktreesDialog`
 
-When a user tries to checkout a branch that's in another worktree (toast currently says "Cannot checkout — already checked out in X"), add an action button to the toast: **"Switch to worktree"** that calls `switchWorktree`.
+**File:** `src/web/components/ManageWorktreesDialog.tsx`
 
-#### 3e. Context/State Updates
+Follows the pattern of `SettingsDialog`:
+- Opened from worktree selector dropdown
+- Shows full worktree details (see mockup above)
+- Actions per worktree: open in editor/terminal, copy path, checkout branch, delete, discard changes
+- "Create New Worktree" button at the bottom
 
-**`LocalStateContext.tsx`:**
-- Add `worktreeSummaries` to context value
-- Refresh summaries when repo is selected and on git watcher events
-- Expose `switchWorktree` and `checkoutBranchInWorktree` actions
+#### 3g. New Component: `CreateWorktreeDialog`
+
+**File:** `src/web/components/CreateWorktreeDialog.tsx`
+
+Dialog for creating a new worktree:
+
+```
+┌─────────────────────────────────────────────────┐
+│  Create New Worktree                       [X]  │
+│─────────────────────────────────────────────────│
+│                                                  │
+│  Branch                                         │
+│  [▾ Select a branch...              ]           │
+│                                                  │
+│  Location                                       │
+│  [ ~/dev/myrepo-feature-auth        ] [Browse]  │
+│                                                  │
+│  ☐ Switch to this worktree after creation       │
+│                                                  │
+│                    [Cancel]  [Create Worktree]   │
+└─────────────────────────────────────────────────┘
+```
+
+- Branch selector filters out branches already in worktrees
+- Location auto-fills based on the default worktree base path setting + selected branch name
+- "Switch to this worktree after creation" checkbox (default: checked)
+
+#### 3h. Update `WorktreeBadge.tsx` — Toast Improvement
+
+When checkout fails because a branch is in another worktree (currently a plain `toast.info`), enhance:
+
+```typescript
+toast.info(`Cannot checkout '${ref}' — already checked out in ${worktreePath}`, {
+  action: {
+    label: 'Switch to worktree',
+    onClick: () => switchWorktree({ worktreePath })
+  }
+})
+```
+
+Sonner supports action buttons on toasts natively.
+
+#### 3i. Settings Dialog Update
+
+Add "Worktree Location" section to `SettingsDialog.tsx`:
+
+```typescript
+// New setting section after "Preferred Editor"
+<SettingSection>
+  <SettingLabel>Default Worktree Location</SettingLabel>
+  <SettingDescription>
+    Where new worktrees are created. Can be overridden per-worktree.
+  </SettingDescription>
+  <RadioGroup value={worktreeBasePath === null ? 'sibling' : 'custom'}>
+    <Radio value="sibling">Next to repository</Radio>
+    <Radio value="custom">
+      Custom path
+      <input value={worktreeBasePath ?? ''} ... />
+      <button onClick={handleBrowseWorktreeBasePath}>Browse</button>
+    </Radio>
+  </RadioGroup>
+</SettingSection>
+```
+
+### Layer 4: Context/State Wiring
 
 **`UiStateContext.tsx`:**
-- `switchWorktree` already exists — wire it to the new selector
+- `switchWorktree` already exists — wire to the selector
 - Add `checkoutBranchInWorktree` callback wrapping the existing IPC
+- Expose `repo.worktrees` for the selector to consume
 
-### Layer 4: Worktree Lifecycle Improvements
+**`Topbar.tsx`:**
+- Add `useUiStateContext()` to access worktree list
+- Pass worktree data to `WorktreeSelector`
 
-#### 4a. "Add Existing Worktree" Flow
+---
 
-1. User clicks "Add Existing Worktree..." in the dropdown
-2. Native folder picker opens (`window.api.showFolderPicker`)
-3. Backend validates the selected directory is a git worktree of the current repo
-4. If valid, git already knows about it — just refresh the worktree list
-5. If invalid, show error toast: "This directory is not a worktree of {repo-name}"
+## Edge Cases and Decisions
 
-Note: git tracks all worktrees internally. If a worktree was created via CLI (`git worktree add ~/dev/myrepo-review feature-branch`), Teapot will already see it in `git worktree list`. The "Add Existing Worktree" flow is mainly for cases where the user wants to verify and bring attention to a specific worktree — but realistically, just refreshing the list is sufficient. This action could alternatively be labeled **"Create New Worktree..."** and always go through the create flow.
+### Switching worktrees
 
-#### 4b. "Create New Worktree" Flow
+| Scenario | Behavior |
+|----------|----------|
+| **Switch while active worktree is dirty** | Allowed. The dirty state is preserved — git worktrees are independent. We switch the *view*, not the working directory. The user may want to check on another worktree without losing context. |
+| **Switch while rebase is in progress** | **Blocked.** A rebase locks the active worktree. Show toast: "Cannot switch worktrees during a rebase. Finish or abort the rebase first." Check `uiState.isRebasing` before allowing switch. |
+| **Switch to stale worktree** | **Blocked.** Show toast: "This worktree no longer exists. Remove it from the list?" with action button to prune. |
+| **Active worktree becomes stale while viewing it** | The git watcher will detect the missing directory on next poll. Show an inline banner in the main view: "This worktree's directory has been removed." with "Switch to main worktree" action. |
 
-1. User clicks "Create New Worktree..." in the dropdown
-2. Dialog opens with:
-   - **Branch selector** — pick which branch to check out
-   - **Location picker** — where to create the worktree directory (defaults to sibling of repo: `../myrepo-worktree-{branch}`)
-3. Backend calls `git worktree add <path> <branch>`
-4. On success, automatically switch to the new worktree
+### Creating worktrees
 
-#### 4c. Worktree Removal
+| Scenario | Behavior |
+|----------|----------|
+| **Branch already checked out in another worktree** | Git blocks this. Show error: "Branch 'X' is already checked out in worktree at 'Y'." |
+| **Target path already exists and is non-empty** | Block creation. Show error: "Directory already exists and is not empty." |
+| **Target path is inside the repo** | Block creation. Show error: "Worktree cannot be created inside the repository." |
+| **No local branches to choose from** | Show empty state in the branch picker: "No branches available. Create a branch first." |
+| **Detached HEAD worktree** | Supported — show commit SHA instead of branch name in the selector. Label: `abc1234 (detached)`. |
 
-Already implemented. The existing `WorktreeBadge` context menu has "Delete Worktree" with confirmation. This stays as-is but also becomes accessible from the worktree selector dropdown context menu.
+### Checking out branches
+
+| Scenario | Behavior |
+|----------|----------|
+| **Worktree is dirty** | Block checkout. Show error: "Worktree has uncommitted changes. Commit or discard them first." (Already enforced by `WorktreeOperation.checkoutBranch`.) |
+| **Branch is checked out in another worktree** | Branch appears grayed out in the picker. Not selectable. Shows which worktree has it. |
+| **Checkout on non-active worktree** | Allowed — the IPC uses `git -C <worktreePath>` so it operates on the target worktree regardless of which one is "active" in the UI. The active worktree's view doesn't change. |
+
+### Deleting worktrees
+
+| Scenario | Behavior |
+|----------|----------|
+| **Delete main worktree** | Not allowed. "Delete" action is hidden for the main worktree. |
+| **Delete currently active worktree** | Delete succeeds, then auto-switch to main worktree. Reset `activeWorktreePath` to `null`. |
+| **Delete dirty worktree** | Requires confirmation with destructive variant: "This worktree has uncommitted changes that will be permanently lost." Uses `force: true`. |
+| **Delete stale worktree** | Calls `git worktree prune` to clean up git's reference. No directory to delete. |
+
+### Git watcher and state refresh
+
+| Scenario | Behavior |
+|----------|----------|
+| **Switching worktrees** | `switchWorktree` IPC already re-initializes `GitWatcher` for the new path. The entire `UiState` refreshes, so the stack view updates to show the new worktree's branch/commits. |
+| **Forge state after switch** | If the new worktree is on a different branch, the forge state (PRs) may need refresh. The existing `ForgeStateContext` refresh cycle handles this — it's triggered by `UiState` changes. |
+| **Dirty status of non-active worktrees** | Fetched when the dropdown opens (or on a timer) via lightweight `git status --porcelain` calls. Not continuously watched — only the active worktree has a `GitWatcher`. |
+
+### Topbar layout
+
+| Scenario | Behavior |
+|----------|----------|
+| **No repo selected** | Worktree selector not shown. Same as today's empty state. |
+| **Single worktree (typical)** | Selector still visible. Shows just the main worktree with "Create New Worktree..." in the dropdown. Trigger label matches repo name, so the breadcrumb reads: `myrepo ▾ / myrepo ▾` — this is intentional and clear. |
+| **Long worktree names** | Trigger label truncates with ellipsis after ~20 chars. Full path in tooltip. |
+| **Many worktrees (>6)** | Dropdown becomes scrollable (max-height with overflow, same pattern as repo selector). |
 
 ---
 
 ## Implementation Phases
 
-### Phase 1: Core Selector (MVP)
+### Phase 1: Core Selector + Persistent Paths (MVP)
 
-**Goal:** Ship the worktree selector in the topbar that enables fast switching between existing worktrees.
+**Goal:** Ship the worktree selector in the topbar with persistent worktree creation.
 
-**Changes:**
-1. `WorktreeSelector` component — dropdown with worktree list, switch action
-2. `Topbar.tsx` update — breadcrumb layout with progressive disclosure
-3. Wire `switchWorktree` from `UiStateContext` to the selector
-4. Populate worktree list from `Repo.worktrees` (already available in backend response)
+**Frontend changes:**
+1. `WorktreeSelector` component — dropdown with worktree list, click to switch
+2. `WorktreeSelectorItem` — individual row with status dot, branch, context menu
+3. `Topbar.tsx` update — breadcrumb layout, always visible
+4. `RepoSelectorHeader.tsx` — remove inline `WorktreeBadge`
+5. Wire `switchWorktree` from `UiStateContext` to the selector
+6. Dirty status dot on the trigger button
 
-**Backend:** No changes — all APIs already exist.
+**Backend changes:**
+1. `WorktreeOperation.createAtPath()` — new method for custom paths
+2. `WorktreeOperation.create()` — change default path from `/tmp` to sibling directory
+3. `WorktreeOperation.computeDefaultWorktreePath()` — path computation helper
+4. Config store: `worktreeBasePath` setting (get/set)
+5. New IPC channel: `createWorktreeAtPath`
+6. Settings dialog: "Default Worktree Location" section
 
-**What this gets you:** Users who create worktrees via CLI or via the existing branch context menu can now switch between them with one click from the topbar.
+**What this gets you:** Users see all their worktrees in the topbar, switch with one click, and new worktrees are created in persistent locations by default.
 
-### Phase 2: Checkout Branch on Worktree
+### Phase 2: Checkout Branch + Create Dialog
 
-**Goal:** Let users change which branch a worktree is pointing to, without leaving the current view.
+**Goal:** Let users change which branch a worktree is pointing to, and create worktrees with a proper dialog.
 
-**Changes:**
-1. `CheckoutBranchDialog` component — branch picker scoped to a worktree
-2. Context menu on worktree items in the selector: "Checkout Branch..."
-3. Wire to existing `checkoutWorktreeBranch` IPC
-4. Update toast on checkout conflict: add "Switch to worktree" action
+**Frontend changes:**
+1. `CheckoutBranchDialog` — branch picker scoped to a worktree
+2. `CreateWorktreeDialog` — branch + location picker
+3. Context menu on worktree items: "Checkout Branch..."
+4. Toast improvement: "Switch to worktree" action on checkout conflict
 
-**Backend:** No changes — `checkoutWorktreeBranch` already exists.
+**Backend changes:** None — `checkoutWorktreeBranch` IPC already exists.
 
-### Phase 3: Create Worktree at Custom Path
+### Phase 3: Manage Worktrees Dialog
 
-**Goal:** Let users create persistent worktrees in directories they choose (not `/tmp`).
+**Goal:** Full worktree management view for power users.
 
-**Changes:**
-1. `WorktreeOperation.createAtPath()` — new backend method
-2. New IPC channel `createWorktreeAtPath`
-3. "Create New Worktree..." dialog with branch + location pickers
-4. Default location: sibling directory of the repo
+**Frontend changes:**
+1. `ManageWorktreesDialog` — table view of all worktrees with full actions
+2. Stale worktree pruning UI
+3. Bulk actions (if needed)
 
-### Phase 4: Polish and Edge Cases
+### Phase 4: Polish
 
-1. **Keyboard shortcuts** — e.g., `Cmd+Shift+W` to open worktree selector
-2. **Worktree status refresh** — lightweight polling or git watcher integration for dirty status of non-active worktrees
+1. **Keyboard shortcuts** — `Cmd+Shift+W` / `Ctrl+Shift+W` to open worktree selector
+2. **Worktree status refresh** — lightweight polling for dirty status of non-active worktrees when dropdown is open
 3. **Drag-and-drop branch to worktree** — drag a branch from the stack view onto a worktree in the selector to checkout
-4. **Stale worktree handling** — auto-prune stale entries, offer to remove them from the selector
-5. **Remember last worktree per repo** — already done via `configStore.activeWorktreePath`
+4. **Rebase guard** — block worktree switching during active rebase
+5. **Auto-switch after delete** — if active worktree is deleted, switch to main
 
 ---
 
@@ -392,23 +623,45 @@ Already implemented. The existing `WorktreeBadge` context menu has "Delete Workt
 | File | Change | Phase |
 |------|--------|-------|
 | `src/web/components/WorktreeSelector.tsx` | **New** — Main selector component | 1 |
-| `src/web/components/Topbar.tsx` | Update layout to breadcrumb pattern | 1 |
-| `src/web/components/RepoSelectorHeader.tsx` | Remove inline `WorktreeBadge` (moved to selector) | 1 |
-| `src/web/contexts/UiStateContext.tsx` | Expose `checkoutBranchInWorktree` | 2 |
+| `src/web/components/Topbar.tsx` | Breadcrumb layout, add `useUiStateContext` | 1 |
+| `src/web/components/RepoSelectorHeader.tsx` | Remove inline `WorktreeBadge` | 1 |
+| `src/node/operations/WorktreeOperation.ts` | Add `createAtPath()`, update `create()` default path | 1 |
+| `src/node/store.ts` | Add `worktreeBasePath` setting | 1 |
+| `src/shared/types/ipc.ts` | Add `createWorktreeAtPath` channel + settings IPC | 1 |
+| `src/node/handlers/repo.ts` | Register new handlers | 1 |
+| `src/web/components/SettingsDialog.tsx` | "Default Worktree Location" section | 1 |
 | `src/web/components/CheckoutBranchDialog.tsx` | **New** — Branch picker for worktree | 2 |
-| `src/web/components/WorktreeBadge.tsx` | Add "switch to worktree" toast action | 2 |
-| `src/node/operations/WorktreeOperation.ts` | Add `createAtPath()` method | 3 |
-| `src/shared/types/ipc.ts` | Add `createWorktreeAtPath` channel | 3 |
-| `src/node/handlers/repo.ts` | Register new handler | 3 |
+| `src/web/components/CreateWorktreeDialog.tsx` | **New** — Create worktree dialog | 2 |
+| `src/web/components/WorktreeBadge.tsx` | Toast "Switch to worktree" action | 2 |
+| `src/web/contexts/UiStateContext.tsx` | Expose `checkoutBranchInWorktree` | 2 |
+| `src/web/components/ManageWorktreesDialog.tsx` | **New** — Full management view | 3 |
 
 ---
 
-## Open Questions
+## Decisions Made
 
-1. **Should the worktree selector be visible when there's only 1 worktree?** Recommendation: No (progressive disclosure). It appears automatically when a second worktree is created. An advanced user who wants to create their first additional worktree can do so from the branch context menu (which already has "Create Worktree").
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Selector visible with only 1 worktree? | **Yes** — always visible for discoverability. |
+| 2 | Show dirty status on trigger button? | **Yes** — yellow dot for uncommitted changes. |
+| 3 | Worktree deleted externally? | Already handled — backend `isStale` detection + selector shows red status + "Remove" action. |
+| 4 | User-editable worktree names (aliases)? | **Follow-up feature** — not in initial implementation. See below. |
+| 5 | Default worktree location? | **Sibling of repo** by default, with a "Custom path" setting in Settings. |
+| 6 | What about existing `/tmp` worktrees? | Existing worktrees stay where they are. Only *new* worktrees use the new default. Users can re-create them if desired. |
 
-2. **Should we show worktree dirty status in the selector trigger button?** E.g., a yellow dot when the active worktree has uncommitted changes. Recommendation: Yes — this is useful ambient information and matches the existing `WorktreeBadge` color coding.
+---
 
-3. **What happens when a worktree is deleted externally (rm -rf)?** Already handled — the backend's stale detection (`isStale`) marks these, and the selector shows them with red status + "Remove" action.
+## Follow-Up Features (Post-MVP)
 
-4. **Should worktree names be user-editable (aliases)?** Deferred to post-MVP. For now, use the directory name. An alias system would require config-store changes and add complexity.
+### Worktree Aliases
+
+Allow users to assign custom names to worktrees (e.g., "Review" instead of "myrepo-review"). Requires:
+
+- Config store: `worktreeAliases: Record<string, string>` — maps worktree path → display name
+- UI: Editable name field in `ManageWorktreesDialog`
+- Selector trigger and dropdown show alias instead of folder name
+- Alias is purely cosmetic — no filesystem changes
+
+### Worktree Templates
+
+Pre-configure worktree setups (e.g., "always have a review worktree and an experiment worktree"). Lower priority — depends on how users actually use the feature.

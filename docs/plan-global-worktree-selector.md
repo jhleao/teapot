@@ -138,7 +138,6 @@ A **yellow dot** appears next to the worktree name when the active worktree has 
 │    (path no longer exists)                  │
 │═════════════════════════════════════════════│
 │  + Create New Worktree...                   │
-│  ⚙ Manage Worktrees...                     │
 └─────────────────────────────────────────────┘
 ```
 
@@ -158,7 +157,9 @@ Each worktree item shows:
 - Open in Terminal
 - Copy Path
 - *(separator)*
-- Delete Worktree (not shown for main worktree)
+- Discard Changes (only shown if dirty)
+- Delete Worktree (not shown for main worktree; destructive confirmation if dirty)
+- Remove from List (only shown for stale worktrees — calls `git worktree prune`)
 
 **Trigger label** (the button in the topbar):
 - Folder name of the active worktree: `myrepo-review ▾`
@@ -198,58 +199,6 @@ Right-click a worktree item → "Checkout Branch..." opens a branch picker scope
 ### Entry Point 2: From the Stack View
 
 The existing branch context menu has checkout. When a branch is checked out in a different worktree, the current toast says "Cannot checkout — already checked out in X." We extend this toast with a clickable action: **"Switch to that worktree"** → calls `switchWorktree`.
-
----
-
-## Manage Worktrees Dialog
-
-Opened from the worktree selector dropdown via "Manage Worktrees...". A modal dialog with a table view of all worktrees.
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  Manage Worktrees                                              [X] │
-│─────────────────────────────────────────────────────────────────────│
-│                                                                     │
-│  ● myrepo (main worktree)                                         │
-│    Path:    ~/dev/myrepo                                           │
-│    Branch:  main                                                   │
-│    Status:  Clean                                                  │
-│    [Open in Editor]  [Open in Terminal]  [Copy Path]               │
-│                                                                     │
-│─────────────────────────────────────────────────────────────────────│
-│                                                                     │
-│  ● myrepo-review                                                   │
-│    Path:    ~/dev/myrepo-review                                    │
-│    Branch:  feature-auth                                           │
-│    Status:  2 uncommitted changes                                  │
-│    [Open in Editor]  [Open in Terminal]  [Copy Path]  [Delete]     │
-│                                                                     │
-│─────────────────────────────────────────────────────────────────────│
-│                                                                     │
-│  ● myrepo-old                                              ⚠      │
-│    Path:    ~/dev/myrepo-old                                       │
-│    Branch:  (unknown — path no longer exists)                      │
-│    Status:  Stale                                                  │
-│    [Remove from list]                                              │
-│                                                                     │
-│═════════════════════════════════════════════════════════════════════│
-│  [+ Create New Worktree]                                           │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-Each worktree card shows:
-- **Name + status dot** (same color coding as dropdown)
-- **Full path** (not abbreviated)
-- **Branch** currently checked out
-- **Dirty status** — "Clean" or "N uncommitted changes"
-- **Actions:**
-  - Open in Editor, Open in Terminal, Copy Path (always available)
-  - Checkout Branch... (opens the branch picker)
-  - Delete Worktree (not shown for main; destructive confirmation if dirty)
-  - Discard Changes (only shown if dirty)
-  - Remove from List (only for stale worktrees — calls `git worktree prune`)
-
-The dialog is **non-modal** in feel (doesn't block the main view) but is implemented as a dialog for simplicity, consistent with `SettingsDialog`.
 
 ---
 
@@ -419,17 +368,7 @@ Modal dialog with:
 - Dirty worktree guard — if target worktree is dirty, show warning and block
 - Calls `checkoutWorktreeBranch` IPC on selection
 
-#### 3f. New Component: `ManageWorktreesDialog`
-
-**File:** `src/web/components/ManageWorktreesDialog.tsx`
-
-Follows the pattern of `SettingsDialog`:
-- Opened from worktree selector dropdown
-- Shows full worktree details (see mockup above)
-- Actions per worktree: open in editor/terminal, copy path, checkout branch, delete, discard changes
-- "Create New Worktree" button at the bottom
-
-#### 3g. New Component: `CreateWorktreeDialog`
+#### 3f. New Component: `CreateWorktreeDialog`
 
 **File:** `src/web/components/CreateWorktreeDialog.tsx`
 
@@ -456,7 +395,7 @@ Dialog for creating a new worktree:
 - Location auto-fills based on the default worktree base path setting + selected branch name
 - "Switch to this worktree after creation" checkbox (default: checked)
 
-#### 3h. Update `WorktreeBadge.tsx` — Toast Improvement
+#### 3g. Update `WorktreeBadge.tsx` — Toast Improvement
 
 When checkout fails because a branch is in another worktree (currently a plain `toast.info`), enhance:
 
@@ -471,7 +410,7 @@ toast.info(`Cannot checkout '${ref}' — already checked out in ${worktreePath}`
 
 Sonner supports action buttons on toasts natively.
 
-#### 3i. Settings Dialog Update
+#### 3h. Settings Dialog Update
 
 Add "Worktree Location" section to `SettingsDialog.tsx`:
 
@@ -599,16 +538,7 @@ Add "Worktree Location" section to `SettingsDialog.tsx`:
 
 **Backend changes:** None — `checkoutWorktreeBranch` IPC already exists.
 
-### Phase 3: Manage Worktrees Dialog
-
-**Goal:** Full worktree management view for power users.
-
-**Frontend changes:**
-1. `ManageWorktreesDialog` — table view of all worktrees with full actions
-2. Stale worktree pruning UI
-3. Bulk actions (if needed)
-
-### Phase 4: Polish
+### Phase 3: Polish
 
 1. **Keyboard shortcuts** — `Cmd+Shift+W` / `Ctrl+Shift+W` to open worktree selector
 2. **Worktree status refresh** — lightweight polling for dirty status of non-active worktrees when dropdown is open
@@ -634,7 +564,6 @@ Add "Worktree Location" section to `SettingsDialog.tsx`:
 | `src/web/components/CreateWorktreeDialog.tsx` | **New** — Create worktree dialog | 2 |
 | `src/web/components/WorktreeBadge.tsx` | Toast "Switch to worktree" action | 2 |
 | `src/web/contexts/UiStateContext.tsx` | Expose `checkoutBranchInWorktree` | 2 |
-| `src/web/components/ManageWorktreesDialog.tsx` | **New** — Full management view | 3 |
 
 ---
 
@@ -658,7 +587,7 @@ Add "Worktree Location" section to `SettingsDialog.tsx`:
 Allow users to assign custom names to worktrees (e.g., "Review" instead of "myrepo-review"). Requires:
 
 - Config store: `worktreeAliases: Record<string, string>` — maps worktree path → display name
-- UI: Editable name field in `ManageWorktreesDialog`
+- UI: Editable via context menu "Rename..." on worktree items in the dropdown
 - Selector trigger and dropdown show alias instead of folder name
 - Alias is purely cosmetic — no filesystem changes
 

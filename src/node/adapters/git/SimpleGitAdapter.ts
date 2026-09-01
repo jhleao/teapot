@@ -760,6 +760,41 @@ export class SimpleGitAdapter implements GitAdapter {
   }
 
   /**
+   * Get the ahead/behind commit counts between two refs.
+   *
+   * Uses `git rev-list --count` to compute:
+   * - ahead: commits in ref1 but not in ref2
+   * - behind: commits in ref2 but not in ref1
+   *
+   * @param dir - Repository directory path
+   * @param ref1 - First ref (typically local branch)
+   * @param ref2 - Second ref (typically remote tracking branch)
+   * @returns Object with ahead and behind counts, or null if refs don't exist
+   */
+  async getAheadBehind(
+    dir: string,
+    ref1: string,
+    ref2: string
+  ): Promise<{ ahead: number; behind: number } | null> {
+    try {
+      const git = this.createGit(dir)
+
+      // Get commits in ref1 but not in ref2 (ahead)
+      const aheadResult = await git.raw(['rev-list', '--count', `${ref2}..${ref1}`])
+      const ahead = parseInt(aheadResult.trim(), 10)
+
+      // Get commits in ref2 but not in ref1 (behind)
+      const behindResult = await git.raw(['rev-list', '--count', `${ref1}..${ref2}`])
+      const behind = parseInt(behindResult.trim(), 10)
+
+      return { ahead, behind }
+    } catch {
+      // If either ref doesn't exist, return null
+      return null
+    }
+  }
+
+  /**
    * Check if a commit is an ancestor of another commit.
    *
    * Uses `git merge-base --is-ancestor` which exits with:

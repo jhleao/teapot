@@ -34,6 +34,10 @@ export type Branch = {
   isTrunk: boolean
   isRemote: boolean
   headSha: string
+  /** Number of commits in remote tracking branch not in local branch */
+  commitsBehind?: number
+  /** Number of commits in local branch not in remote tracking branch */
+  commitsAhead?: number
 }
 
 export type Commit = {

@@ -4,6 +4,7 @@ import React, { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useUiStateContext } from '../contexts/UiStateContext'
 import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from './ContextMenu'
+import { NewBranchDialog } from './NewBranchDialog'
 import { RenameBranchDialog } from './RenameBranchDialog'
 import { SquashConfirmDialog } from './SquashConfirmDialog'
 
@@ -23,6 +24,7 @@ export const BranchBadge = memo(function BranchBadge({
     createPullRequest
   } = useUiStateContext()
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isNewBranchDialogOpen, setIsNewBranchDialogOpen] = useState(false)
   const [isCreatingWorktree, setIsCreatingWorktree] = useState(false)
   const [isSquashDialogOpen, setIsSquashDialogOpen] = useState(false)
   const [squashPreviewData, setSquashPreviewData] = useState<SquashPreview | null>(null)
@@ -51,17 +53,27 @@ export const BranchBadge = memo(function BranchBadge({
     setIsRenameDialogOpen(true)
   }, [])
 
+  const handleNewBranch = useCallback(() => {
+    setIsNewBranchDialogOpen(true)
+  }, [])
+
+  // Create worktree for THIS existing branch (not a new branch)
   const handleCreateWorktree = useCallback(async () => {
     if (isCreatingWorktree) return
-
     setIsCreatingWorktree(true)
     try {
       const result = await createWorktree({ branch: data.name })
       if (result.success) {
-        toast.success(`Worktree created at ${result.worktreePath}`)
+        toast.success('Worktree created', {
+          description: `Branch ${data.name} checked out at ${result.worktreePath}`
+        })
       } else {
         toast.error('Failed to create worktree')
       }
+    } catch (error) {
+      toast.error('Failed to create worktree', {
+        description: error instanceof Error ? error.message : String(error)
+      })
     } finally {
       setIsCreatingWorktree(false)
     }
@@ -157,10 +169,10 @@ export const BranchBadge = memo(function BranchBadge({
     [data.name, squashIntoParent, squashPreviewData]
   )
 
-  // Can't create worktree for branch that already has one
-  const hasWorktree = data.worktree != null
   // Show "Open in..." options if we have an openable path
   const canOpen = openablePath != null
+  // Can create worktree for this branch if it doesn't already have one
+  const hasWorktree = data.worktree != null || data.isCurrent
 
   const deletePermission = useMemo(
     () => getDeleteBranchPermission({ isTrunk: data.isTrunk, isCurrent: data.isCurrent }),
@@ -209,12 +221,16 @@ export const BranchBadge = memo(function BranchBadge({
             {data.canCreateWorktree && (
               <>
                 <ContextMenuSeparator />
+                {/* Create worktree for THIS branch (only if no worktree exists) */}
                 <ContextMenuItem
                   onClick={handleCreateWorktree}
                   disabled={hasWorktree || isCreatingWorktree}
+                  disabledReason={hasWorktree ? 'Branch already has a worktree' : undefined}
                 >
-                  {isCreatingWorktree ? 'Creating...' : 'New worktree here'}
+                  {isCreatingWorktree ? 'Creating...' : 'Create worktree'}
                 </ContextMenuItem>
+                {/* Create a new child branch (with optional worktree) */}
+                <ContextMenuItem onClick={handleNewBranch}>New branch from...</ContextMenuItem>
               </>
             )}
             {data.canRecreatePr && (
@@ -255,6 +271,11 @@ export const BranchBadge = memo(function BranchBadge({
         open={isRenameDialogOpen}
         onOpenChange={setIsRenameDialogOpen}
         branchName={data.name}
+      />
+      <NewBranchDialog
+        open={isNewBranchDialogOpen}
+        onOpenChange={setIsNewBranchDialogOpen}
+        sourceBranch={data.name}
       />
       {squashPreviewData && (
         <SquashConfirmDialog

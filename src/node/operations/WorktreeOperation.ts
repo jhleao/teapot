@@ -16,6 +16,7 @@ import * as path from 'path'
 import { promisify } from 'util'
 
 import { log } from '@shared/logger'
+import type { WorktreeInitializationResult } from '@shared/types/repo'
 
 import { getGitAdapter, resolveTrunkRef } from '../adapters/git'
 import { BranchUtils } from '../domain/BranchUtils'
@@ -255,11 +256,12 @@ export class WorktreeOperation {
   }
 
   /**
-   * Create a new branch, optionally with a worktree.
+   * Create a new branch, optionally with a worktree and initialization.
    * This is the enhanced branch creation flow that:
    * 1. Creates a new branch from the source branch
    * 2. Optionally creates a worktree for that branch
    * 3. Optionally creates a "working commit" (empty WIP commit)
+   * 4. Optionally runs initialization (copy files, run commands) in background
    */
   static async createWithNewBranch(
     repoPath: string,
@@ -268,6 +270,7 @@ export class WorktreeOperation {
       newBranchName?: string
       createWorktree?: boolean
       createWorkingCommit: boolean
+      runInitialization: boolean
     }
   ): Promise<{
     success: boolean
@@ -313,6 +316,30 @@ export class WorktreeOperation {
         // Non-fatal: log warning but continue
         log.warn(`[WorktreeOperation] Failed to create working commit: ${commitResult.error}`)
       }
+    }
+
+    // Step 4: Run initialization if requested (in background, fire-and-forget)
+    if (options.runInitialization) {
+      const config = configStore.getWorktreeInitConfig(repoPath)
+      // Run initialization in background - don't await
+      this.runInitialization(repoPath, worktreePath, config)
+        .then((result) => {
+          const failedCommands = result.commandResults.filter((r) => !r.success)
+          if (result.filesSkipped.length > 0 || failedCommands.length > 0) {
+            log.warn(`[WorktreeOperation] Initialization completed with warnings`, {
+              filesSkipped: result.filesSkipped,
+              failedCommands: failedCommands.map((c) => ({ command: c.command, error: c.error }))
+            })
+          } else {
+            log.info(`[WorktreeOperation] Initialization completed successfully`, {
+              filesCopied: result.filesCopied.length,
+              commandsRun: result.commandResults.length
+            })
+          }
+        })
+        .catch((error) => {
+          log.error(`[WorktreeOperation] Initialization failed:`, error)
+        })
     }
 
     return {
@@ -449,5 +476,79 @@ export class WorktreeOperation {
     } catch (error) {
       log.warn(`[WorktreeOperation] Failed to rollback branch ${branchName}:`, error)
     }
+  }
+
+  /**
+   * Run initialization steps for a new worktree.
+   * Copies configured files and runs setup commands.
+   */
+  private static async runInitialization(
+    repoPath: string,
+    worktreePath: string,
+    config: { filesToCopy: string[]; setupCommands: string[] }
+  ): Promise<WorktreeInitializationResult> {
+    const result: WorktreeInitializationResult = {
+      filesCopied: [],
+      filesSkipped: [],
+      commandResults: []
+    }
+
+    // Copy gitignored files from main worktree
+    for (const file of config.filesToCopy) {
+      const sourcePath = path.join(repoPath, file)
+      const destPath = path.join(worktreePath, file)
+
+      try {
+        await fs.promises.access(sourcePath, fs.constants.R_OK)
+
+        // Ensure destination directory exists
+        await fs.promises.mkdir(path.dirname(destPath), { recursive: true })
+
+        // Copy the file
+        await fs.promises.copyFile(sourcePath, destPath)
+        result.filesCopied.push(file)
+        log.debug(`[WorktreeOperation] Copied ${file} to worktree`)
+      } catch (error) {
+        const reason =
+          error instanceof Error && 'code' in error && error.code === 'ENOENT'
+            ? 'File not found in main worktree'
+            : error instanceof Error
+              ? error.message
+              : 'Unknown error'
+        result.filesSkipped.push({ file, reason })
+        log.debug(`[WorktreeOperation] Skipped copying ${file}: ${reason}`)
+      }
+    }
+
+    // Run setup commands
+    for (const command of config.setupCommands) {
+      const startTime = Date.now()
+      try {
+        const { stdout, stderr } = await execAsync(command, {
+          cwd: worktreePath,
+          timeout: 5 * 60 * 1000, // 5 minute timeout per command
+          maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large outputs
+        })
+        result.commandResults.push({
+          command,
+          success: true,
+          output: (stdout || stderr).slice(0, 1000), // Limit output size
+          durationMs: Date.now() - startTime
+        })
+        log.debug(`[WorktreeOperation] Ran command: ${command} (${Date.now() - startTime}ms)`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        result.commandResults.push({
+          command,
+          success: false,
+          error: message.slice(0, 500), // Limit error size
+          durationMs: Date.now() - startTime
+        })
+        log.warn(`[WorktreeOperation] Command failed: ${command}`, error)
+        // Continue with remaining commands even if one fails
+      }
+    }
+
+    return result
   }
 }

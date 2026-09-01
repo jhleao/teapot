@@ -29,6 +29,44 @@ export type Worktree = {
   isDirty: boolean
 }
 
+/**
+ * Per-repository worktree initialization configuration.
+ * Stored in the main config store, keyed by repoPath.
+ */
+export type WorktreeInitConfig = {
+  /** Gitignored files to copy from main worktree to new worktrees */
+  filesToCopy: string[]
+  /** Commands to run after worktree creation (in order) */
+  setupCommands: string[]
+  /** Whether to create an empty "WIP" commit for new branches by default */
+  createWorkingCommit: boolean
+}
+
+/** Default configuration for repos without custom settings */
+export const DEFAULT_WORKTREE_INIT_CONFIG: WorktreeInitConfig = {
+  filesToCopy: [],
+  setupCommands: [],
+  createWorkingCommit: false
+}
+
+/**
+ * Result of worktree initialization (file copies and command runs)
+ */
+export type WorktreeInitializationResult = {
+  /** Files that were successfully copied */
+  filesCopied: string[]
+  /** Files that could not be copied */
+  filesSkipped: Array<{ file: string; reason: string }>
+  /** Results of running setup commands */
+  commandResults: Array<{
+    command: string
+    success: boolean
+    output?: string
+    error?: string
+    durationMs: number
+  }>
+}
+
 export type Branch = {
   ref: string
   isTrunk: boolean

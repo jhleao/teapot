@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/jhleao/teapot/compare/v0.9.0...v0.9.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* amend mid-stack rebases entire descendant stack ([d1b2131](https://github.com/jhleao/teapot/commit/d1b2131d8bbecc5dd4c8765d3de7bc49b821c2cd))
+* amend with children creates duplicate commit causing bogus conflicts ([b3f5b3b](https://github.com/jhleao/teapot/commit/b3f5b3b15514459155f986ee6bd65a2dc25db4d6))
+
 ## [0.9.0](https://github.com/jhleao/teapot/compare/v0.8.0...v0.9.0) (2026-02-06)
 
 

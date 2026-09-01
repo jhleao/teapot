@@ -819,19 +819,27 @@ export class UiStateBuilder {
   private static applyRebaseStatusToStack(stack: UiStack, intent: RebaseIntent): void {
     const promptingShas = new Set<string>()
     const idleShas = new Set<string>()
+    const visited = new Set<string>()
 
     for (const target of intent.targets) {
       target.node.ownedShas.forEach((sha) => promptingShas.add(sha))
-      UiStateBuilder.collectChildShas(target.node.children, idleShas)
+      UiStateBuilder.collectChildShas(target.node.children, idleShas, visited)
     }
 
     UiStateBuilder.applyStatusToStackRecursive(stack, promptingShas, idleShas)
   }
 
-  private static collectChildShas(children: StackNodeState[], result: Set<string>): void {
+  private static collectChildShas(
+    children: StackNodeState[],
+    result: Set<string>,
+    visited: Set<string>
+  ): void {
     for (const child of children) {
+      const visitKey = `${child.branch}@${child.headSha}`
+      if (visited.has(visitKey)) continue
+      visited.add(visitKey)
       child.ownedShas.forEach((sha) => result.add(sha))
-      UiStateBuilder.collectChildShas(child.children, result)
+      UiStateBuilder.collectChildShas(child.children, result, visited)
     }
   }
 
@@ -869,12 +877,19 @@ export class UiStateBuilder {
     let timeCounter = 0
     const allocateSyntheticTime = () => intent.createdAtMs + timeCounter++
 
+    // Dedupe visited nodes to guard against DAG-shaped intents where the same
+    // branch is reachable through multiple parents. Without this, recursion is
+    // O(2^depth) and repeatedly rewrites parentSha chains it's walking, which
+    // can hang getRepo long enough to trip the renderer's 10s IPC timeout.
+    const visited = new Set<string>()
+
     intent.targets.forEach((target) => {
       UiStateBuilder.applyIntentTarget(
         synthetic,
         target.node,
         target.targetBaseSha,
-        allocateSyntheticTime
+        allocateSyntheticTime,
+        visited
       )
     })
 
@@ -885,8 +900,13 @@ export class UiStateBuilder {
     commits: Map<string, DomainCommit & { childrenSha: string[] }>,
     node: StackNodeState,
     targetBaseSha: string,
-    allocateSyntheticTime: () => number
+    allocateSyntheticTime: () => number,
+    visited: Set<string>
   ): void {
+    const visitKey = `${node.branch}@${node.headSha}`
+    if (visited.has(visitKey)) return
+    visited.add(visitKey)
+
     let oldestOwnedSha = node.headSha
     let currentSha: string | null = node.headSha
     while (currentSha) {
@@ -948,7 +968,8 @@ export class UiStateBuilder {
         commits,
         child,
         headCommit?.sha ?? node.headSha,
-        allocateSyntheticTime
+        allocateSyntheticTime,
+        visited
       )
     )
   }

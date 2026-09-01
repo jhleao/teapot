@@ -202,7 +202,7 @@ export class RebaseOperation {
     }
 
     const trunkHeadSha = TrunkResolver.getTrunkHeadSha(repo.branches, repo.commits)
-    const uiState: UiState = { stack, workingTree: [], trunkHeadSha }
+    const uiState: UiState = { stack, workingTree: [], trunkHeadSha, worktrees: repo.worktrees }
 
     return { success: true, uiState }
   }

@@ -27,6 +27,10 @@ export type Worktree = {
   isStale: boolean
   /** True if the worktree has uncommitted changes */
   isDirty: boolean
+  /** True if a rebase is in progress in this worktree */
+  isRebasing: boolean
+  /** Paths with merge/rebase conflicts (empty if no conflicts) */
+  conflictedFiles: string[]
 }
 
 export type Branch = {

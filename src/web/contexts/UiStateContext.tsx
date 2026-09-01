@@ -70,6 +70,8 @@ interface UiStateContextValue {
   }) => Promise<{ success: boolean }>
   isWorkingTreeDirty: boolean
   isRebasingWithConflicts: boolean
+  isCurrentWorktreeConflicted: boolean
+  conflictedWorktrees: import('@shared/types').Worktree[]
   isOnTrunk: boolean
   queuedBranches: string[]
   mergeStrategy: MergeStrategy
@@ -115,6 +117,8 @@ const DEFAULT_UI_STATE_CONTEXT: UiStateContextValue = {
   removeWorktree: async () => ({ success: false }),
   isWorkingTreeDirty: false,
   isRebasingWithConflicts: false,
+  isCurrentWorktreeConflicted: false,
+  conflictedWorktrees: [],
   isOnTrunk: false,
   queuedBranches: [],
   mergeStrategy: 'rebase'
@@ -764,6 +768,22 @@ export function UiStateProvider({
     [uiState?.stack]
   )
 
+  // Find worktrees with merge conflicts (rebasing with conflicted files)
+  const conflictedWorktrees = useMemo(
+    () => uiState?.worktrees?.filter((wt) => wt.isRebasing && wt.conflictedFiles.length > 0) ?? [],
+    [uiState?.worktrees]
+  )
+
+  // Check if the current worktree (selected repo path) has conflicts
+  const isCurrentWorktreeConflicted = useMemo(() => {
+    // Get the current worktree path from repoPath (which is the activeWorktreePath or main worktree)
+    if (!repoPath) return false
+
+    // Check if any conflicted worktree matches the current repo path
+    // This works for both Teapot-initiated and external rebases
+    return conflictedWorktrees.some((wt) => wt.path === repoPath)
+  }, [repoPath, conflictedWorktrees])
+
   // Check if currently on a trunk branch (main/master) - amending on trunk is dangerous
   const isOnTrunk = useMemo(
     () => (uiState?.stack ? isCurrentBranchTrunk(uiState.stack) : false),
@@ -813,6 +833,8 @@ export function UiStateProvider({
       removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
+      isCurrentWorktreeConflicted,
+      conflictedWorktrees,
       isOnTrunk,
       queuedBranches,
       mergeStrategy
@@ -853,6 +875,8 @@ export function UiStateProvider({
       removeWorktree,
       isWorkingTreeDirty,
       isRebasingWithConflicts,
+      isCurrentWorktreeConflicted,
+      conflictedWorktrees,
       isOnTrunk,
       queuedBranches,
       mergeStrategy

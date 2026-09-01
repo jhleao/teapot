@@ -54,6 +54,12 @@ export type BuildRepoOptions = {
    * If null/undefined, uses the main worktree (repoPath).
    */
   activeWorktreePath?: string | null
+  /**
+   * Skip conflict detection for worktrees.
+   * Conflict detection requires checking git status for each worktree which is expensive.
+   * Default: false
+   */
+  skipConflictCheck?: boolean
 }
 
 const DEFAULT_OPTIONS: BuildRepoOptions = {
@@ -81,7 +87,8 @@ export async function buildRepoModel(
     loadRemotes,
     maxCommitsPerBranch,
     activeWorktreePath,
-    skipWorktreeDirtyCheck
+    skipWorktreeDirtyCheck,
+    skipConflictCheck
   } = {
     ...DEFAULT_OPTIONS,
     ...options
@@ -145,7 +152,10 @@ export async function buildRepoModel(
 
   // Load worktrees
   const worktreesStart = log.trace('[RepoModelService] loadWorktrees START')
-  const worktrees = await loadWorktrees(dir, { skipDirtyCheck: skipWorktreeDirtyCheck })
+  const worktrees = await loadWorktrees(dir, {
+    skipDirtyCheck: skipWorktreeDirtyCheck,
+    skipConflictCheck
+  })
   log.trace('[RepoModelService] loadWorktrees END', {
     startMs: worktreesStart,
     count: worktrees.length
@@ -177,13 +187,14 @@ export async function buildRepoModel(
  */
 async function loadWorktrees(
   dir: string,
-  options?: { skipDirtyCheck?: boolean }
+  options?: { skipDirtyCheck?: boolean; skipConflictCheck?: boolean }
 ): Promise<Worktree[]> {
   const git = getGitAdapter()
 
   try {
     const worktreeInfos = await git.listWorktrees(dir, {
-      skipDirtyCheck: options?.skipDirtyCheck
+      skipDirtyCheck: options?.skipDirtyCheck,
+      skipConflictCheck: options?.skipConflictCheck
     })
     return worktreeInfos.map((info) => ({
       path: info.path,
@@ -191,7 +202,9 @@ async function loadWorktrees(
       branch: info.branch,
       isMain: info.isMain,
       isStale: info.isStale,
-      isDirty: info.isDirty
+      isDirty: info.isDirty,
+      isRebasing: info.isRebasing,
+      conflictedFiles: info.conflictedFiles
     }))
   } catch {
     // If worktree listing fails (e.g., old git version), return empty array

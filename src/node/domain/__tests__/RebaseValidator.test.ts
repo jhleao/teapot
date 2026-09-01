@@ -570,6 +570,8 @@ function createWorktree(path: string, branch: string | null, isDirty: boolean): 
     headSha: 'abc123',
     isMain: path === '/repo',
     isStale: false,
-    isDirty
+    isDirty,
+    isRebasing: false,
+    conflictedFiles: []
   }
 }

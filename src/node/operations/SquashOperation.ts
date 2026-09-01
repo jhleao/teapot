@@ -8,7 +8,7 @@ import {
   supportsRebase,
   supportsRebaseAbort
 } from '../adapters/git'
-import { SquashValidator } from '../domain'
+import { SquashValidator, StackAnalyzer } from '../domain'
 import { RepoModelService, SessionService, TransactionService } from '../services'
 import {
   ExecutionContextService,
@@ -209,6 +209,17 @@ export class SquashOperation {
     const parentCommit = await git.readCommit(repoPath, parentHeadSha)
     const targetCommit = await git.readCommit(repoPath, targetHeadSha)
 
+    // Detect if squash result would be empty (child undoes parent's changes).
+    // This happens when the child's tree matches the grandparent's tree,
+    // meaning parent + child changes = no net change.
+    let resultWouldBeEmpty = false
+    if (!isEmpty && parentCommit.parentSha) {
+      resultWouldBeEmpty = await git.isDiffEmpty(
+        repoPath,
+        `${parentCommit.parentSha}..${targetHeadSha}`
+      )
+    }
+
     // PR info is not fetched here to avoid blocking preview on network.
     // Frontend's ForgeStateContext has cached PR data and can enrich the preview.
     // The execute phase will fetch forge state for PR cleanup if needed.
@@ -226,6 +237,7 @@ export class SquashOperation {
       parentBranch,
       descendantBranches: validation.descendantBranches,
       isEmpty,
+      resultWouldBeEmpty,
       hasPr: false, // Frontend enriches from ForgeStateContext
       prNumber: undefined,
       parentCommitMessage: parentCommit.message,
@@ -333,6 +345,22 @@ export class SquashOperation {
       validation.commitDistance === 0 ||
       (await git.isDiffEmpty(repoPath, `${parentBranch}..${branchName}`))
 
+    // Detect if squash result would be empty (child undoes parent's changes).
+    // The child's tree matches the grandparent's tree, so amending parent
+    // with child's diff would create an empty commit.
+    let resultWouldBeEmpty = false
+    let grandparentSha: string | undefined
+    if (!isEmpty) {
+      const parentCommitData = await git.readCommit(repoPath, parentHeadSha)
+      grandparentSha = parentCommitData.parentSha
+      if (grandparentSha) {
+        resultWouldBeEmpty = await git.isDiffEmpty(
+          repoPath,
+          `${grandparentSha}..${targetHeadSha}`
+        )
+      }
+    }
+
     const originalBranch = await git.currentBranch(repoPath)
     const originalHead = await git.resolveRef(repoPath, 'HEAD')
 
@@ -377,6 +405,155 @@ export class SquashOperation {
       }
     }
 
+    // Result-would-be-empty path: child's changes cancel parent's changes.
+    // Delete both branches and rebase descendants onto the grandparent.
+    if (resultWouldBeEmpty && grandparentSha) {
+      // Find the grandparent branch name for checkout after deletion
+      const commitMap = new Map(repo.commits.map((c) => [c.sha, c]))
+      const parentIndex = StackAnalyzer.buildParentIndex(
+        repo.branches.filter((b) => !b.isRemote),
+        commitMap
+      )
+      const grandparentBranchName = parentIndex.get(parentBranch)?.parent
+
+      if (descendants.length === 0) {
+        // Fast path: no descendants, just delete both branches
+        options.onPhaseStart?.('handling-branches')
+
+        await this.ensureNotOnBranch(
+          repoPath,
+          [branchName, parentBranch],
+          grandparentBranchName,
+          grandparentSha,
+          git
+        )
+
+        await this.cleanupSquashedBranch(repoPath, branchName, forgeState)
+        await this.cleanupSquashedBranch(repoPath, parentBranch, forgeState)
+
+        // Restore original checkout state (ensureNotOnBranch may have detached HEAD)
+        await this.restoreOriginalHead(repoPath, originalBranch, originalHead, [branchName, parentBranch], git)
+
+        options.onPhaseComplete?.('handling-branches')
+
+        return {
+          success: true,
+          deletedBranch: `${branchName}, ${parentBranch}`
+        }
+      }
+
+      // With descendants: need worktree for rebasing
+      options.onPhaseStart?.('acquiring-context')
+      const contextResult = await acquireSquashContext(repoPath, parentBranch)
+      if (!contextResult.success) {
+        return contextResult.error
+      }
+      const context = contextResult.context
+      const executionPath = context.executionPath
+      options.onPhaseComplete?.('acquiring-context')
+
+      try {
+        options.onPhaseStart?.('rebasing-descendants')
+        // Rebase descendants onto grandparent instead of amended parent
+        const rebaseResult = await this.rebaseDescendants(
+          repoPath,
+          executionPath,
+          parentBranch,
+          directChild,
+          descendants,
+          originalShas,
+          grandparentSha,
+          git,
+          {
+            onRebaseStart: options.onRebaseStart,
+            onRebaseComplete: options.onRebaseComplete,
+            onConflict: options.onConflict
+          }
+        )
+        options.onPhaseComplete?.('rebasing-descendants')
+
+        if (rebaseResult.status === 'conflict') {
+          await this.rollbackBranches(
+            executionPath,
+            branchesToTrack,
+            originalShas,
+            git,
+            null,
+            originalHead,
+            parentBranch
+          )
+          await safeReleaseContext(repoPath, context)
+          return { success: false, error: 'descendant_conflict', conflicts: rebaseResult.conflicts }
+        }
+
+        if (rebaseResult.status === 'error') {
+          await this.rollbackBranches(
+            executionPath,
+            branchesToTrack,
+            originalShas,
+            git,
+            null,
+            originalHead,
+            parentBranch
+          )
+          await safeReleaseContext(repoPath, context)
+          return { success: false, error: 'ancestry_mismatch', errorDetail: rebaseResult.message }
+        }
+
+        const modifiedBranches: string[] = []
+        for (const branch of descendants) {
+          const orig = originalShas.get(branch)
+          const newSha = await git.resolveRef(executionPath, branch)
+          if (orig !== newSha) modifiedBranches.push(branch)
+        }
+
+        // Release worktree before branch operations
+        options.onPhaseStart?.('cleanup')
+        await safeReleaseContext(repoPath, context)
+        options.onPhaseComplete?.('cleanup')
+
+        options.onPhaseStart?.('handling-branches')
+
+        // Ensure we're not on a branch we're about to delete.
+        // rebaseDescendants leaves executionPath on parentBranch,
+        // and when executionPath === repoPath (parallel worktrees disabled),
+        // the main repo ends up on parentBranch which we're about to delete.
+        await this.ensureNotOnBranch(
+          repoPath,
+          [branchName, parentBranch],
+          grandparentBranchName,
+          grandparentSha,
+          git
+        )
+
+        await this.cleanupSquashedBranch(repoPath, branchName, forgeState)
+        await this.cleanupSquashedBranch(repoPath, parentBranch, forgeState)
+
+        // Restore original checkout state (ensureNotOnBranch may have detached HEAD)
+        await this.restoreOriginalHead(repoPath, originalBranch, originalHead, [branchName, parentBranch], git)
+
+        options.onPhaseComplete?.('handling-branches')
+
+        return {
+          success: true,
+          modifiedBranches,
+          deletedBranch: `${branchName}, ${parentBranch}`
+        }
+      } catch (error) {
+        await this.rollbackBranches(
+          executionPath,
+          branchesToTrack,
+          originalShas,
+          git,
+          null,
+          originalHead,
+          parentBranch
+        )
+        await safeReleaseContext(repoPath, context)
+        throw error
+      }
+    }
+
     // Main path: use a temporary worktree for git operations to keep user's
     // working directory untouched. The temp worktree shares .git with the main
     // repo, so branch operations performed there affect the main repo too.
@@ -416,18 +593,33 @@ export class SquashOperation {
         const currentIdentity = await getAuthorIdentity(repoPath)
         const commitMessage = options.commitMessage ?? targetCommit.message
 
-        await git.commit(executionPath, {
-          message: commitMessage,
-          author: {
-            name: targetCommit.author.name,
-            email: targetCommit.author.email
-          },
-          committer: {
-            name: currentIdentity.name,
-            email: currentIdentity.email
-          },
-          amend: true
-        })
+        try {
+          await git.commit(executionPath, {
+            message: commitMessage,
+            author: {
+              name: targetCommit.author.name,
+              email: targetCommit.author.email
+            },
+            committer: {
+              name: currentIdentity.name,
+              email: currentIdentity.email
+            },
+            amend: true
+          })
+        } catch (error) {
+          // Safety net: catch "would make it empty" error if detection missed it
+          const msg = error instanceof Error ? error.message : String(error)
+          if (msg.includes('empty') || msg.includes('nothing to commit')) {
+            await safeReleaseContext(repoPath, context)
+            return {
+              success: false,
+              error: 'empty_result',
+              errorDetail:
+                'Combined changes produce an empty commit. The child undoes the parent\'s changes.'
+            }
+          }
+          throw error
+        }
 
         newParentSha = await git.resolveRef(executionPath, parentBranch)
         options.onPhaseComplete?.('applying-patch')
@@ -685,6 +877,35 @@ export class SquashOperation {
     }
   }
 
+  /**
+   * Ensure repoPath is not on any of the branches we're about to delete.
+   * Checks the current branch and only switches if necessary.
+   * Falls back to detached HEAD if the target branch is checked out in another worktree.
+   */
+  private static async ensureNotOnBranch(
+    repoPath: string,
+    branchesToDelete: string[],
+    targetBranchName: string | undefined,
+    targetSha: string,
+    git: GitAdapter
+  ): Promise<void> {
+    const currentBranch = await git.currentBranch(repoPath)
+    if (!currentBranch || !branchesToDelete.includes(currentBranch)) {
+      return // Already safe (detached HEAD or on a different branch)
+    }
+
+    if (targetBranchName) {
+      try {
+        await git.checkout(repoPath, targetBranchName)
+        return
+      } catch {
+        // Branch may be checked out in another worktree — fall through to detach
+      }
+    }
+
+    await git.checkout(repoPath, targetSha, { detach: true })
+  }
+
   private static async cleanupSquashedBranch(
     repoPath: string,
     branch: string,
@@ -813,6 +1034,43 @@ export class SquashOperation {
 
     // Return comma-separated list of deleted branches
     return { deletedBranch: `${childBranch}, ${parentBranch}`, preservedBranch: customName }
+  }
+
+  /**
+   * Restore the original HEAD state after an empty-result squash.
+   * If the user was on a branch that wasn't deleted, restore it.
+   * If the user was on a deleted branch, ensureNotOnBranch already
+   * moved them to the grandparent — don't undo that.
+   * If the user was in detached HEAD, restore the original SHA.
+   */
+  private static async restoreOriginalHead(
+    repoPath: string,
+    originalBranch: string | null,
+    originalHeadSha: string,
+    deletedBranches: string[],
+    git: GitAdapter
+  ): Promise<void> {
+    if (originalBranch && deletedBranches.includes(originalBranch)) {
+      // User was on a deleted branch — ensureNotOnBranch already moved
+      // them to the grandparent. Leave as-is.
+      return
+    }
+
+    if (originalBranch) {
+      try {
+        await git.checkout(repoPath, originalBranch)
+        return
+      } catch {
+        // Branch may be in another worktree — fall through to detach
+      }
+    }
+
+    // Was detached HEAD — restore to original SHA
+    try {
+      await git.checkout(repoPath, originalHeadSha, { detach: true })
+    } catch {
+      // Best effort — already on a safe branch from ensureNotOnBranch
+    }
   }
 
   private static async restoreBranch(

@@ -1045,6 +1045,8 @@ function getSquashErrorMessage(error?: SquashBlocker, detail?: string): string {
       return detail ? `Push failed: ${detail}` : 'Push failed'
     case 'worktree_conflict':
       return detail ? detail : 'Cannot squash: branch is checked out in another worktree'
+    case 'empty_result':
+      return detail ?? 'Cannot squash: combined changes produce an empty commit'
     default:
       return 'Squash failed'
   }
